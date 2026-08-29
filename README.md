@@ -56,6 +56,11 @@ the whole model embedded — there is no `fetch`, no API, no telemetry. The only
 the page can make are the two Google Fonts stylesheets, and the layout is authored on the
 fallback metrics so it is pixel-identical with fonts blocked.
 
+**New to the vocabulary?** The first visit runs a 30-second tour, the **?** in the top bar (or
+`G`) opens the how-to-read-this guide, the small **i** on every row and column explains that
+hand class with live example hands, and every **?** in the left rail defines the number next to
+it — including the Δ-pin colour mode and the rest of the display controls.
+
 **GitHub Pages:** the repo is Pages-ready as-is. Settings → Pages → *Deploy from a branch* →
 root of your default branch. `index.html` is the whole site; `data/`, `scripts/` and `test/`
 are there for people who want to audit or regenerate the numbers, not for the page to load.
