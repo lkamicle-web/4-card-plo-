@@ -4,8 +4,13 @@
     {
       "name": "rundown",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8123"],
-      "port": 8123
+      "runtimeArgs": [
+        "-I",
+        "-c",
+        "import os,functools,http.server as h;h.test(HandlerClass=functools.partial(h.SimpleHTTPRequestHandler,directory=os.environ.get('PWD') or '.'),port=int(os.environ.get('PORT','8123')))"
+      ],
+      "port": 8123,
+      "autoPort": true
     }
   ]
 }

@@ -277,11 +277,13 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .colhead{display:grid;grid-template-columns:var(--gut) var(--c1) var(--c2) var(--c3) var(--c4) var(--c5);
   column-gap:2px;padding:0 var(--sp-5);height:30px;align-items:end;flex:0 0 auto;border-bottom:1px solid var(--border-subtle)}
 .colhead .ch{padding-bottom:var(--sp-2);text-align:center;overflow:hidden}
-.colhead .ch button{width:100%;color:var(--text-tertiary);font:600 9px/12px var(--font-ui);letter-spacing:.07em;white-space:nowrap;
+.colhead .ch button:not(.q){width:100%;color:var(--text-tertiary);font:600 9px/12px var(--font-ui);letter-spacing:.07em;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
-.colhead .ch button:hover{color:var(--text-primary)}
-.colhead .ch .sh{display:block;font:500 10px/13px var(--font-mono);color:var(--text-tertiary);font-variant-numeric:tabular-nums}
-.colhead .ch[data-solo=true] button{color:var(--accent)}
+.colhead .ch button:not(.q):hover{color:var(--text-primary)}
+.colhead .chsub{display:flex;align-items:center;justify-content:center;gap:3px;min-width:0}
+.colhead .ch .sh{display:block;font:500 10px/13px var(--font-mono);color:var(--text-tertiary);font-variant-numeric:tabular-nums;cursor:pointer}
+.colhead .ch .sh:hover{color:var(--text-primary)}
+.colhead .ch[data-solo=true] button:not(.q),.colhead .ch[data-solo=true] .sh{color:var(--accent)}
 /* grid */
 .gridwrap{position:relative;flex:1 1 auto;overflow:auto;padding:var(--sp-2) var(--sp-5) var(--sp-8)}
 .band{position:relative;margin-bottom:4px}
@@ -418,8 +420,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .wchip:hover .q{background:var(--accent);color:var(--t1-ink)}
 /* class-info: the small always-visible "i" on every row and column, "?" on rail headers */
 .rowh .q,.ch .q,.classhead .q{width:13px;height:13px;font:600 9px/13px var(--font-ui)}
-.colhead .ch{position:relative}
-.ch .q{position:absolute;right:1px;bottom:14px;z-index:1}
 .rsec-h .q{display:inline-block;vertical-align:-3px;margin-left:5px}
 .legend .q{width:18px;height:18px;font:600 11px/18px var(--font-ui)}
 .pop.classinfo{width:300px}
@@ -641,8 +641,9 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
   .rowh{padding-left:13px;gap:var(--sp-2)}
   .rowh .nm{font-size:11px;line-height:13px}
   .rowh .fb{flex:0 0 14px}
-  .colhead .ch button{font-size:8px;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:1px}
-  .colhead .ch{min-height:44px;display:flex;align-items:flex-end}
+  .colhead .ch button:not(.q){font-size:8px;flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:1px}
+  /* the label button + share line stack; together they keep the 44px tap column (AC-21) */
+  .colhead .ch{min-height:44px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end}
   .colhead{align-items:end}
   .inspector{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;height:85vh;
     max-height:calc(100vh - var(--sheet-top,200px));border-radius:var(--r-xl) var(--r-xl) 0 0;
@@ -2823,13 +2824,17 @@ function buildColHead() {
     /* below 768 the column is 53px wide — the full label cannot fit and would
        clip at both ends, so the short key is used, same as the row heads. */
     var wide = window.innerWidth > 767 && (S.cols !== 'freq' || (c.mosaicW || 106) >= 90);
-    b.innerHTML = (wide ? c.label.toUpperCase().replace('SINGLE-SUITED, NUT', 'SS-NUT') : c.short) +
-      '<span class="sh">' + (c.share * 100).toFixed(1) + '%</span>';
-    b.onclick = function () { S.soloCol = S.soloCol === c.key ? null : c.key; render(); syncColHead(); };
+    b.innerHTML = wide ? c.label.toUpperCase().replace('SINGLE-SUITED, NUT', 'SS-NUT') : c.short;
+    var solo = function () { S.soloCol = S.soloCol === c.key ? null : c.key; render(); syncColHead(); };
+    b.onclick = solo;
     b.title = c.key === 'SSA'
       ? 'SSA vs SS raw equity differs by only ~+0.5 pt (AJT9 ace-suited 56.31 vs J-suited 55.79). The difference is realization, not equity.'
       : c.label + ' — ' + commas(c.combos) + ' combos. Click to solo.';
-    d.appendChild(b); d.appendChild(classQ('col', c.key, c.label)); ch.appendChild(d);
+    var sub = el('div', 'chsub');
+    var sh = el('span', 'sh', (c.share * 100).toFixed(1) + '%');
+    sh.onclick = solo;
+    sub.appendChild(sh); sub.appendChild(classQ('col', c.key, c.label));
+    d.appendChild(b); d.appendChild(sub); ch.appendChild(d);
   });
   syncColHead();
 }
