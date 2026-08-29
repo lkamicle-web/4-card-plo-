@@ -192,9 +192,9 @@ lattice blows the budget, drop to v ∈ {25, 55, 90} and say so here.
 > raised to 65 / 72 / 13 / 150 KB with the reasoning stated at the gate.
 >
 > **The D-gate this section asks for is now written: D7**, and it reads the 220 KB against the
-> file *as emitted* (146,209 B = 142.8 KB, 35% headroom — the table above reads 146,171 B because
-> it was measured before three more gate names were stamped into `model.gates`, which is 38 bytes
-> of the same payload) for the two reasons above. The pretty-printed figure is printed in D7's and
+> file *as emitted* (146,551 B = 143.1 KB, 35% headroom — the table above reads 146,171 B because
+> it was measured before the phase-1 and phase-2 gate names and constant blocks were stamped into
+> the same payload; METHODOLOGY §9.10 carries the byte-by-byte accounting) for the two reasons above. The pretty-printed figure is printed in D7's and
 > D6's detail lines on every run — 241.7 KB — and is
 > recorded rather than asserted, precisely so that the reading this section settled on cannot be
 > mistaken for the pretty-printed one going unmeasured. D6 keeps the tighter per-block budgets that
@@ -239,6 +239,50 @@ continue *shape*: deeper favours the in-position call-and-cooler plan, shallower
 Implement as a depth term on `nuCall`/`nuOOP` and on the 4-bet eqMix threshold; document beside
 the existing §7 constants.
 
+> **Calibrated (phase 2).** Constants, derivations and full anchor outcomes in METHODOLOGY §5.1;
+> I23/I27/I28 are written. `lambda = 0.25`, `mu = 0.60`, `beta = 0.35`, `coolerBar = 0.40`,
+> `nuFloor = 0.015`, `fourBet = 0.06`, all on a **logarithmic** depth coordinate
+> `u(d) = log2(d/100)/log2(2.5)`, which is ±1 at the endpoints because the slider's domain is
+> geometrically symmetric about its reference (100/40 = 250/100 = 2.5). **Two of this section's
+> four anchors survived as written, one had to be restated in a different unit, and one is false.**
+>
+> - **`AA72r` — survived.** `AA_DANGLER×RB` has 0 monotonicity violations and gains a tier at 40 bb
+>   at 8 of 105 settings, all at `raise/BTN` and `raise/SB`.
+> - **Rundown-DS — restated. "Tier non-decreasing with depth" is not an assertable claim**, and the
+>   reason is structural rather than about rundowns: a tier here is a **percentile cut, not a
+>   property of the cell**, so a cell whose own `M_deep` rises is still demoted when the cells above
+>   it rise faster. Measured, the claim fails in both directions at once — `RUN0_HIGH×DS` and
+>   `BROADWAY_RUN×DS` never change tier at any depth (true and vacuous), `RUN2×DS` and
+>   `RUN1_TOPMID×DS` change tier both ways. In **score rank** it holds and I23 asserts it there.
+> - **And it is outright false for the LOW rundowns.** `RUN0_LOW×DS` — 5432ds and the wheel — gets
+>   *worse* with depth (worse rank at 250 than at 40 at 49 of 75 settings, better at 9), because
+>   `RUN0_LOW` carries the highest `cooler` in the rundown band (0.4268, against a 0.40 bar) while
+>   its ν of 0.43 is a whisker over `nuBar`, so the μ term overrules the λ term. I23 asserts the
+>   falsified form. This is the most useful thing the depth dial says.
+> - **J/T big pairs via the μ term — false, for the same taxonomy reason that broke §2.1's five-step
+>   cooler ladder.** `rowOf` splits pairs at J, so JJ/QQ/KK share the big-pair band and TT sits with
+>   the small pairs; combo-weighted the big-pair band's `cooler` is 0.3563, *below* the bar, so μ
+>   **promotes** 21 of its 23 cells with depth. Measured at 200 bb: 46 big-pair demotions, every one
+>   attributable to λ and **not one** to μ, against 92 μ-attributable demotions over 7 cells, every
+>   one a small pair or `RUN0_LOW`. The small-pair band (0.4386) is the one μ punishes.
+> - **Painted width — survived.** Worst drift 3.16 pts against I21's 4.0 allowance; narrowest
+>   painted range 12.6% at any depth against I12's 10% floor.
+> - **Positional spread: the power form, not the lerp, and not linear in `d`.** The power form
+>   amplifies the edge a seat already has and leaves a neutral seat alone (HJ moves 0.0035 across
+>   the whole slider, SB moves 0.033 — one step of `baseR`). `|β| < 1` is a hard constraint: above
+>   it the exponent goes negative at 40 bb and the seat table inverts. I23(f) asserts the order.
+> - **"Shallower favours 4-bet" is not expressible through the 4-bet threshold on this grid.** All
+>   21 AA-row cells that can 4-bet measure 54.3–65.1% eqMix against the default mix, a 4.3-point gap
+>   above the 50% bar, so a falling bar has nothing to add. Only the deep half of that anchor is
+>   implemented. Moving the bar also exposed a **missing rung**: an AA row that fails the 4-bet bar
+>   used to fall through to the nut floors and fold at 54% into a 29% price. AA rows are now exempt
+>   from those floors (unreachable at the v1 operating point, so I22 is untouched).
+> - **§3.2's stated rake model is tier-inert as written.** A flat multiplier on ρ scales every
+>   score, every cut and every margin equally and re-orders nothing at the three percentile nodes.
+>   Recorded here so the follow-up worker does not implement it and then hunt for the effect.
+>   *(Phase 2B: implemented as written, and the prediction confirmed exactly — 0 of 27,675 tiers
+>   move. It is now asserted by gate I31(a) rather than merely expected. See §3.2.)*
+
 ### 3.2 Rake
 
 Slider `rakePct ∈ [0, 6]` % with a cap input in bb (`rakeCapBB`, default 3bb at 100bb scale),
@@ -247,6 +291,35 @@ shifts every breakeven. Implementation: a flat multiplier on ρ for tier-cut pur
 (`rho_eff = rho · (1 − rakePct·capFactor)`) — crude, documented as such, and honest about the
 direction §10.4 already states: every marginal hand moves toward fold. At the vs-3-bet node it
 raises the 0.290 price directly (that one is exact arithmetic, not opinion).
+
+> **Implemented (phase 2B).** Constants, derivations and measurements in METHODOLOGY §5.2; gate
+> **I31** is written. One fraction carries the feature —
+> `rakeFrac = min(rakePct/100, rakeCapBB / (potBB · unitBB))`, which is this section's
+> `rakePct · capFactor` with `capFactor = min(1, rakeCapBB / (rakePct/100 · potBB · unitBB))` — and
+> it needed one new authored constant, `rake.potBB = 60`, the reference raked pot in preflop units,
+> because a cap quoted in big blinds means nothing without a pot to cap. 60 puts the 5% default
+> preset exactly on the cap's knee (3/60 = 5%), which is also where real 5%/3bb lobbies sit.
+> `rake.preset = 5` is shipped for the phase-3 slider; the *function* default stays 0 so I22 is the
+> identity. Depth does **not** move the rake, and rake does **not** move the 4-bet bar (that is a
+> comparison against a range, not a price hero is being laid; and `0.50/(1−0.05) = 0.5263` is inert
+> inside the same 4.3-point gap §3.1 measured anyway).
+>
+> - **This section's own model is tier-inert at the three percentile nodes, and that is now
+>   asserted rather than lamented.** Measured at the preset over 27,675 cell-settings: 0 tiers move,
+>   every score moves, and every score ratio equals `1 − rakeFrac` to within 2 ulp. I31(a) pins it,
+>   so turning rake into a non-uniform haircut has to be a deliberate model change with its own
+>   argument. (Predicted at the `rakeRhoFactor` seam during phase 2A; the implementation confirmed
+>   it exactly.)
+> - **"Raises the 0.290 price directly" needed an interpretation, and it is named as one.** In v1
+>   that price was *display-only* — quoted in the WHY panel, consulted by nothing — so raising it
+>   would have changed no decision and made this section's own promise false. The model's reason
+>   line has always described the continue floor as "the price plus 7 points, because a 3-bet pot is
+>   played out of position over three streets", so the price moves by exact arithmetic
+>   (`breakeven / (1 − r)`, 29% → 30.53% at the preset) and the floor rides on it with the 7-point
+>   premium invariant (36% → 37.53%). Measured effect: the vs-3-bet continue range narrows
+>   monotonically in `rakePct` on the action tier, 45 → 41 cells at UTG and 49 → 44 at CO across
+>   0–6%. The alternative — leave the floor at 0.36 and let rake change only the panel's text — was
+>   considered and rejected.
 
 ### 3.3 Straddle
 
@@ -270,17 +343,60 @@ range rises (shallow + multiway both point the same way once M_deep's λ flips s
 verify this composition explicitly; if λ(50) < 0 fights the field effect, the gate documents
 which wins and why).
 
+> **Implemented (phase 2B).** Full write-up in METHODOLOGY §5.3; gates **I26** (direction and
+> composition), **I29** (I16's continuity across the toggle) and **I30** (I21's painted widening
+> across the toggle) are written. Two constants: `straddle.unit = 2` — the preflop unit doubles,
+> which is the *whole* fact — and `straddle.seat = 0.77`, one seat of `baseRaise`'s own ladder as a
+> geometric mean of its UTG→HJ (×1.250) and HJ→CO (×1.350) steps.
+>
+> - **λ(d/2) < 0 DOES fight the field effect, and the field wins.** Isolated at matched width (the
+>   I11b construction) over 150 RFI settings: field-only **+0.286** pts of mean ν with 0 of 150
+>   going the other way, depth-only **−0.144** with 76 down, both **+0.183** with 20 down — the
+>   composed transform keeps **64%** of the field effect (44% on 10k-trial data). The reason is
+>   worth carrying, because on the ν coefficient alone the depth half *should* win: Δκ =
+>   0.13·cBlind(v) is +0.032…+0.107 against λ(d/2) − λ(d) = **−0.189 flat**, 2–6× smaller. What
+>   completes the field's margin is the MEASUREMENT — the multiway realization slope (+0.027…+0.122
+>   per unit ν) and ρ read further up its own N curve (I3's inversion). The margin is thinnest where
+>   κ has least to give: at VPIP 25 it is +0.076 pts with 11 of 30 settings going the other way.
+>   I26(c) asserts each half separately, so a change that reverses the verdict fails with the
+>   decomposition in its detail line.
+> - **§7.2's "BTN keeps its base" is FALSIFIED, by I26's own claim.** With BTN pinned the button's
+>   painted range gets *wider* under a straddle at 7 of its 30 settings (up to +2.49 pts, worst at
+>   VPIP 25 / 40 bb; 16 of 30 on 10k-trial data) and its mean ν falls at 8 — and a straddle cannot
+>   make the button open wider, it puts one more player behind him. So the seat factor applies at
+>   every seat and `straddle.seatPinned` ships empty. Candidates measured: no shift at all (48 of
+>   150 loosen — the field and depth halves alone cannot carry the gate), BTN pinned (7), BTN+SB
+>   pinned (19), every seat (**0**, 150/150 tighter, 148/150 nuttier). §7.2's other lean — no
+>   straddler iso node — is kept.
+> - **"Painted RFI tightens at every seat" is true; the same claim at the vs-RAISE node is false and
+>   is reported rather than asserted.** `w3bet` is a flat percentile with no seat base, so the
+>   transform has nothing to act on there: measured 47 tighter / 77 looser / 26 unchanged. A
+>   straddle tightens the range you **open**, not the range you 3-bet with.
+> - **"Only the vs-3-bet absolute price recomputes off the doubled unit" resolves to the rake cap,
+>   and to nothing else.** Every threshold in the model is a ratio and therefore scale-free; the cap
+>   is the single quantity quoted in big blinds against a pot quoted in preflop units. Under a
+>   straddle the same pot is twice as many big blinds, so the cap binds twice as hard and the
+>   effective rake *falls* — 5% becomes 2.5% at the shipped 3bb cap. At rake 0 the straddle moves no
+>   price at all, which is the sentence's real content.
+> - **Unmodelled, and listed in METHODOLOGY §10:** under a straddle the BB no longer closes the pot,
+>   so `positionDisabled('BB', 'rfi')` is wrong — that is a change to the game tree and to the grid
+>   the page paints, not to the scoring layer, and it is not made here.
+> - **Side-effect worth knowing:** the straddle's depth half **saturates below 80 bb**, because 40/2
+>   is off the bottom of the §3.1 dial and `dEff` clamps like every other depth.
+
 ### 3.4 New/updated invariants (verify.mjs)
 
 | # | Assertion |
 |---|---|
 | I22 | **v1 reproduction**: at d=100, rake 0, straddle off, random villains — tier-identical to v1 output for all (node, pos, v). First gate written, never removed. |
-| I23 | Depth direction: the §3.1 anchor set, plus painted-width bounded drift across d. |
+| I23 | **Written (phase 2), to the measurement.** Depth direction over d = 40/60/100/150/200/250 at all 105 settings: the `AA72r` anchor as written (0 violations, 8 settings gaining a tier at 40 bb); the rundown anchor restated in **score rank**, because a tier is a percentile cut and not a property of a cell; the low-rundown case asserted in its **falsified** form (`RUN0_LOW×DS` worse at 250 than at 40 at 49 of 75 settings against 9 better); μ-attributable demotions exist and **none is a big pair**, which is the §3.1 J/T anchor's falsification asserted rather than dropped; painted-width drift ≤ 4.0 pts and painted floor ≥ 10%; I7/I8/I9/I13/I19 re-run at both endpoints; and the seat order preserved with the positional spread widening, which is what catches `|β| ≥ 1`. Full write-up: METHODOLOGY §5.1. |
 | I24 | **Written (phase 1), to the measurement.** Cooler sanity: the three-step *band* ladder AA 0.3184 < big pairs 0.3563 < small pairs 0.4386 (≥ 0.03 per step) — the five-step pair ladder §2.1 asked for is not expressible in this taxonomy, and the ladder is not monotone per row inside a band either; `cooler(SSA) ≤ cooler(SS) + 0.01` in all 18 rows carrying both (18/18 strict today, tolerance because the thinnest margins are ~1 SE); range [0,1] plus the measured envelope; `DBLPAIR_SMALL×RB` in the top 8 and `AA_BIGPAIR×DS` in the bottom 8 of 123 cells (measured ranks 5 and 4); `coolerBarMeasured` rebuilds from the shipped cells. |
 | I25 | **Written (phase 1), to the measurement — and one bullet of §2.3 is *not* asserted, because it is false.** v=90 converges without equalling random (mean abs delta ≤ 1.2, worst cell ≤ 5.0; measured 0.81 / 3.6), and mean abs delta falls monotonically along the lattice; at v=25 the six worst cells at N=1/3/5 all lie in {`BROADWAY_RUN`, `RUN0_HIGH`} — *rank overlap*, not weakness — and the six best all lie in {`RUN0_LOW`, `RUN1_TOPMID`, `RUN1_BOTTOM`}, every `RUN0_LOW` cell gaining at every N; combo-weighted mean delta negative at every lattice point, which is the I4/I5 scope decision stated positively. The "junk loses most" bullet is reported in the gate's detail line (`TRASH×RB` +2.7 at N=3, a gain) and asserted nowhere. |
-| I26 | Straddle direction per §3.3. |
-| I16/I21 analogues | Continuity and painted-width gates re-run across the d slider endpoints and the straddle toggle. |
-| D7 | **Written (phase 1).** §2.5's payload ceiling, on `model.json` as emitted: 146,209 B = 142.8 KB of 220 KB. Not an invariant, listed here because it was commissioned with I24/I25. |
+| I26 | **Written (phase 2B), to the measurement.** Straddle direction over 5 RFI seats × 5 VPIP × 6 depths: the painted OPENING range tightens at every seat (150/150 rfi, 150/150 iso) and gets nuttier (148/150, 150/150); §7.2's "BTN keeps its base" is falsified and the falsification is what decides `straddle.seatPinned`; the composition §3.3 asked about is decomposed at matched width and **the field beats λ(d/2)**, keeping 64% of its own effect; I6/I7/I8/I9/I10/I13/I19 re-run straddled at 40/100/250 bb; and the transform's own arithmetic is asserted exactly. The vs-Raise node is measured (47 tighter / 77 looser / 26 unchanged) and deliberately not asserted. Full write-up: METHODOLOGY §5.3. |
+| I29/I30 | **Written (phase 2B)** — the straddle half of the I16/I21 analogues, at 40 / 100 / 250 bb with the toggle on. Neither needed a widening: I29's worst non-cliff step is 0 cells, I30's worst dip is 2.86 pts against I21's own 4.0 (better than the unstraddled 3.16). I30 does carry its own painted floor, 8% rather than I12's 10%, because a straddled UTG opens 8.96% at VPIP 25 and that is the seat transform working, not a range collapse. I29's finding is the mirror of I27's: depth leaves the N_eff = 3.0 cliffs where they are, the straddle drags all of them forward (raise/HJ 45→34, CO 54→39, BTN 70→47) and adds a fifth at raise/SB. |
+| I31 | **Written (phase 2B), to the measurement.** Rake per §3.2: (a) the flat haircut is tier-inert at the three percentile nodes BY CONSTRUCTION — 0 of 27,675 tiers move at the 5% preset, all 27,675 scores do, every ratio equals 1 − rakeFrac to 2 ulp — asserted so that making it non-uniform has to be a deliberate model change; (b) at the vs-3-bet node the continue range narrows monotonically in rakePct on the action tier (45→41 cells at UTG, 49→44 at CO); (c) the arithmetic is exact, including the straddle interaction on the cap. |
+| I27/I28 | **Written (phase 2)** — the depth half. I27 is I16's continuity and I28 is I21's painted widening, both re-run at 40 and 250 bb. I27 needed no widening at all. I28's dip allowance is widened from 4.0 to 6.5 pts because the worst event at 250 bb is a simultaneous three-cell exchange (net 5.45 pts at rfi/BTN VPIP 82), not the single-cell flicker I21 sized against. The straddle half is I29/I30 below. |
+| D7 | **Written (phase 1).** §2.5's payload ceiling, on `model.json` as emitted: 146,551 B = 143.1 KB of 220 KB. Not an invariant, listed here because it was commissioned with I24/I25. |
 
 ---
 
@@ -339,6 +455,36 @@ Data verdict: **feasible now** — `sub` ships 123 keys with per-bucket `eq[1..5
 - One cell expanded at a time; expansion state survives position/node/VPIP changes; Esc
   collapses.
 
+### 5.1 Hand search (added 2026-08-29, ships with Phase 3)
+
+- Input: a rank string (any order, e.g. `9655` = `5569`) plus an optional suit-class suffix —
+  `9655R`/`9655RB`, `9655SS`, `9655SSA`, `9655DS`, `9655F`. `T`/`J`/`Q`/`K`/`A` accepted for
+  broadway ranks. Parser canonicalizes the rank string to the taxonomy's rank-pattern before
+  lookup, so order never matters.
+- Suffix map, read off `taxonomy.mjs`'s actual `COL_ORDER` (`RB`, `FLAW`, `SS`, `SSA`, `DS`):
+  `R`/`RB` → `RB`, `SS` → `SS`, `SSA` → `SSA`, `DS` → `DS`. **`F` ("flaw") → `FLAW`, narrowed to
+  its monotone population.** The taxonomy has no column of its own for four-of-one-suit: `colOf`
+  maps both pattern `31` (three-flush) and pattern `4` (monotone) onto the single `FLAW` column
+  ("suit-wasted"), so a bare rank+`FLAW` lookup can't tell them apart at the cell level. The
+  sub-bucket layer can: `suitSub` keys three-flush as `ms3` and monotone as `ms4`. `F` resolves to
+  the `FLAW` cell's `ms4` sub-bucket (the other three sub-key fields — pair structure,
+  connectivity, high-card quality — are already pinned by the ranks) wherever that sub-bucket is
+  non-empty. Three-flush has no suffix of its own this phase; out of scope.
+- Resolution ladder: rank string alone pins the row (`rowOf` is rank-only — same row in all five
+  columns); rank + suffix pins the cell; rank + `F`, and incidentally rank + any suffix once the
+  ranks are fully specified, pins a single sub-bucket, because the suit axis is the only
+  sub-bucket field the suffix doesn't already fix.
+- Behavior: resolves to the taxonomy cell at current settings, scrolls to and highlights it. When
+  the shape pins a specific sub-bucket, opens §5's expand-in-place view with that sub-bucket
+  highlighted. A bare rank string with no suffix highlights the rank-row across all suit columns
+  instead of expanding anything.
+- Keyboard: reachable by shortcut, consistent with §5's existing nav; `Esc` clears the search and
+  any resulting highlight/expansion; matches and no-match both announced for screen readers, the
+  same pattern §2.3 uses for void-cell announcements.
+- Pure client feature: a rank/suit parser plus a lookup against the already-shipped
+  `cellKeys`/`subs` structures — no new measurement, no new `model.json` field. Its bytes count
+  against Phase 3's UI-shell size budget.
+
 ---
 
 ## 6. Sequencing (each phase ends: `verify.mjs` green, `node --test` green, smoke pass)
@@ -358,8 +504,21 @@ without touching anything shipped in phases 1–3.
 
 1. λ(d), μ(d) exact curves and β for the positional spread — calibrate against §3.1 anchors,
    then pin the measured outcomes into I23.
+   **Resolved (phase 2).** λ = 0.25 anchored to κ's own swing (2λ = 0.50 against κ's 0.520, i.e.
+   depth gets 96% of the authority field size has over nut weight); μ = 0.60 anchored to the two
+   measurements' combo-weighted standard deviations (λ·sd(ν)/sd(cooler) = 0.589); β = 0.35 anchored
+   to `baseR`'s own seat steps — the deep end of the slider is worth about one seat of position.
+   All three on a logarithmic depth coordinate. Anchor outcomes, including the two falsifications,
+   are annotated in §3.1 above and written into I23.
 2. Straddle seat/width details: does BTN keep its 0.45 base under a straddle, and does the
    straddler get an iso node? (Lean: yes and no respectively, but measure the field first.)
+   **Resolved (phase 2B): NO and no — the first lean is falsified, the second is kept.** Measured,
+   pinning BTN's base makes I26's own claim false: the button's painted range gets *wider* under a
+   straddle at 7 of its 30 (VPIP, depth) settings, by up to 2.49 points, and its mean ν falls at 8.
+   A straddle puts one more player behind the button; it cannot widen his opening range. So the
+   0.77 seat factor applies at every seat and `straddle.seatPinned` ships empty. The straddler
+   still gets no iso node: he is modelled as one extra blind-like defender in `N_eff`, never as a
+   hero seat. Working, and the three rejected candidates, in METHODOLOGY §5.3.
 3. `villainDiscipline q` default (0.85 proposed) and whether it is user-editable like the 3-bet
    mix (lean: yes, it's the same kind of pool knob).
    **Resolved (phase 1) for the generator half only:** q = 0.85 as proposed, shipped as

@@ -40,6 +40,119 @@ export const CONSTANTS = {
   kappa: [0.15, 0.13],
   nuBar: 0.42,
   nuNorm: [0.08, 0.27],
+  // ---- the depth dial (V2-PLAN §3.1; full write-up and every measurement in METHODOLOGY §5.1) ---
+  // The symmetry the plan asks to be visible in the CODE, not only in the docs (§1):
+  //
+  //     M_nut (h, N) = 1 + kappa(N) * (nu(h) - nuBar)                 <- field size
+  //     M_deep(h, d) = 1 + lambda(d) * (nu(h) - nuBar)                <- cost when you are wrong
+  //                      - mu(d)     * (cooler(h) - coolerBar)
+  //
+  // Two dials on one piece of machinery, entering the score the same way and written the same way.
+  // mu(d) is the half with no kappa analogue, and it is why the depth axis needed a MEASUREMENT:
+  // `cooler` (METHODOLOGY §3.2) is the measured chance a hand that got there still loses, and a
+  // cooler only ever costs what is behind it. All-in equity itself does not move with depth, so
+  // there is nothing here to simulate — only to re-score.
+  //
+  // The coordinate is LOGARITHMIC because the slider's domain is geometrically symmetric about its
+  // reference (100/40 = 250/100 = 2.5): u(d) = log2(d/100)/log2(2.5), so u(40) = -1, u(100) = 0,
+  // u(250) = +1 and every constant below IS its own endpoint value. §3.1's alternative — linear in
+  // d — was rejected: it puts 40bb only 40% as far from the reference as 250bb, on a quantity whose
+  // unit is the stack-to-pot ratio, and it would give the positional term a different notion of
+  // "deep" from lambda and mu. u(100) = 0 exactly, so all of this is the identity at the v1
+  // operating point (I22). All four curves are OPINION, pinned against the I23 anchor set.
+  depth: {
+    min: 40, ref: 100, max: 250, detents: [40, 100, 200],
+    // ANCHORED TO KAPPA. kappa swings 0.520 across the field axis (0.15 heads-up to 0.67 six-way);
+    // lambda swings 2*lambda across the depth axis, so 0.25 gives depth 96% of the authority field
+    // size has over the same quantity. The quantitative form of "two dials on one machine", and the
+    // only non-arbitrary anchor available for a curve nothing can measure.
+    lambda: 0.25,
+    // ANCHORED TO THE TWO MEASUREMENTS' OWN SPREADS: equal score weight per standard deviation.
+    // Combo-weighted over the 123 live cells sd(nu) = 0.0831 and sd(cooler) = 0.0353, so
+    // mu = lambda * 0.0831/0.0353 = 0.589, rounded. Per-sd and not per-range: cooler's range is set
+    // by two tiny cells (TRIPS_SMALL x RB, 441 combos), and matching ranges would give 0.91 and let
+    // those two drive the dial. The term earns its place because corr(nu, cooler) = -0.590 — the
+    // cooler measurement brings two thirds of its own variance, and that residual is where the
+    // depth axis says something the VPIP axis cannot (the low rundowns: nutty AND cooler-prone).
+    mu: 0.60,
+    // ANCHORED TO baseR'S OWN SEAT STEPS. The POWER form (not a lerp) amplifies the edge a seat has
+    // and leaves a neutral seat alone: across the whole slider HJ (0.99) moves 0.0035 and CO (1.02)
+    // 0.007, while SB (0.90) moves 0.033 and BTN (1.06) 0.022 — about one step of baseR itself
+    // (SB->BB 0.03, CO->BTN 0.04). The deep end is worth roughly one seat of position.
+    //   HARD CONSTRAINT, asserted by I23(f): |beta| < 1. The exponent 1 + beta*u is order-preserving
+    // only while positive; at beta = 1.2 it reaches -0.2 at 40bb and the seat table INVERTS (the
+    // small blind realizes better than the button). Nothing else notices — positional nesting is a
+    // cascade, so it enforces whatever order it is handed — which is why the gate checks it.
+    beta: 0.35,
+    // The reference cooler M_deep is signed against. Authored, not measured, for the reason nuBar is
+    // (§5, §7): an anchor that moved on every regeneration would shift the surface under you. Held
+    // at the round number nearest the measured pool mean (constants.coolerBarMeasured = 0.3953), so
+    // the slider RE-SORTS the grid instead of inflating or deflating it.
+    coolerBar: 0.40,
+    // ---- vs-3-bet. The 0.290 price does NOT move with depth (see `breakevenPrice`); the shape of
+    // the continue range does.
+    // nuFloor shifts nuCall and nuOOP together, and 0.015 is chosen on a fact about the FILE: `nu`
+    // ships to two decimals, so a floor landing ON a hundredth is a coin flip for every cell sitting
+    // exactly there. 0.015 puts all four endpoint floors (0.385/0.415 and 0.405/0.435) on
+    // half-hundredths. 0.010 was measured and rejected for exactly this — it puts nuOOP(250) at
+    // 0.42 + 0.01 = 0.4299999999999999933, landing under the I15 anchor cell's nu of 0.43 by the
+    // direction of a rounding error. §7's "a floor set AT a measurement fails on noise", applied to
+    // the float grid. Consequence, owned: RUN0_LOW x DS stops defending out of position above about
+    // 184bb — the highest-cooler cell in the rundown band, so that is the measurement talking.
+    nuFloor: 0.015,
+    // fourBet is the most conservative of the five because the measurement says the lever is half
+    // dead: all 21 AA-row cells that can 4-bet measure 54.3-65.1% eqMix against the default mix, a
+    // 4.3-point GAP above the 50% bar, so a falling bar has nothing to add and §3.1's "shallower
+    // favours 4-bet" is not expressible here. Anything under 0.043 is provably inert both ways.
+    // 0.06 is the round number just past the gap; deep it takes the bar to 0.56 and moves the three
+    // weakest AA cells into the call lane, which is the half of the claim that survives.
+    fourBet: 0.06,
+  },
+  // ---- the rake dial (V2-PLAN §3.2; every measurement in METHODOLOGY §5.2) ---------------------
+  // CRUDE, and the plan says so. One fraction, applied two ways:
+  //
+  //     rakeFrac = min(rakePct/100, rakeCapBB / (potBB * unitBB))    <- §3.2's rakePct*capFactor
+  //     rho_eff  = rho * (1 - rakeFrac)                              <- the flat haircut
+  //     price    = breakeven / (1 - rakeFrac)                        <- EXACT arithmetic
+  //
+  // The min() is the cap: 5% of a 60bb pot capped at 3bb is 5%; of a 120bb pot, 2.5%.
+  //
+  // MEASURED AND OWNED, so nobody "fixes" it: the flat multiplier is TIER-INERT at the three
+  // percentile nodes and that is what the plan's model SAYS. Score is 100*rho*M_nut*M_play*R*M_deep,
+  // so a factor common to every cell scales every score, cut and margin alike and re-orders nothing.
+  // Rake bites where a threshold is ABSOLUTE — the vs-3-bet node; see `callFloorAt`. Gate I31 pins
+  // both halves.
+  rake: {
+    // `preset` is the UI's default (§3.2: "5% — the lobby this tool is for"). The FUNCTION default
+    // is 0: gate I22 is the claim that v2 reproduces v1 at v1's operating point, which has no rake.
+    min: 0, max: 6, preset: 5, capBB: 3,
+    // The reference raked pot, in preflop units. AUTHORED like nuBar and coolerBar, and for the
+    // same reason — it is what makes `rakeCapBB` mean anything, so it must not move under a
+    // regeneration. 60 puts the default preset exactly on the cap's KNEE (3/60 = 5%), which is
+    // where real 5%/3bb lobbies sit: they reach the cap in pots of 60bb and up.
+    potBB: 60,
+  },
+  // ---- the straddle (V2-PLAN §3.3; full write-up in METHODOLOGY §5.3) --------------------------
+  // A UTG straddle is ONE fact — the preflop betting unit doubles — with three consequences this
+  // model already has machinery for, which is why §3.3 is a transform and not a measurement:
+  //   unit   stacks are d/2 units deep (the §3.1 dial), and the rake cap — the one quantity in the
+  //          price layer that is NOT scale-free — is measured against twice as many big blinds.
+  //   field  one extra blind-like defender behind every seat, joining N_eff at cBlind(v).
+  //   seats  one more player behind you, so the opening bases shift one seat tighter.
+  straddle: {
+    unit: 2,
+    // ONE SEAT OF THE MODEL'S OWN OPENING LADDER, geometric because widthFor is multiplicative:
+    // baseRaise steps UTG->HJ 1.250x and HJ->CO 1.350x, so a seat is sqrt(1.250*1.350) = 1.2990
+    // and one seat tighter is 1/1.2990 = 0.770. The CO->BTN step (1.667x) is excluded on purpose:
+    // it is the step §7.2 wanted pinned.
+    seat: 0.77,
+    // Seats keeping their unstraddled base. EMPTY, and that is V2-PLAN §7.2's "BTN keeps its 0.45"
+    // FALSIFIED: pinned, the button's PAINTED range gets wider under a straddle at 7 of its 30
+    // settings and its mean nu falls at 8. A straddle puts one more player behind the button; it
+    // cannot widen his open. A constant rather than a hard-coded seat name, so gate I26 can perturb
+    // it — which is how the falsification was found.
+    seatPinned: [],
+  },
   mplay: {
     dangler: 0.94, trips: 0.85, quads: 0.70, aBlocked: 0.78,
     noCardAbove9: 0.93, monotone: 0.95, threeFlush: 0.97, nutSuited: 1.03,
@@ -112,6 +225,149 @@ export function positionDisabled(pos, node) {
 }
 
 // ---------------------------------------------------------------------------
+// 0. the table environment — depth, rake, straddle
+// ---------------------------------------------------------------------------
+/**
+ * The v1 operating point, and the default of every function below. Gate I22 asserts that the whole
+ * pipeline paints v1's tiers here, so this object is the definition of "the new knobs are inert at
+ * their defaults" rather than a claim about it.
+ */
+export const OPERATING_POINT = Object.freeze({
+  d: CONSTANTS.depth.ref, rakePct: CONSTANTS.rake.min, rakeCapBB: CONSTANTS.rake.capBB, straddle: false,
+});
+
+/**
+ * Attach the two DERIVED quantities every consumer below reads, and freeze. Both are
+ * non-enumerable, so `JSON.stringify(env)` still emits exactly the four axes the user set:
+ *
+ *   dEff      the depth the SCORING layer sees, in preflop units — a straddle halves it (§3.3),
+ *             clamped to [40,250] for the reason `depthU` clamps. CONSEQUENCE, OWNED: the
+ *             straddle's depth half saturates below 80bb, since 40/2 is off the bottom of the dial.
+ *   rakeFrac  the fraction of a won pot the house takes, min(pct, cap/pot) — see CONSTANTS.rake.
+ */
+function sealEnv(e) {
+  const D = CONSTANTS.depth, R = CONSTANTS.rake;
+  const unit = e.straddle ? CONSTANTS.straddle.unit : 1;
+  const pct = e.rakePct / 100;
+  Object.defineProperty(e, '__env', { value: true });   // non-enumerable: JSON.stringify(e) is clean
+  Object.defineProperty(e, 'dEff', {
+    value: e.straddle ? Math.min(D.max, Math.max(D.min, e.d / unit)) : e.d,
+  });
+  Object.defineProperty(e, 'rakeFrac', {
+    value: (pct <= 0 || e.rakeCapBB <= 0) ? 0 : Math.min(pct, e.rakeCapBB / (R.potBB * unit)),
+  });
+  return Object.freeze(e);
+}
+
+const DEFAULT_ENV = sealEnv({ ...OPERATING_POINT });
+
+/**
+ * Normalise the table environment out of a state/opts bag. Returns the shared frozen default at the
+ * v1 operating point, so the hot path allocates nothing and the identity case is `===`-checkable.
+ * `d` clamps to the slider's own domain [40, 250] and `rakePct` to [0, 6] — outside those the curves
+ * are extrapolation, the same discipline `nEff` applies to the equity curve. `rakeCapBB` has no
+ * upper clamp: a cap so large it never binds is a legal (and common) rake structure.
+ */
+export function envOf(s) {
+  if (!s) return DEFAULT_ENV;
+  if (s.__env === true) return s;
+  if (s.env && s.env.__env === true) return s.env;   // an opts bag carrying an already-normalised one
+  const D = CONSTANTS.depth, R = CONSTANTS.rake;
+  const rawD = s.d;
+  const d = (rawD == null || !isFinite(rawD)) ? D.ref : Math.min(D.max, Math.max(D.min, rawD));
+  const rakePct = (s.rakePct == null || !isFinite(s.rakePct)) ? R.min : Math.min(R.max, Math.max(R.min, s.rakePct));
+  const rakeCapBB = (s.rakeCapBB == null || !isFinite(s.rakeCapBB)) ? R.capBB : Math.max(0, s.rakeCapBB);
+  const straddle = !!s.straddle;
+  if (d === D.ref && rakePct === R.min && rakeCapBB === R.capBB && !straddle) return DEFAULT_ENV;
+  return sealEnv({ d, rakePct, rakeCapBB, straddle });
+}
+
+/**
+ * The memo key fragment for an environment. Every axis that can move a tier MUST appear here, or
+ * the solve/aggressive-set caches hand back another environment's answer — which is a silent wrong
+ * answer rather than a crash. All four axes move a tier now (`straddle` was in the key before it
+ * did anything, which is why turning it on cost nothing here).
+ */
+export function envKey(env) {
+  const e = envOf(env);
+  return `${e.d}|${e.rakePct}|${e.rakeCapBB}|${e.straddle ? 1 : 0}`;
+}
+
+/** is a UTG straddle posted? (V2-PLAN §3.3 ships the UTG form only) */
+export function straddleActive(env) { return envOf(env).straddle === true; }
+
+/** the preflop betting unit in big blinds: 2 under a straddle, 1 otherwise */
+export function unitBB(env) { return straddleActive(env) ? CONSTANTS.straddle.unit : 1; }
+
+/** the depth the scoring layer sees, in preflop units — d under a straddle becomes d/2 (§3.3) */
+export function effectiveDepth(env) { return envOf(env).dEff; }
+
+/**
+ * The fraction of a won pot the house takes: `min(rakePct/100, rakeCapBB / (potBB * unitBB))`.
+ * Exactly 0 at the v1 operating point, which is what makes every term below the identity there.
+ *
+ * The `unitBB` factor is the whole of V2-PLAN §3.3's "only the vs-3-bet absolute price recomputes
+ * off the doubled preflop unit": every threshold here is a RATIO and therefore scale-free, and the
+ * cap is the one exception, quoted in big blinds against a pot quoted in preflop units. Straddled,
+ * the same pot is twice as many bb, so the cap binds twice as hard and the effective rake FALLS —
+ * counter-intuitive, and the right answer for capped rake in a bigger game.
+ */
+export function rakeFraction(env) { return envOf(env).rakeFrac; }
+
+/**
+ * V2-PLAN §3.2's flat haircut on rho, `1 - rakePct*capFactor`. Exactly 1 at rakePct 0, so
+ * `rho * rakeRhoFactor(env) === rho` bit for bit at the operating point (I22).
+ *
+ * READ THE `rake` BLOCK IN CONSTANTS BEFORE "FIXING" THIS: a factor common to every cell is
+ * TIER-INERT at the three percentile nodes by construction. It scales the scores, the interpolated
+ * cuts and the margins by one number. That is what §3.2 specifies, it is documented as crude, and
+ * gate I31 pins both the inertness and the place rake does bite.
+ */
+export function rakeRhoFactor(env) { return 1 - rakeFraction(env); }
+
+/**
+ * The vs-3-bet pot-odds breakeven. **Depth does not move this** — V2-PLAN §3.1 is explicit that the
+ * 29% is a price, not a preference, and prices are set by the sizing, not by the stacks behind it.
+ * **Rake does**, and that half is exact arithmetic rather than opinion:
+ *
+ *   call c into a final pot P, collect P*(1-r) when you win
+ *   e*(P*(1-r) - c) = (1-e)*c   =>   e = c / (P*(1-r)) = breakeven / (1 - r)
+ *
+ * so the 0.290 constant is untouched and the price is derived from it. 5% rake takes it to 30.5%.
+ */
+export function breakevenPrice(env) {
+  const r = rakeFraction(env);
+  return r === 0 ? CONSTANTS.vs3bet.breakeven : CONSTANTS.vs3bet.breakeven / (1 - r);
+}
+
+/**
+ * The vs-3-bet continue floor — where rake reaches a DECISION. The model's own reason line has
+ * always described `call` as "the price plus 7 points, because a 3-bet pot is played out of
+ * position over three streets": the 7 points are opinion, the price under them is arithmetic. So
+ * rake moves the floor by exactly what it moves the price, premium unchanged.
+ *
+ * An INTERPRETATION, named as one. §3.2 says rake "raises the 0.290 price directly" — but in v1
+ * that price was DISPLAY-ONLY, quoted in the WHY panel and consulted by nothing, so raising it
+ * alone would have made §3.2's own promise ("every marginal hand moves toward fold") false at the
+ * only node where it can be true. Rejected alternative: leave the floor at 0.36 and change the text.
+ */
+export function callFloorAt(env) {
+  const r = rakeFraction(env);
+  return r === 0 ? CONSTANTS.vs3bet.call
+    : CONSTANTS.vs3bet.call + (breakevenPrice(env) - CONSTANTS.vs3bet.breakeven);
+}
+
+/**
+ * The straddle's seat transform: `baseRaise` one seat tighter, for the seats §3.3 shifts. Exactly 1
+ * with no straddle, so `widthFor` is untouched at the operating point.
+ */
+export function seatWidthFactor(pos, env) {
+  if (!straddleActive(env)) return 1;
+  const S = CONSTANTS.straddle;
+  return S.seatPinned.indexOf(pos) >= 0 ? 1 : S.seat;
+}
+
+// ---------------------------------------------------------------------------
 // 1. VPIP -> expected opponents
 // ---------------------------------------------------------------------------
 export function cCall(v) { return 0.55 * Math.pow(v, 1.25); }
@@ -139,15 +395,25 @@ function behindNonBlind(pos) { return N_NB[pos]; }
 export function nEff(state) {
   const { node, pos, v } = state;
   const L = state.limpers == null ? 2 : state.limpers;
+  // §3.3's field half: the straddler is one extra defender BEHIND EVERY SEAT (he acts last preflop)
+  // and defends like a blind, so he joins at cBlind(v) with the same discount the node applies to
+  // its blinds. The six modelled seats keep their names — they are positions relative to the
+  // button, which a straddle does not move — and the straddler is the seventh player: §3.3's
+  // "de-facto UTG+straddler table". Nothing at the vs-3-bet node, which is heads-up by
+  // construction.
+  const str = straddleActive(state);
   const c = cCall(v), cb = cBlind(v), cl = cLimper(v);
   let raw;
   if (node === 'rfi') {
     raw = 1 + N_NB[pos] * c + N_BL[pos] * cb;
+    if (str) raw += cb;
   } else if (node === 'limps') {
     raw = 1 + L * cl + N_NB[pos] * CONSTANTS.isoBehind * c + N_BL[pos] * cb;
+    if (str) raw += cb;
   } else if (node === 'raise') {
     raw = 1 + behindNonBlind(pos) * CONSTANTS.vsRaiseBehind * c
             + N_BL[pos] * CONSTANTS.vsRaiseBlind * cb + 1;
+    if (str) raw += CONSTANTS.vsRaiseBlind * cb;
   } else {
     raw = 2; // vs 3-bet is treated heads-up; N_eff is not used for tiering
   }
@@ -158,14 +424,94 @@ export function nEff(state) {
 // ---------------------------------------------------------------------------
 // 2. realization, nut multiplier, score
 // ---------------------------------------------------------------------------
-export function realization(pos, N, nu) {
-  return CONSTANTS.baseR[pos] * (1 - CONSTANTS.multiwayRealizationSlope * (N - 1) * (1 - nu));
+/**
+ * The normalised log-depth coordinate: -1 at 40 bb, 0 at 100 bb, +1 at 250 bb.
+ *
+ * `u(ref) === 0` EXACTLY, which is what makes every depth term below the exact identity at the v1
+ * operating point (I22) rather than the identity to within a rounding error. `Math.log2(1)` is +0
+ * by the ECMAScript spec, so the early return is belt-and-braces — but I22's bit-identity is too
+ * important to hold by appeal to a spec paragraph.
+ *
+ * The far endpoint is not exact and does not need to be: `250/100` is exact in binary, `40/100` is
+ * not, so u(40) lands one ulp inside -1. These constants are opinion at the second decimal. The
+ * clamp keeps |u| <= 1 a property rather than an observation, so "lambda(250) IS the constant"
+ * stays a safe thing to say about the CONSTANTS block.
+ */
+export function depthU(d) {
+  const D = CONSTANTS.depth;
+  const dd = (d == null || !isFinite(d)) ? D.ref : Math.min(D.max, Math.max(D.min, d));
+  if (dd === D.ref) return 0;
+  return Math.min(1, Math.max(-1, Math.log2(dd / D.ref) / Math.log2(D.max / D.ref)));
 }
+
+// kappa(N) and lambda(d) are the same idea measured along two different axes, and M_nut / M_deep
+// below are deliberately the same shape. See the `depth` block in CONSTANTS.
 export function kappa(N) { return CONSTANTS.kappa[0] + CONSTANTS.kappa[1] * (N - 1); }
+export function lambda(d) { return CONSTANTS.depth.lambda * depthU(d); }
+export function mu(d) { return CONSTANTS.depth.mu * depthU(d); }
+
 export function mNut(nu, N) { return 1 + kappa(N) * (nu - CONSTANTS.nuBar); }
+
+/**
+ * M_deep(h, d) = 1 + lambda(d)*(nu - nuBar) - mu(d)*(cooler - coolerBar).
+ *
+ * Deep, nut potential is worth more (lambda > 0) and a cooler costs a stack rather than a bet
+ * (mu > 0). Shallow both flip: raw equity is most of the game at 40bb, which is `lambda(40) < 0`.
+ *
+ * `cooler` is DROPPED, not defaulted, when the model does not carry it — a v1 dataset predates
+ * V2-PLAN §2.1, and scoring it against a bar it was never measured for would be an invention. The
+ * lambda half still works, because nu is v1 data.
+ *
+ * @param {number} nu       the cell's nut scalability
+ * @param {number} [cooler] the cell's measured cooler rate, or null on a pre-v2 model
+ * @param {number} [d]      stack depth in bb; defaults to the v1 operating point, where this is 1
+ */
+export function mDeep(nu, cooler, d) {
+  const u = depthU(d);
+  if (u === 0) return 1;                                   // the v1 operating point, exactly (I22)
+  const D = CONSTANTS.depth;
+  const coolTerm = (cooler == null || !isFinite(cooler)) ? 0 : cooler - D.coolerBar;
+  return 1 + D.lambda * u * (nu - CONSTANTS.nuBar) - D.mu * u * coolTerm;
+}
+
+/**
+ * The positional realization base, spread wider with depth: `base(p) ^ (1 + beta*u(d))` pushes the
+ * bases away from 1 as the exponent grows, widening BTN's edge over SB in both directions at once
+ * rather than needing a per-seat table of depth deltas.
+ *
+ * The exponent is exactly 1 at the reference depth, and the branch on it is load-bearing:
+ * ECMAScript specifies `Math.pow` as "implementation-approximated" and does NOT require
+ * `Math.pow(x, 1) === x`. Every shipping libm happens to special-case it; I22 does not rest on that.
+ */
+export function baseRealization(pos, d) {
+  const b = CONSTANTS.baseR[pos];
+  const e = 1 + CONSTANTS.depth.beta * depthU(d);
+  return e === 1 ? b : Math.pow(b, e);
+}
+
+export function realization(pos, N, nu, d) {
+  return baseRealization(pos, d) * (1 - CONSTANTS.multiwayRealizationSlope * (N - 1) * (1 - nu));
+}
+
+/**
+ * The hard nut gate's floor stays a function of the FIELD and of nothing else. Depth enters through
+ * M_deep and the positional spread; keeping it out of the gate is what keeps the two dials
+ * separable, so "the nut gate bit here" always means the table got looser and never that the stacks
+ * got deeper. Gate I27 turns that into a testable fact: the N_eff = 3.0 discontinuities sit at the
+ * same VPIP at 40bb and at 250bb.
+ */
 export function nuMin(N) {
   return Math.min(CONSTANTS.nutGateCap, CONSTANTS.nutGate[0] + CONSTANTS.nutGate[1] * (N - 3));
 }
+
+// ---- the vs-3-bet thresholds, as depth moves them -------------------------------------------
+// The price does not move (`breakevenPrice`); the SHAPE of the continue range does. Deep favours the
+// in-position call-and-cooler plan, so the 4-bet bar rises and hands that would have jammed at 40bb
+// call at 250; and a deep 3-bet pot is where a second-best hand costs a stack, so the nut floors
+// rise too — M_deep's lambda restated at a node that cuts on thresholds instead of a percentile.
+export function nuCallAt(env) { return CONSTANTS.vs3bet.nuCall + CONSTANTS.depth.nuFloor * depthU(envOf(env).dEff); }
+export function nuOOPAt(env) { return CONSTANTS.vs3bet.nuOOP + CONSTANTS.depth.nuFloor * depthU(envOf(env).dEff); }
+export function fourBetAt(env) { return CONSTANTS.vs3bet.fourBet + CONSTANTS.depth.fourBet * depthU(envOf(env).dEff); }
 
 /**
  * Linear interpolation of a cell's rho over fractional N, clamped to the span the data covers.
@@ -182,44 +528,60 @@ export function rhoAt(rho, N) {
 }
 export function eqAt(eq, N) { return rhoAt(eq, N); }
 
-/** aggressive target width for (pos, node, v) */
-export function widthFor(pos, node, v) {
+/**
+ * Aggressive target width for (pos, node, v). The straddle shifts the OPENING bases one seat
+ * tighter (§3.3) and nothing else: `w3bet` has no seat base, so the vs-Raise width is untouched.
+ * The factor is exactly 1 with no straddle, and `x * 1 === x`, but it is branched anyway — the same
+ * discipline `baseRealization` applies to its exponent.
+ */
+export function widthFor(pos, node, v, env) {
   const K = CONSTANTS;
   if (node === 'raise') return K.w3bet[0] + K.w3bet[1] * v;
-  const base = K.baseRaise[pos] * (1 + K.widthSlope * (v - 0.5));
+  const f = seatWidthFactor(pos, env);
+  const b = f === 1 ? K.baseRaise[pos] : K.baseRaise[pos] * f;
+  const base = b * (1 + K.widthSlope * (v - 0.5));
   if (node === 'limps') return base * (1 + K.isoValueFactor * Math.max(0, v - 0.5));
   return base;
 }
 
 /** the passive-continue width (T3), 0 when the node has no T3 */
-export function width3For(pos, node, v, limpers) {
+export function width3For(pos, node, v, limpers, env) {
   const K = CONSTANTS;
   if (node === 'raise') return K.wCall[0] + K.wCall[1] * v;
   if (node === 'limps') {
     const L = limpers == null ? 2 : limpers;
-    if (L >= 2 && (pos === 'BTN' || pos === 'SB' || pos === 'BB')) return K.limpWidth * widthFor(pos, node, v);
+    if (L >= 2 && (pos === 'BTN' || pos === 'SB' || pos === 'BB')) return K.limpWidth * widthFor(pos, node, v, env);
   }
   return 0;
 }
 
-/** the vs-Raise range-tightening shift applied to rho */
-export function tightenFor(raiserPos, v) {
-  return CONSTANTS.tighten * (1 - widthFor(raiserPos || 'CO', 'rfi', v));
+/**
+ * The vs-Raise range-tightening shift applied to rho. It reads the OPENER's width, so under a
+ * straddle it grows with the opener's own tightening — and because the shift is `-shift*(1 - nu)`
+ * it is the one straddle effect that is NON-UNIFORM across cells at a percentile node.
+ */
+export function tightenFor(raiserPos, v, env) {
+  return CONSTANTS.tighten * (1 - widthFor(raiserPos || 'CO', 'rfi', v, env));
 }
 
 // ---------------------------------------------------------------------------
 // 3. scoring one cell
 // ---------------------------------------------------------------------------
 /**
- * @param {object} cell a MODEL cell (needs rho, nu, mplay)
- * @returns {{S:number, rho:number, mnut:number, mplay:number, R:number}}
+ * @param {object} cell a MODEL cell (needs rho, nu, mplay; cooler when the model carries it)
+ * @param {object} [env] the table environment (depth / rake / straddle); defaults to v1's
+ * @returns {{S:number, rho:number, mnut:number, mdeep:number, mplay:number, R:number}}
  */
-export function scoreCell(cell, pos, N, shift) {
+export function scoreCell(cell, pos, N, shift, env) {
+  const e = envOf(env);
   let rho = rhoAt(cell.rho, N);
   if (shift) rho -= shift * (1 - cell.nu);
+  const rf = rakeRhoFactor(e);
+  if (rf !== 1) rho *= rf;                                   // V2-PLAN §3.2's flat haircut
   const mn = mNut(cell.nu, N);
-  const R = realization(pos, N, cell.nu);
-  return { S: 100 * rho * mn * cell.mplay * R, rho, mnut: mn, mplay: cell.mplay, R };
+  const md = mDeep(cell.nu, cell.cooler, e.dEff);
+  const R = realization(pos, N, cell.nu, e.dEff);
+  return { S: 100 * rho * mn * cell.mplay * R * md, rho, mnut: mn, mdeep: md, mplay: cell.mplay, R };
 }
 
 /** the within-cell single-hand adjustment (section 2.9) — an interpolation, never a measurement */
@@ -273,14 +635,15 @@ function cellList(model) {
  */
 export function rankTable(model, pos, node, v, opts) {
   const o = opts || {};
+  const env = envOf(o);
   const total = model.meta.comboTotal;
-  const info = nEff({ node, pos, v, limpers: o.limpers });
-  const shift = node === 'raise' ? tightenFor(o.raiserPos, v) : 0;
+  const info = nEff({ node, pos, v, limpers: o.limpers, env });
+  const shift = node === 'raise' ? tightenFor(o.raiserPos, v, env) : 0;
   const list = cellList(model);
   const rows = new Array(list.length);
   for (let i = 0; i < list.length; i++) {
     const it = list[i];
-    const sc = scoreCell(it.cell, pos, info.N, shift);
+    const sc = scoreCell(it.cell, pos, info.N, shift, env);
     rows[i] = { key: it.key, cell: it.cell, combos: it.combos, ...sc };
   }
   rows.sort((a, b) => b.S - a.S);
@@ -292,7 +655,7 @@ export function rankTable(model, pos, node, v, opts) {
     cum += share;
     r.cumAfter = cum;
   }
-  return { rows, N: info.N, rawN: info.raw, extrapolated: info.extrapolated, shift };
+  return { rows, N: info.N, rawN: info.raw, extrapolated: info.extrapolated, shift, env };
 }
 
 /** score at a given cumulative frequency, linearly interpolated between straddling cells */
@@ -317,7 +680,7 @@ function scoreAtCut(rows, w) {
 const AGGR_MEMO = new Map();
 function aggressiveSet(model, pos, node, v, opts) {
   const key = `${model.meta.hash ? model.meta.hash.slice(0, 8) : ''}|${pos}|${node}|${v}|`
-    + `${opts.limpers == null ? 2 : opts.limpers}|${opts.raiserPos || 'CO'}`;
+    + `${opts.limpers == null ? 2 : opts.limpers}|${opts.raiserPos || 'CO'}|${envKey(opts)}`;
   const hit = AGGR_MEMO.get(key);
   if (hit) return hit;
   if (AGGR_MEMO.size >= MEMO_CAP) AGGR_MEMO.clear();
@@ -327,7 +690,7 @@ function aggressiveSet(model, pos, node, v, opts) {
 }
 function aggressiveSetUncached(model, pos, node, v, opts) {
   const t = rankTable(model, pos, node, v, opts);
-  const w = widthFor(pos, node, v);
+  const w = widthFor(pos, node, v, t.env);
   const gate = t.N >= CONSTANTS.nutGate[2];
   const need = nuMin(t.N);
   const set = new Set();
@@ -357,7 +720,7 @@ const AA_ROWS = new Set(['AA_BIGPAIR', 'AA_BROADWAY', 'AA_CONNECTED', 'AA_SMALLP
  * boundary the grid never crosses (not a live boundary at that mix).
  * @returns {{rows:Array, callCut:number|null, fourBetCut:number|null}}
  */
-export function vs3betCuts(model, mix) {
+export function vs3betCuts(model, mix, env) {
   const total = model.meta.comboTotal;
   const rows = [];
   for (const it of cellList(model)) rows.push({ key: it.key, combos: it.combos, em: eqMixOf(it.cell, mix) });
@@ -374,14 +737,23 @@ export function vs3betCuts(model, mix) {
     }
     return null;                                      // the whole grid is above it — not a boundary
   };
-  const K = CONSTANTS.vs3bet;
-  return { rows, callCut: cross(K.call), fourBetCut: cross(K.fourBet) };
+  // The ORDERING here is by eqMix and is depth- AND rake-independent — all-in equity does not move
+  // with the stacks (V2-PLAN §1) and the house does not deal the cards. What moves is where the
+  // thresholds fall on it, so the cuts do move: depth on the 4-bet bar, rake on the call floor.
+  return { rows, callCut: cross(callFloorAt(env)), fourBetCut: cross(fourBetAt(env)) };
 }
 
 function solve3bet(model, state) {
   const K = CONSTANTS.vs3bet;
+  const env = envOf(state);
+  const nuCall = nuCallAt(env), nuOOP = nuOOPAt(env), fourBet = fourBetAt(env);
+  // Rake moves the price and the floor together (`callFloorAt`). The 4-bet bar is left to depth
+  // alone: it is a comparison against the villain's RANGE, not a price hero is being laid, and
+  // raking it would be a second opinion where §3.2 asked for arithmetic. It costs nothing
+  // measurable — 0.50/(1-0.05) = 0.5263 is inside the same 4.3-point gap the depth term measured.
+  const price = breakevenPrice(env), callFloor = callFloorAt(env);
   const heroIP = state.pos === 'CO' || state.pos === 'BTN';
-  const cuts = vs3betCuts(model, state.mix);
+  const cuts = vs3betCuts(model, state.mix, env);
   const freq = new Map(cuts.rows.map((r) => [r.key, r.cumMid]));
   const out = {};
   for (const it of cellList(model)) {
@@ -397,9 +769,18 @@ function solve3bet(model, state) {
     if (dom >= K.domGate && !isAA && em < K.domGateEqEscape) {
       dominated = true;
       tier = 'T5';
-    } else if (isAA && em >= K.fourBet) {
+    } else if (isAA && em >= fourBet) {
       tier = 'T1';
-    } else if (em >= K.call && c.nu >= K.nuCall && (heroIP || c.nu >= K.nuOOP)) {
+    } else if (em >= callFloor && (isAA || (c.nu >= nuCall && (heroIP || c.nu >= nuOOP)))) {
+      // The `isAA` escape from the nut floors is A RUNG THIS LADDER DID NOT HAVE, and the depth
+      // term on the 4-bet bar is what exposed the gap. Until v2 the bar was a constant 0.50 and
+      // every AA-row cell measured at least 54.3% against the default mix, so no AA hand ever fell
+      // through here and nobody had to decide what should happen. With the bar at 0.56 at 250bb,
+      // three of them do — and without this escape they hit the nut floors, fail them
+      // (AA-with-a-dangler is nu 0.22) and FOLD. Folding aces at 54% into a 29% price is not
+      // defensible at any depth; the floors keep SPECULATIVE hands out of a 3-bet pot and AAxx is
+      // the one row that is never speculative. Unreachable at the v1 operating point, so I22 is
+      // untouched; reachable at a hand-edited mix, where it is also the right answer.
       tier = c.eq[0] < K.ambushEq1 * 100 ? 'T2' : 'T3';
     }
     // Declared uncertainty, in cumulative combo frequency — the same construction and the same
@@ -419,12 +800,19 @@ function solve3bet(model, state) {
     // unit (marginUnit/marginOf) says whether it is an equity gap or a nut gap.
     const gaps = [];
     if (dominated) gaps.push({ v: (em - K.domGateEqEscape) * 100, unit: 'eq pts', of: `the ${(K.domGateEqEscape * 100).toFixed(0)}% domination escape` });
-    gaps.push({ v: (em - K.call) * 100, unit: 'eq pts', of: `the ${(K.call * 100).toFixed(0)}% call floor` });
-    gaps.push({ v: (c.nu - K.nuCall) * 100, unit: 'ν pts', of: `the ${K.nuCall.toFixed(2)} continue floor` });
-    if (!heroIP) gaps.push({ v: (c.nu - K.nuOOP) * 100, unit: 'ν pts', of: `the ${K.nuOOP.toFixed(2)} out-of-position nut floor` });
+    gaps.push({ v: (em - callFloor) * 100, unit: 'eq pts', of: `the ${(callFloor * 100).toFixed(0)}% call floor` });
+    // An AA row's decision does not consult the nut floors (the isAA escape above), so they are not
+    // among its gaps either. Before v2 they were pushed for every cell, and an AA row with a dangler
+    // reported "18 nu points short of the 0.40 continue floor" on a cell the model was telling you
+    // to FOUR-BET — the exact mis-attribution the paragraph above exists to prevent, surviving only
+    // because nothing looked at an AA row's margin. Changes AA-row margins here and nothing else.
+    if (!isAA) {
+      gaps.push({ v: (c.nu - nuCall) * 100, unit: 'ν pts', of: `the ${nuCall.toFixed(2)} continue floor` });
+      if (!heroIP) gaps.push({ v: (c.nu - nuOOP) * 100, unit: 'ν pts', of: `the ${nuOOP.toFixed(2)} out-of-position nut floor` });
+    }
     // The 4-bet bar is a boundary only for an AA row that has already cleared it; an AA row that
     // merely calls has not FAILED the 4-bet bar, it simply is not a 4-bet, so it never binds.
-    if (isAA && em >= K.fourBet) gaps.push({ v: (em - K.fourBet) * 100, unit: 'eq pts', of: `the ${(K.fourBet * 100).toFixed(0)}% 4-bet bar` });
+    if (isAA && em >= fourBet) gaps.push({ v: (em - fourBet) * 100, unit: 'eq pts', of: `the ${(fourBet * 100).toFixed(0)}% 4-bet bar` });
     const firstFail = gaps.find((g) => g.v < 0);
     // A cell that clears everything reports the TIGHTEST thing it cleared, so a hand that scrapes
     // past a floor reads as close rather than comfortable.
@@ -436,13 +824,17 @@ function solve3bet(model, state) {
       reasons.push({ sign: -1, text: `dominated — ${dom} of your ranks live in their face-up range`, value: (em - K.domGateEqEscape) * 100 });
     }
     reasons.push({
-      sign: em >= K.call ? 1 : -1,
-      text: `${(em * 100).toFixed(1)}% against the face-up mix vs the ${(K.call * 100).toFixed(0)}% call floor`,
-      value: (em - K.call) * 100,
+      sign: em >= callFloor ? 1 : -1,
+      text: `${(em * 100).toFixed(1)}% against the face-up mix vs the ${(callFloor * 100).toFixed(0)}% call floor`,
+      value: (em - callFloor) * 100,
     });
-    if (c.nu < K.nuCall) reasons.push({ sign: -1, text: `nut potential ${c.nu.toFixed(2)} is below the ${K.nuCall.toFixed(2)} continue floor`, value: (c.nu - K.nuCall) * 100 });
-    else if (!heroIP && c.nu < K.nuOOP) reasons.push({ sign: -1, text: `nut potential ${c.nu.toFixed(2)} clears the continue floor but not the ${K.nuOOP.toFixed(2)} needed out of position`, value: (c.nu - K.nuOOP) * 100 });
-    else if (!heroIP) reasons.push({ sign: 1, text: `nut potential ${c.nu.toFixed(2)} is nutty enough to continue out of position`, value: (c.nu - K.nuOOP) * 100 });
+    if (isAA) {
+      // Same reason the nut floors are absent from `gaps`: an AA row is never held to them, so a
+      // line about them would be describing a test that did not run.
+      if (em < fourBet) reasons.push({ sign: 1, text: `aces are never held to the nut floors — at ${(em * 100).toFixed(1)}% into a ${(price * 100).toFixed(0)}% price this calls rather than 4-bets`, value: (em - fourBet) * 100 });
+    } else if (c.nu < nuCall) reasons.push({ sign: -1, text: `nut potential ${c.nu.toFixed(2)} is below the ${nuCall.toFixed(2)} continue floor`, value: (c.nu - nuCall) * 100 });
+    else if (!heroIP && c.nu < nuOOP) reasons.push({ sign: -1, text: `nut potential ${c.nu.toFixed(2)} clears the continue floor but not the ${nuOOP.toFixed(2)} needed out of position`, value: (c.nu - nuOOP) * 100 });
+    else if (!heroIP) reasons.push({ sign: 1, text: `nut potential ${c.nu.toFixed(2)} is nutty enough to continue out of position`, value: (c.nu - nuOOP) * 100 });
     if (tier === 'T2') reasons.push({ sign: 1, text: `+EXPLOIT — vs an unknown 3-bettor this is a fold (${c.eq[0].toFixed(1)}% vs random)`, value: em * 100 - c.eq[0] });
     reasons.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
     // The raw price is CONTEXT, appended unsigned after the ranking rather than competing in it.
@@ -451,7 +843,7 @@ function solve3bet(model, state) {
     const ranked = reasons.slice(0, 3);
     ranked.push({
       sign: 0,
-      text: `raw pot odds are ${(K.breakeven * 100).toFixed(1)}% — the call floor sits ${((K.call - K.breakeven) * 100).toFixed(0)} points above them, because a 3-bet pot is played out of position over three streets`,
+      text: `raw pot odds are ${(price * 100).toFixed(1)}% — the call floor sits ${((callFloor - price) * 100).toFixed(0)} points above them, because a 3-bet pot is played out of position over three streets`,
       value: 0,
     });
 
@@ -486,7 +878,8 @@ export function clearSolveMemo() { SOLVE_MEMO.clear(); AGGR_MEMO.clear(); }
 export function solve(model, state) {
   hydrate(model);
   const key = `${model.meta.hash ? model.meta.hash.slice(0, 8) : ''}|${state.pos}|${state.node}|${state.v}|`
-    + `${state.limpers == null ? 2 : state.limpers}|${state.raiserPos || 'CO'}|${state.mix ? state.mix.join(',') : ''}`;
+    + `${state.limpers == null ? 2 : state.limpers}|${state.raiserPos || 'CO'}|${state.mix ? state.mix.join(',') : ''}`
+    + `|${envKey(state)}`;
   const hit = SOLVE_MEMO.get(key);
   if (hit) return hit;
   const out = solveUncached(model, state);
@@ -498,6 +891,7 @@ export function solve(model, state) {
 function solveUncached(model, state) {
   const total = model.meta.comboTotal;
   const node = state.node, pos = state.pos, v = state.v;
+  const env = envOf(state);
 
   let cells, table = null, N = 2, rawN = 2, extrapolated = false;
 
@@ -506,7 +900,7 @@ function solveUncached(model, state) {
     const ordered = Object.keys(cells).sort((a, b) => cells[b].score - cells[a].score);
     ordered.forEach((k, i) => { cells[k].rank = i + 1; });
   } else {
-    const opts = { limpers: state.limpers, raiserPos: state.raiserPos };
+    const opts = { limpers: state.limpers, raiserPos: state.raiserPos, env };
     const cur = aggressiveSet(model, pos, node, v, opts);
     table = cur.table; N = table.N; rawN = table.rawN; extrapolated = table.extrapolated;
 
@@ -533,7 +927,7 @@ function solveUncached(model, state) {
     }
 
     const w = cur.w;
-    const w3 = width3For(pos, node, v, state.limpers);
+    const w3 = width3For(pos, node, v, state.limpers, env);
     const gate = N >= CONSTANTS.nutGate[2];
     const need = nuMin(N);
     const sCutAgg = scoreAtCut(table.rows, w);
@@ -590,7 +984,7 @@ function solveUncached(model, state) {
     // reason lines, generated from the model's own terms
     for (const r of table.rows) {
       const e = cells[r.key];
-      e.reasons = whyLines(r, e, { pos, node, v, N, w, gate, need, model });
+      e.reasons = whyLines(r, e, { pos, node, v, N, w, gate, need, model, env });
     }
   }
 
@@ -613,16 +1007,16 @@ function solveUncached(model, state) {
   }
 
   return {
-    cells, N, rawN, extrapolated,
+    cells, N, rawN, extrapolated, env,
     // targetWidth is w_raise / w_3bet — the percentile the model AIMS at, and the number the
     // position sub-labels quote. width is what the grid actually paints after the nut gate has
     // demoted cells out of the aggressive range, so width <= targetWidth whenever the gate bites.
-    targetWidth: node === '3bet' ? null : widthFor(pos, node, v),
+    targetWidth: node === '3bet' ? null : widthFor(pos, node, v, env),
     width: aggrCombos / total,
     continueWidth: contCombos / total,
     nutShare: aggrCombos ? aggrNu / aggrCombos : 0,
     composition,
-    cutScore: table ? scoreAtCut(table.rows, widthFor(pos, node, v)) : null,
+    cutScore: table ? scoreAtCut(table.rows, widthFor(pos, node, v, env)) : null,
   };
 }
 
@@ -717,11 +1111,33 @@ function whyLines(r, e, ctx) {
     push(r.mplay > 1 ? 1 : -1, r.mplay > 1 ? 'ace-topped suited pair — the flushes it makes are the nuts'
       : `structural penalty — ${mplayCause(r)}`, S * (1 - 1 / r.mplay));
   }
-  const rBase = CONSTANTS.baseR[ctx.pos];
+  const env = envOf(ctx.env);
+  const dE = env.dEff;
+  const rBase = baseRealization(ctx.pos, dE);
   if (Math.abs(r.R - rBase) > 0.005 || Math.abs(rBase - 1) > 0.005) {
     push(r.R >= 1 ? 1 : -1,
       `realization ${r.R.toFixed(2)} at ${ctx.pos} with ${ctx.N.toFixed(1)} opponents`,
       S * (1 - 1 / r.R));
+  }
+  // The depth term, named only when it fires. At the v1 operating point M_deep is exactly 1, so
+  // nothing is pushed and the reason list is byte-identical to v1's. Which HALF of M_deep is doing
+  // the work is worth saying, because the two can disagree: nu is what you win, cooler what you
+  // lose, and a hand can be nutty and cooler-prone at once.
+  //   The depth quoted is the EFFECTIVE one, in preflop units: under a straddle 100bb of chips is
+  // 50 units of stack, and the unit is what the scoring layer scored (§3.3).
+  if (Math.abs(r.mdeep - 1) > 0.005) {
+    const nuPart = lambda(dE) * (r.cell.nu - CONSTANTS.nuBar);
+    const coolPart = r.cell.cooler == null ? 0 : -mu(dE) * (r.cell.cooler - CONSTANTS.depth.coolerBar);
+    const deep = dE > CONSTANTS.depth.ref;
+    const at = env.straddle ? `${dE} straddles` : `${dE}bb`;
+    const text = Math.abs(coolPart) > Math.abs(nuPart)
+      ? (coolPart < 0
+        ? `coolers ${(r.cell.cooler * 100).toFixed(0)}% of the time it gets there — at ${at} that costs more than a bet`
+        : `hard to cooler (${(r.cell.cooler * 100).toFixed(0)}%), which is worth less at ${at} than at 100`)
+      : (nuPart > 0
+        ? `nut potential ${r.cell.nu.toFixed(2)} is worth more at ${at} — deeper stacks pay the nuts`
+        : `nut potential ${r.cell.nu.toFixed(2)} is worth ${deep ? 'less than the pot it now plays for' : 'less at ' + at + ' — short stacks pay raw equity'}`);
+    push(r.mdeep > 1 ? 1 : -1, text, S * (1 - 1 / r.mdeep));
   }
   if (e.gated) {
     push(-1, `folded by nut gate (nu ${r.cell.nu.toFixed(2)} < ${ctx.need.toFixed(2)} required at ${ctx.N.toFixed(1)}-way)`, -Math.abs(e.margin) - 1e-6);
@@ -736,17 +1152,16 @@ export function verdictLine(model, state, key, solved) {
   if (!e) return '';
   const lab = TIER_LABELS[state.node];
   if (state.node === '3bet') {
-    const K = CONSTANTS.vs3bet;
     const em = e.eqMix != null ? (e.eqMix * 100).toFixed(1) : '?';
     if (e.tier === 'T2') return `+EXPLOIT — ${lab.T2}. Their range is face-up; vs an unknown 3-bettor this is a fold.`;
-    if (e.tier === 'T1') return `${lab.T1} — ${em}% against their face-up mix, above the ${(K.fourBet * 100).toFixed(0)}% 4-bet bar.`;
-    if (e.tier === 'T3') return `${lab.T3} — ${em}% against their face-up mix, above the ${(K.call * 100).toFixed(0)}% call floor.`;
+    if (e.tier === 'T1') return `${lab.T1} — ${em}% against their face-up mix, above the ${(fourBetAt(state) * 100).toFixed(0)}% 4-bet bar.`;
+    if (e.tier === 'T3') return `${lab.T3} — ${em}% against their face-up mix, above the ${(callFloorAt(state) * 100).toFixed(0)}% call floor.`;
     if (e.tier === 'T4') return `MIX — this cell sits inside the model's uncertainty band around a live boundary. Either action is defensible.`;
     // A fold is stated against whatever actually bound it, never against the 29% raw price the
     // hand may well have cleared.
     return `FOLD — ${em}% against their face-up mix · ${Math.abs(e.margin).toFixed(1)} ${e.marginUnit || 'eq pts'} short of ${e.marginOf || 'the call floor'}.`;
   }
-  const w = widthFor(state.pos, state.node, state.v);
+  const w = widthFor(state.pos, state.node, state.v, state);
   if (e.gated) {
     return `FOLD — nut gate: nu below the floor required at N_eff ${solved.N.toFixed(1)}. Would otherwise rank ${e.rank}/${Object.keys(solved.cells).length}.`;
   }
@@ -815,18 +1230,24 @@ export function entryVpip(model, state, key) {
 // ---------------------------------------------------------------------------
 export function derived(state, info) {
   const L = state.limpers == null ? 2 : state.limpers;
+  // Quoted in PREFLOP UNITS, which is what makes every threshold scale-free. Straddled the unit is
+  // 2bb, so the readout — the one place the page prints an absolute bb figure — multiplies by it;
+  // `pot` stays in units, exactly so at unit 1. Copy-level simplification: the 2bb the straddler
+  // posts is dead money this table does not add.
+  const u = unitBB(state);
   let pot;
   if (state.node === 'rfi') pot = 3.5;
   else if (state.node === 'limps') pot = 3 * L + 2;
   else if (state.node === 'raise') pot = 2 * 3.5 + 1.5;
   else pot = 20.5;
+  const potBB = u === 1 ? pot : pot * u;
   return {
     nEff: info.raw,
     nEffClamped: info.N,
     extrapolated: info.extrapolated,
     seeFlop: info.N,
-    pot,
-    text: `N_eff ${info.raw.toFixed(2)} · ≈${info.N.toFixed(1)} see the flop · pot ≈${pot.toFixed(1)}bb`,
+    pot, unitBB: u, potBB,
+    text: `N_eff ${info.raw.toFixed(2)} · ≈${info.N.toFixed(1)} see the flop · pot ≈${potBB.toFixed(1)}bb`,
   };
 }
 

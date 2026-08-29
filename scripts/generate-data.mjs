@@ -13,8 +13,10 @@
 //   S3 vs-3-bet     per cell x component: heads-up trials vs a rejection-sampled villain
 //   S4 sub-buckets  the depth layer, same kernel as S2 (its own mplay and cooler, V2-PLAN §2.4)
 //   S5 derive+emit  rho, nu, mplay, cooler, lattice deltas, adjMean, waveD, benchmarks, assembly
-//   S6 verify       38 gates: D1-D7, V1-V6, benchmarks, I1-I22 + I24/I25 (the v2 measurement
-//                   shapes), size budgets and the §2.5 payload ceiling; stamps MODEL.gates
+//   S6 verify       45 gates: D1-D7, V1-V6, benchmarks, I1-I22 + I24/I25 (the v2 measurement
+//                   shapes) + I23/I27/I28 (the depth axis, §3.1) + I26/I29/I30/I31 (the straddle
+//                   and the rake, §3.2/§3.3), size budgets and the §2.5 payload ceiling; stamps
+//                   MODEL.gates
 //
 // Zero npm dependencies. All randomness is seeded and runs are reproducible, but there is no
 // global seed knob: every Monte Carlo stream is keyed by its own stage and cell name (see

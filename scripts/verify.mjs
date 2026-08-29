@@ -12,13 +12,23 @@
 //                          integer v in 25..90 x 21 legal (pos, node) pairs. Read-only: the
 //                          fixture is written by scripts/freeze-tiers.mjs, by hand, never here.
 //   I24-25 v2 measurement  the cooler rate's shape (§2.1) and the villain-VPIP lattice's (§2.3),
-//                          both pinned to the shipped measurement. I23 and I26 are reserved for
-//                          the depth and straddle work and are not written yet.
+//                          both pinned to the shipped measurement.
+//   I23    depth           the §3.1 anchor set, pinned to the measurement: two of the plan's four
+//                          anchors survived as written, one had to be restated in score rank
+//                          instead of tier, and one is false and is asserted in its falsified form.
+//   I27-28 depth endpoints I16's continuity and I21's painted widening, re-run at 40 and 250 bb.
+//   I26    straddle        the §3.3 direction, including the composition case §3.3 asked to have
+//                          checked explicitly (the field beats lambda(d/2), and by how much) and
+//                          the falsification of §7.2's "BTN keeps its base".
+//   I29-30 straddle sweep  I16's continuity and I21's painted widening, re-run with it ON.
+//   I31    rake            the §3.2 haircut: tier-inert at the percentile nodes BY CONSTRUCTION
+//                          (asserted, not lamented) and biting at the one absolute threshold.
 //
-// 38 gates in total. V1/I5 and V2/V3/I4 are RANDOM-VILLAIN gates: the filtered-villain lattice is
+// 45 gates in total. V1/I5 and V2/V3/I4 are RANDOM-VILLAIN gates: the filtered-villain lattice is
 // exempt from conservation by construction (see the scope comment at V1, and I25).
 //
-// Any failure exits non-zero. Gate results are stamped into MODEL.gates for the Method view.
+// Any failure exits non-zero. Gate results are stamped into MODEL.gates for the Method view, and
+// the CLI also refreshes MODEL.constants from the live policy constants — see `stampConstants`.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, relative } from 'node:path';
@@ -256,7 +266,7 @@ export function verifyModel(model, opts = {}) {
     //   sub   60 -> 72K   measured 69.5K. The same two extra equities, plus the sub layer's own
     //                     `mplay` and `cooler` (§2.4), which is what makes a sub-bucket verdict
     //                     self-contained instead of borrowed from its row-mates.
-    //   meta  14 -> 13K   measured 10.6K, and TIGHTENED from 14K: the new measurement constants
+    //   meta  14 -> 13K   measured 10.8K, and TIGHTENED from 14K: the new measurement constants
     //                     (the cooler definition, the lattice points, villainDiscipline q, the
     //                     realised range fractions) cost under a kilobyte between them.
     //   total 120 -> 150K measured 142.7K.
@@ -264,7 +274,7 @@ export function verifyModel(model, opts = {}) {
     // are meant to catch a payload that creeps, not to leave room for one.
     //
     // V2-PLAN §2.5 quotes its ceiling as "220 KB pretty-printed". Measured, the emitted file is
-    // 142.7 KB as written and 241.6 KB under JSON.stringify(m, null, 1). The plan compares that
+    // 143.1 KB as written and 242.2 KB under JSON.stringify(m, null, 1). The plan compares that
     // ceiling against "model.json is 105 KB today", which is the MINIFIED v1 file (v1
     // pretty-prints to 161.7 KB) — and its own stated fallback, dropping the lattice to three
     // v-points, still pretty-prints to 221.0 KB. So the literal reading is not satisfiable by the
@@ -292,18 +302,19 @@ export function verifyModel(model, opts = {}) {
     //   Read as a pretty-printed ceiling instead, the rule is unsatisfiable by its own escape
     // hatch — §2.5's stated fallback of dropping the villain lattice to three v-points still
     // pretty-prints to 221.0 KB (measured), and the five-point file that ships pretty-prints to
-    // 241.6 KB. A rule its own remedy cannot meet is the wrong reading of the rule, so the
+    // 242.2 KB. A rule its own remedy cannot meet is the wrong reading of the rule, so the
     // pretty-printed figure is RECORDED here, honestly, and not asserted.
-    //   Measured on the shipped run: 146,209 B = 142.8 KB as emitted, 241.7 KB pretty-printed.
+    //   Measured on the shipped run: 146,551 B = 143.1 KB as emitted, 242.2 KB pretty-printed.
     // (V2-PLAN §2.5 and METHODOLOGY §9.10 record 146,171 B for the same payload: that reading was
-    // taken before this pass stamped three more gate names into `model.gates`, which is 38 bytes.)
+    // taken before any gate names were stamped into `model.gates`, and before `stampConstants`
+    // put the depth / rake / straddle constants in the file. The measured payload is unchanged.)
     // D6 above carries the tighter operational budgets (150 KB total, 4-5% headroom per block)
     // that catch a payload creeping block by block. D7 is the published contract from the plan,
     // and is deliberately slack against D6 — if it ever fires, D6 fired a long time earlier.
     //   One honesty note about the number this gate prints: at generate time `gates` and
     // `meta.hash` are not yet stamped into the model, so the size measured there is ~0.6 KB short
     // of the file that lands on disk. Re-running `node scripts/verify.mjs` over the written file
-    // reports the true size (146,171 B). Both readings sit far inside the ceiling.
+    // reports the true size (146,551 B). Both readings sit far inside the ceiling.
     const BUDGET = 220 * 1024;
     const emitted = sizes.total;
     const pretty = Buffer.byteLength(JSON.stringify(model, null, 1));
@@ -1121,11 +1132,855 @@ export function verifyModel(model, opts = {}) {
     }
   }
 
+  // =========================================================================
+  // I23 / I27 / I28 — the depth axis (V2-PLAN §3.1)
+  // =========================================================================
+  {
+    // The grid the depth gates sweep. Six points, geometric-ish, containing the slider's own
+    // detents (40 / 100 / 200) and both endpoints. The per-cell monotonicity claims below were
+    // ALSO checked on a 5 bb grid (43 points) during calibration and hold there identically; the
+    // coarse grid is what ships because it costs 630 solves instead of 4,515 and asserts the same
+    // thing. Where the fine grid disagreed with the coarse one, it is said so at the clause.
+    //   Pinned, not derived from `depth.min` / `depth.max`: every threshold below was measured on
+    // this grid, so a changed slider domain has to re-measure them rather than silently re-aim.
+    const DGRID = [40, 60, 100, 150, 200, 250];
+    const D100 = DGRID.indexOf(100);
+    const solveD = (node, pos, vp, d) => P.solve(model, { pos, node, v: vp / 100, limpers: 2, raiserPos: 'CO', d });
+    const dSweep = [];
+    for (const node of NODES) {
+      for (const pos of P.POSITIONS) {
+        if (P.positionDisabled(pos, node)) continue;
+        for (const vp of VPIP_GRID) dSweep.push({ node, pos, vp, out: DGRID.map((d) => solveD(node, pos, vp, d)) });
+      }
+    }
+    const flat = dSweep.filter((s) => s.node !== '3bet');   // the 3-bet node cuts on eqMix, which
+    // is depth-independent, so score RANK there cannot move with depth and a rank claim over it
+    // would be vacuous. Its depth behaviour is asserted through the thresholds instead (I15 and
+    // the unit tests); the rank clauses below are scoped to the three percentile nodes.
+
+    {
+      // -------------------------------------------------------------------
+      // I23 — the depth dial moves the grid in the direction it claims to.
+      //
+      // V2-PLAN §3.1 wrote four anchors before the curves existed, to be pinned after calibration.
+      // TWO SURVIVED AS WRITTEN, ONE HAD TO BE RESTATED IN A DIFFERENT UNIT, AND ONE IS FALSE.
+      // This gate is written to the measurement, the way I24 and I25 are.
+      //
+      //  (a) SURVIVED. "AA72r-type cells: tier non-increasing as d rises; at 40 bb they gain a
+      //      tier somewhere." `AA_DANGLER x RB` is that class (I14 names it). Measured: 0
+      //      monotonicity violations over the grid AND over a 5 bb grid, at all 105 settings; it
+      //      gains a tier at 40 bb against 100 bb at 8 of them (raise/BTN and raise/SB, where bare
+      //      aces are a shove rather than a hand) and moves at all at 44. Bare aces are the
+      //      textbook short-stack hand and the model now says so.
+      //
+      //  (b) RESTATED — the unit was wrong, not the direction. "JT98ds / rundown-DS cells:
+      //      tier non-decreasing with depth" is not assertable as written, for a structural reason
+      //      worth stating once: A TIER HERE IS A PERCENTILE CUT, NOT A PROPERTY OF THE CELL. A
+      //      mid-pack cell whose own M_deep rises can still be demoted, because the cells above it
+      //      rose faster and the cut moved past it. Measured, the two ends of the claim fail in
+      //      opposite ways: `RUN0_HIGH x DS` and `BROADWAY_RUN x DS` never change tier at any depth
+      //      at any of the 105 settings (the claim is true and vacuous), while `RUN2 x DS` and
+      //      `RUN1_TOPMID x DS` change tier in BOTH directions (the claim is false and not
+      //      because the model is wrong about them).
+      //        In SCORE RANK, which is a property of the cell, the claim holds and is worth having:
+      //      `BROADWAY_RUN x DS` never loses a single rank as depth rises, at any setting, on
+      //      either grid, and gains up to 26 places from 40 bb to 250; `RUN0_HIGH x DS` and
+      //      `x SS` finish better at 250 than at 40 at 75/75 and 70/75 settings.
+      //
+      //  (c) FALSE where it names the low rundowns, and asserted here in its falsified form, so it
+      //      cannot be quietly restored. `RUN0_LOW x DS` — 5432ds and the wheel — gets WORSE with
+      //      depth: its rank at 250 is worse than at 40 at 49 of 75 settings and better at 9. The
+      //      reason is measured, not modelled: RUN0_LOW carries `cooler` 0.4268, the HIGHEST in the
+      //      rundown band and well above the 0.40 bar, while its nu of 0.43 is a whisker over
+      //      nuBar — so the mu term overrules the lambda term and the low rundown is the one
+      //      rundown the depth axis punishes. That is the correct poker answer (the low end of a
+      //      straight is what gets stacked deep) and it is the single most useful thing the depth
+      //      dial says that the VPIP dial cannot.
+      //
+      //  (d) SURVIVED. Painted-width drift across the whole depth range, in the I21 dip-allowance
+      //      pattern: worst measured 3.16 points (rfi/BTN at VPIP 70, 46.5% at 40-60 bb against
+      //      49.6% from 100 up — one cell crossing the cut), against I21's own 4.0-point allowance.
+      //      The painted range also never collapses: narrowest 12.6% at any depth (rfi/UTG, VPIP
+      //      25, 40 bb) against I12's 10% floor.
+      //
+      //  (e) And the model still holds together at the ends of the slider: I7, I8, I9, I13 and I19
+      //      are re-run at 40 and 250 bb and all hold. Depth re-sorts the grid; it must not break
+      //      the things that make the grid a grid.
+      //
+      // WHAT THIS GATE DELIBERATELY DOES NOT ASSERT. V2-PLAN §3.1's third anchor — "big-pair rows
+      // with pair rank J/T demoted at 200 bb relative to 100 bb, VIA THE mu*cooler TERM
+      // SPECIFICALLY" — is half false and the half that is false is the half the taxonomy cannot
+      // express, exactly as happened to §2.1's five-step cooler ladder (I24). `rowOf` splits pairs
+      // at J, so JJ/QQ/KK share the big-pair band and TT sits with the small pairs. Combo-weighted,
+      // the BIG-pair band's cooler is 0.3563 — BELOW the 0.40 bar — so the mu term PROMOTES 21 of
+      // its 23 cells with depth; the small-pair band is 0.4386, above the bar, and is the band the
+      // mu term actually demotes. Measured at 200 bb against 100 bb: 46 big-pair demotions, every
+      // one of them attributable to lambda (low nu) and NOT ONE to mu; and 92 mu-attributable
+      // demotions spread over 7 cells, every one of them a small pair or `RUN0_LOW`. What this
+      // gate asserts, therefore, is the measured version: mu-attributable demotions exist, and none
+      // of them is a big pair. Separating JJ from TT is new rows, not a new constant.
+      //
+      // Attribution is computed, not asserted: for each demoted cell the two halves of M_deep are
+      // evaluated separately at d = 200, and the demotion is called mu-attributable only when the
+      // cooler half is negative AND larger in magnitude than the nu half.
+      const bandOfRow = {};
+      for (const r of model.rows) bandOfRow[r.key] = r.band;
+      const KD = P.CONSTANTS.depth;
+      const tolViol = fast ? 4 : 0;       // fast: 10k-trial equities move cells across cuts
+      const tolGain = fast ? 2 : 4;       // measured 8
+      const tolNet = fast ? 45 : 60;      // measured 75 / 75 and 70 / 75
+      const tolDrift = fast ? 0.06 : 0.04;
+      const tolFloor = fast ? 0.08 : 0.10;
+
+      // (a) the AA72r class
+      let aViol = 0, aGain = 0, aMoves = 0, aFirst = '';
+      for (const s of dSweep) {
+        const seq = s.out.map((o) => o.cells['AA_DANGLER|RB'].wouldBe);
+        for (let i = 1; i < seq.length; i++) {
+          if (P.TIER_RANK[seq[i]] > P.TIER_RANK[seq[i - 1]]) {
+            aViol++;
+            if (!aFirst) aFirst = `${s.node}/${s.pos}@${s.vp} d${DGRID[i - 1]}->${DGRID[i]} ${seq[i - 1]}->${seq[i]}`;
+          }
+        }
+        if (P.TIER_RANK[seq[0]] > P.TIER_RANK[seq[D100]]) aGain++;
+        if (new Set(seq).size > 1) aMoves++;
+      }
+
+      // (b) / (c) score rank, on the three percentile nodes
+      const rankOf = (s, i, k) => s.out[i].cells[k].rank;
+      let bwViol = 0, bwFirst = '';
+      const netBetter = (k) => flat.filter((s) => rankOf(s, DGRID.length - 1, k) < rankOf(s, 0, k)).length;
+      const netWorse = (k) => flat.filter((s) => rankOf(s, DGRID.length - 1, k) > rankOf(s, 0, k)).length;
+      for (const s of flat) {
+        for (let i = 1; i < DGRID.length; i++) {
+          if (rankOf(s, i, 'BROADWAY_RUN|DS') > rankOf(s, i - 1, 'BROADWAY_RUN|DS')) {
+            bwViol++;
+            if (!bwFirst) bwFirst = `${s.node}/${s.pos}@${s.vp} d${DGRID[i - 1]}->${DGRID[i]}`;
+          }
+        }
+      }
+      const hiDS = netBetter('RUN0_HIGH|DS'), hiSS = netBetter('RUN0_HIGH|SS');
+      const loW = netWorse('RUN0_LOW|DS'), loB = netBetter('RUN0_LOW|DS');
+
+      // (c) mu attribution at 200 bb against 100 bb
+      const u200 = P.depthU(200);
+      const nuHalf = (c) => KD.lambda * u200 * (c.nu - P.CONSTANTS.nuBar);
+      const coHalf = (c) => -KD.mu * u200 * (c.cooler - KD.coolerBar);
+      const i200 = DGRID.indexOf(200);
+      const muCells = new Map(), lamBig = new Map();
+      let muHits = 0, bigDemotions = 0;
+      for (const s of dSweep) {
+        const A = s.out[D100].cells, B = s.out[i200].cells;
+        for (const k of Object.keys(A)) {
+          if (P.TIER_RANK[B[k].wouldBe] >= P.TIER_RANK[A[k].wouldBe]) continue;
+          const c = model.cells[k], band = bandOfRow[k.split('|')[0]];
+          if (band === 'BIGPAIR') bigDemotions++;
+          if (c.cooler != null && coHalf(c) < 0 && Math.abs(coHalf(c)) > Math.abs(nuHalf(c))) {
+            muCells.set(k, (muCells.get(k) || 0) + 1); muHits++;
+          } else if (band === 'BIGPAIR') lamBig.set(k, (lamBig.get(k) || 0) + 1);
+        }
+      }
+      const muBigPair = [...muCells.keys()].filter((k) => bandOfRow[k.split('|')[0]] === 'BIGPAIR');
+      const rowMean = (row) => {
+        let n = 0, d = 0;
+        for (const col of COL_ORDER) {
+          const c = model.cells[row + '|' + col];
+          if (!c || !c.combos) continue;
+          n += c.combos * c.cooler; d += c.combos;
+        }
+        return d ? n / d : NaN;
+      };
+      const bandMean = (b) => {
+        let n = 0, d = 0;
+        for (const k of Object.keys(model.cells)) {
+          const c = model.cells[k];
+          if (!c.combos || bandOfRow[k.split('|')[0]] !== b) continue;
+          n += c.combos * c.cooler; d += c.combos;
+        }
+        return d ? n / d : NaN;
+      };
+
+      // (d) painted width across depth
+      let drift = 0, driftAt = '', minPainted = 1, minAt = '';
+      for (const s of flat) {
+        const ws = s.out.map((o) => o.width);
+        const at100 = ws[D100];
+        for (let i = 0; i < ws.length; i++) {
+          if (Math.abs(ws[i] - at100) > drift) { drift = Math.abs(ws[i] - at100); driftAt = `${s.node}/${s.pos}@${s.vp} d${DGRID[i]}`; }
+        }
+        if (s.node !== 'raise') {
+          const lo = Math.min(...ws);
+          if (lo < minPainted) { minPainted = lo; minAt = `${s.node}/${s.pos}@${s.vp}`; }
+        }
+      }
+
+      // (f) the positional spread — the third depth term, and the one with a failure mode the
+      // other clauses cannot see. `base(p)^(1 + beta*u)` is order-preserving only while the
+      // exponent is POSITIVE, i.e. while |beta| < 1; at beta = 1.2 the exponent is -0.2 at 40 bb
+      // and the seats INVERT — the small blind realizes better than the button. Nothing else in
+      // this gate notices, because an inverted seat table still paints plausible widths and still
+      // satisfies every structural invariant (positional nesting is a cascade, so it enforces the
+      // order it is given). So the order is asserted directly, at both ends, along with the claim
+      // the term exists to make: the spread is strictly wider deep than shallow.
+      const seatOrder = [...P.POSITIONS].sort((a, b) => P.CONSTANTS.baseR[a] - P.CONSTANTS.baseR[b]);
+      const spreadAt = (d) => P.baseRealization(seatOrder[seatOrder.length - 1], d) - P.baseRealization(seatOrder[0], d);
+      const orderKept = [P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max].every((d) => {
+        for (let i = 1; i < seatOrder.length; i++) {
+          if (!(P.baseRealization(seatOrder[i], d) > P.baseRealization(seatOrder[i - 1], d))) return false;
+        }
+        return true;
+      });
+      const spreadWidens = spreadAt(P.CONSTANTS.depth.max) > spreadAt(P.CONSTANTS.depth.ref)
+        && spreadAt(P.CONSTANTS.depth.ref) > spreadAt(P.CONSTANTS.depth.min);
+
+      // (e) the structural invariants, at both ends of the slider
+      const struct = [];
+      for (const i of [0, DGRID.length - 1]) {
+        for (const s of dSweep) {
+          const c = s.out[i].cells;
+          const at = `d${DGRID[i]} ${s.node}/${s.pos}@${s.vp}`;
+          if (c['AA_BIGPAIR|DS'].tier !== 'T1') struct.push(`I7 ${at}`);
+          for (const k of ['TRASH|RB', 'TRIPS_SMALL|RB']) if (['T1', 'T2'].includes(c[k].tier)) struct.push(`I8 ${k} ${at}`);
+          if (s.node !== '3bet' && Object.values(s.out[i].composition).reduce((a, b) => a + b, 0) !== TOTAL) struct.push(`I13 ${at}`);
+          for (const row of ROW_ORDER) {
+            let prev = null;
+            for (const col of COL_ORDER) {
+              const e = c[row + '|' + col];
+              if (!e) continue;
+              if (prev && P.TIER_RANK[e.wouldBe] < P.TIER_RANK[prev]) struct.push(`I9 ${at} ${row} ${col}`);
+              prev = e.wouldBe;
+            }
+          }
+          if (s.vp === model.meta.vpip.ref && s.node !== '3bet'
+            && Object.keys(c).some((k) => c[k].tier === 'T2')) struct.push(`I19 ${at}`);
+        }
+      }
+
+      const pass = aViol <= tolViol && aGain >= tolGain && aMoves > 0
+        && bwViol <= tolViol && hiDS >= tolNet && hiSS >= tolNet && loW > loB
+        && muHits > 0 && muBigPair.length === 0 && bigDemotions > 0
+        && drift <= tolDrift && minPainted >= tolFloor && struct.length === 0
+        && orderKept && spreadWidens;
+      G('I23', pass,
+        `depth direction over d = ${DGRID.join('/')} bb at ${dSweep.length} (node, pos, VPIP) settings. ` +
+        `(a) AA_DANGLER|RB (the AA72r class) never gains a tier as stacks deepen — ${aViol} violations ` +
+        `of ${tolViol} allowed — and gains one at 40bb in ${aGain} settings (floor ${tolGain}), moving at ` +
+        `${aMoves}. (b) tier monotonicity is NOT the right unit here (a tier is a percentile cut, not a ` +
+        `property of a cell): asserted on score RANK, BROADWAY_RUN|DS loses no rank as depth rises ` +
+        `(${bwViol} violations), and RUN0_HIGH|DS / |SS rank better at 250 than at 40 in ${hiDS} / ${hiSS} ` +
+        `of ${flat.length} settings (floor ${tolNet}). (c) the plan's rundown claim is FALSE for the LOW ` +
+        `rundowns and that is asserted, not dropped: RUN0_LOW|DS ranks worse at 250 than at 40 in ${loW} ` +
+        `settings against ${loB} better — its cooler ${rowMean('RUN0_LOW').toFixed(4)} is the highest in the ` +
+        `rundown band, so the mu ` +
+        `term overrules the lambda term. mu-attributable demotions at 200bb: ${muHits} over ` +
+        `${muCells.size} cells (${[...muCells.keys()].slice(0, 4).join(', ')}), NONE of them a big pair — ` +
+        `the big-pair band's cooler is ${bandMean('BIGPAIR').toFixed(4)}, BELOW the ${KD.coolerBar} bar, so ` +
+        `mu promotes it; its ${bigDemotions} demotions are all lambda's (low nu), which is why §3.1's ` +
+        `"J/T big pairs demoted via the mu term" is not asserted. The small-pair band, ` +
+        `${bandMean('SMALLPAIR').toFixed(4)}, is the one mu punishes. (d) painted width drifts at most ` +
+        `${(drift * 100).toFixed(2)} pts from its 100bb value (${driftAt}, allowance ${(tolDrift * 100).toFixed(1)}` +
+        `${fast ? ', widened from I21\'s 4.0 for 10k-trial data' : ' — I21\'s'}) and never falls below ` +
+        `${(minPainted * 100).toFixed(1)}% (${minAt}, floor ${(tolFloor * 100).toFixed(0)}%` +
+        `${fast ? ', widened from I12\'s 10%' : ' — I12\'s'}). (e) I7/I8/I9/I13/I19 all hold at 40 and 250 bb. ` +
+        `(f) the seats keep their order at 40/100/250 and the best-to-worst realization spread ` +
+        `widens with depth: ${[P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max].map((d) => spreadAt(d).toFixed(4)).join(' -> ')}` +
+        (aFirst ? ` — (a) FAILS at ${aFirst}` : '') +
+        (aGain >= tolGain ? '' : ` — (a) FAILS: ${aGain} gains at 40bb, floor ${tolGain}`) +
+        (aMoves ? '' : ' — (a) FAILS: AA_DANGLER|RB never moves; the depth dial is inert') +
+        (bwFirst ? ` — (b) FAILS at ${bwFirst}` : '') +
+        (hiDS >= tolNet && hiSS >= tolNet ? '' : ` — (b) FAILS: RUN0_HIGH net-better ${hiDS}/${hiSS}, floor ${tolNet}`) +
+        (loW > loB ? '' : ` — (c) FAILS: RUN0_LOW|DS no longer falls with depth (${loW} worse vs ${loB} better) — re-read the measurement before relaxing this`) +
+        (muHits ? '' : ' — (c) FAILS: no mu-attributable demotion exists at 200bb; the cooler term is inert') +
+        (bigDemotions ? '' : ' — (c) FAILS: the big-pair band is not demoted at all at 200bb') +
+        (muBigPair.length ? ` — (c) FAILS: big pair ${muBigPair[0]} is mu-attributable` : '') +
+        (drift <= tolDrift ? '' : ' — (d) FAILS: painted width drifts past the allowance') +
+        (minPainted >= tolFloor ? '' : ' — (d) FAILS: the painted range collapses below the floor') +
+        (struct.length ? ` — (e) FAILS: ${struct.slice(0, 3).join('; ')}` : '') +
+        (orderKept ? '' : ' — (f) FAILS: the depth exponent inverts the seat order (|beta| must stay under 1)') +
+        (spreadWidens ? '' : ' — (f) FAILS: the positional spread does not widen with depth'));
+    }
+
+    {
+      // -------------------------------------------------------------------
+      // I27 / I28 — I16 and I21, re-run at both ends of the depth slider.
+      //
+      // The two gates that hold the VPIP axis honest say nothing about it at 40 bb or 250 bb,
+      // because both sweep at the v1 operating depth. Depth re-sorts the score ordering, which is
+      // precisely the operation that could make the VPIP axis jump or collapse somewhere the
+      // existing gates never look. So they are re-run at the endpoints, with the same assertions
+      // and, where the measurement forced it, a stated widening.
+      //
+      // I27 (I16's continuity) passes at both ends with NO widening at all: the worst non-cliff
+      // VPIP step changes 0 cells beyond the allowance at 40 and at 250, and the three deliberate
+      // discontinuities are the same three I16 names at 100 bb (raise/HJ@45, raise/CO@54,
+      // raise/BTN@70, where N_eff crosses 3.0). Depth does not move them because they are field
+      // effects, which is the kappa/lambda separation showing up as a testable fact.
+      //
+      // I28 (I21's painted widening) passes at both ends, and its dip allowance is WIDENED from
+      // I21's 4.0 to 6.5 points, with the reason measured rather than assumed. I21 sized 4.0 as
+      // "half the largest single cell", against a worst measured drawdown of 3.2 points at 100 bb.
+      // At 250 bb the worst event is bigger and is not a single cell: at rfi/BTN, VPIP 81 -> 82,
+      // three cells exchange at once — `RUN3_DANGLER|SS` (4.79% of combos) enters the range while
+      // `ACE_JUNK|SS` (3.16%) and `ACE_JUNK|FLAW` (2.29%) leave it — for a net drawdown of 5.45
+      // points. Three cells is well inside I16's own 5-cell continuity allowance and the whole
+      // event is smaller than the single largest cell in the taxonomy (`TRASH|SS`, 11.4%), so it is
+      // the granularity both I16 and I21 already document, not a trend. 6.5 leaves ~19% headroom on
+      // the measurement, the same margin I21 runs at. At 40 bb the worst dip is 2.1 points, i.e.
+      // BETTER than at the operating depth.
+      const dipAllow = fast ? 0.09 : 0.065;
+      const rows = [];
+      let ok27 = true, ok28 = true;
+      const detail27 = [], detail28 = [], bad28 = [], cliffs = [];
+      for (const d of [P.CONSTANTS.depth.min, P.CONSTANTS.depth.max]) {
+        let worstCells = 0, worstAt = '', worstCombos = 0, worstDip = 0, worstDipAt = '';
+        for (const node of ['rfi', 'limps', 'raise']) {
+          for (const pos of P.POSITIONS) {
+            if (P.positionDisabled(pos, node)) continue;
+            let prev = null, runMax = -1, dip = 0, dipAt = 0, first = null, last = null;
+            for (let vp = 25; vp <= 90; vp++) {
+              const s = solveD(node, pos, vp, d);
+              if (vp === 25) first = s.width;
+              last = s.width;
+              if (s.width > runMax) runMax = s.width;
+              if (runMax - s.width > dip) { dip = runMax - s.width; dipAt = vp; }
+              if (prev) {
+                let nc = 0, nb = 0;
+                for (const k of Object.keys(s.cells)) {
+                  if (s.cells[k].wouldBe !== prev.cells[k].wouldBe) { nc++; nb += model.cells[k].combos; }
+                }
+                const atCliff = prev.N < 3 && s.N >= 3;
+                const over = nb / TOTAL > 0.03 && nc > 5;
+                if (over && !atCliff) {
+                  if (nc > worstCells) { worstCells = nc; worstAt = `d${d} ${node}/${pos}@${vp}`; worstCombos = nb; }
+                } else if (over) cliffs.push(`d${d} ${node}/${pos}@${vp}`);
+              }
+              prev = s;
+            }
+            if (last <= first) { ok28 = false; bad28.push(`d${d} ${node}/${pos} paints ${(last * 100).toFixed(1)}% at 90 vs ${(first * 100).toFixed(1)}% at 25`); }
+            if (dip > dipAllow) { ok28 = false; bad28.push(`d${d} ${node}/${pos} dips ${(dip * 100).toFixed(1)} pts by VPIP ${dipAt}`); }
+            if (dip > worstDip) { worstDip = dip; worstDipAt = `d${d} ${node}/${pos}@${dipAt}`; }
+          }
+        }
+        if (worstCells) ok27 = false;
+        detail27.push(`d${d}: worst non-cliff step ${worstCells} cells${worstCells ? ` (${(worstCombos / TOTAL * 100).toFixed(1)}% of combos) at ${worstAt}` : ''}`);
+        detail28.push(`d${d}: largest dip ${(worstDip * 100).toFixed(1)} pts at ${worstDipAt}`);
+        rows.push(d);
+      }
+      G('I27', ok27,
+        `I16's continuity holds at both ends of the depth slider (${rows.join(' and ')} bb): every VPIP ` +
+        `step changes at most 3% of combos or at most 5 of 145 cells — ${detail27.join('; ')}; the ` +
+        `documented N_eff=3.0 discontinuities are unchanged by depth (${cliffs.join(', ') || 'none'}), ` +
+        `which is the kappa(N) / lambda(d) separation as a testable fact: a field effect stays put when ` +
+        `the stacks move`);
+      G('I28', ok28,
+        `I21's painted widening holds at both ends of the depth slider (${rows.join(' and ')} bb): the ` +
+        `range is wider at VPIP 90 than at 25 at all 15 (node, position) pairs — ${detail28.join('; ')}. ` +
+        `Dip allowance widened from I21's 4.0 to ${(dipAllow * 100).toFixed(1)} pts, because the worst ` +
+        `event at 250 bb is a three-cell exchange (RUN3_DANGLER|SS in, ACE_JUNK|SS + ACE_JUNK|FLAW out, ` +
+        `net 5.45 pts at rfi/BTN VPIP 82), not the single-cell flicker I21 sized 4.0 against — inside ` +
+        `I16's own 5-cell allowance and smaller than the largest single cell (TRASH|SS, 11.4%)` +
+        (bad28.length ? ` — FAILS: ${bad28.slice(0, 3).join('; ')}` : ''));
+    }
+  }
+
+  // =========================================================================
+  // I26 / I29 / I30 — the straddle (V2-PLAN §3.3)     I31 — the rake (§3.2)
+  // =========================================================================
+  {
+    const KS = P.CONSTANTS.straddle, KR = P.CONSTANTS.rake;
+    const DGRID = [40, 60, 100, 150, 200, 250];
+    const SEATS = P.POSITIONS.filter((p) => !P.positionDisabled(p, 'rfi'));
+    const sv = (node, pos, vp, d, straddle) =>
+      P.solve(model, { pos, node, v: vp / 100, limpers: 2, raiserPos: 'CO', d, straddle });
+
+    {
+      // -------------------------------------------------------------------
+      // I26 — the straddle moves the grid in the direction §3.3 claims, AND the composition case
+      // §3.3 flagged is decided by measurement rather than left as a worry.
+      //
+      // §3.3's own words: "shallow + multiway both point the same way once M_deep's lambda flips
+      // sign below 100bb — VERIFY THIS COMPOSITION EXPLICITLY; if lambda(50) < 0 fights the field
+      // effect, the gate documents which wins and why." It does fight it, and here is the answer.
+      //
+      //  (a) PAINTED OPENING RANGES TIGHTEN, at every seat and every (VPIP, depth): 150/150 at the
+      //      RFI node and 150/150 at the iso node, over 5 seats x 5 VPIP x 6 depths. This is where
+      //      V2-PLAN §7.2's lean is FALSIFIED and the falsification is load-bearing rather than
+      //      cosmetic: §7.2 leaned "BTN keeps its 0.45 base under a straddle", and with BTN pinned
+      //      the button's PAINTED range gets WIDER at 7 of its 30 settings (by up to 2.49 points,
+      //      worst at VPIP 25 / 40 bb; 16 of 30 on 10k-trial data) and its mean nu FALLS at 8. A
+      //      straddle cannot make the button open wider — it puts one more player behind him — so
+      //      the seat factor applies at every seat and `straddle.seatPinned` ships empty. The other
+      //      half of §7.2 (no straddler iso node) is kept: the straddler is modelled as a defender,
+      //      never as a hero seat.
+      //        The vs-RAISE node is measured and DELIBERATELY NOT ASSERTED, for a structural
+      //      reason: `w3bet` is a flat percentile of the pool with no seat base, so §3.3's seat
+      //      transform has nothing to act on there. Measured, it goes both ways (47 tighter, 77
+      //      looser, 26 unchanged). A straddle tightens the range you OPEN; it does not tighten the
+      //      range you 3-bet with, and this gate says so rather than pretending otherwise.
+      //
+      //  (b) THE PAINTED RANGE GETS NUTTIER: 148/150 at RFI and 150/150 at the iso node, worst fall
+      //      0.13 points (rfi/UTG at VPIP 25, 60 bb).
+      //
+      //  (c) THE COMPOSITION, ISOLATED. (b) is partly the seat shift: narrowing a range from the
+      //      bottom raises its mean nu whatever the ordering does. So the two forces are separated
+      //      at MATCHED WIDTH, the I11b construction — score the grid with one half of the
+      //      transform at a time, cut at the width the UNSTRADDLED model paints, and read the nu of
+      //      the set each ordering picks:
+      //
+      //        FIELD only  (N -> N + cBlind(v))     mean +0.286 pts, 130 up / 0 down
+      //        DEPTH only  (d -> d/2)               mean -0.144 pts, 24 up / 76 down
+      //        BOTH                                 mean +0.183 pts, 113 up / 20 down
+      //
+      //      **THE FIELD WINS**, keeping about 64% of its own effect (44% on 10k-trial data). The
+      //      depth half does exactly what §3.3 feared — shallower stacks make nuttiness worth less
+      //      (lambda < 0) and coolers cost less (mu < 0), so it re-sorts AWAY from nu at 76 of 150
+      //      settings — it simply is not big enough to turn the result over.
+      //        WHY, and this is the part worth keeping: on the nu coefficient ALONE the depth half
+      //      SHOULD win. d(kappa) = 0.13*cBlind(v) is +0.032 (VPIP 25) to +0.107 (VPIP 90), against
+      //      lambda(d/2) - lambda(d) = -0.189 flat — the depth term is 2x to 6x larger. What
+      //      completes the field's margin is not the opinion layer but the MEASUREMENT: the
+      //      multiway realization slope adds another +0.027 to +0.122 per unit nu, and rho is read
+      //      further up its own N curve, which is I3's inversion doing the work. The margin is
+      //      thinnest exactly where kappa has least to give — at VPIP 25 it is +0.076 pts with 11
+      //      of 30 settings going the other way — and widest at VPIP 70 (+0.301).
+      //
+      //  (d) reserved for I29/I30 below, which are the I16/I21 analogues across the toggle.
+      //  (e) the model still holds together: I6/I7/I8/I9/I10/I13/I19 re-run with the straddle on at
+      //      40 / 100 / 250 bb, 0 violations.
+      //  (f) and the transform is the transform: N_eff gains exactly cBlind(v) at the opening nodes
+      //      and vsRaiseBlind*cBlind(v) at the vs-Raise node, dEff is d/2 clamped to the slider's
+      //      domain, widthFor scales by exactly seatWidthFactor, and the price does NOT move at
+      //      rake 0 (every threshold in the model is a ratio; only the rake cap is absolute).
+      const tolLoose = fast ? 2 : 0;
+      const tolNuDown = fast ? 6 : 4;
+      const tolNuFall = 0.0030;
+      const tolFieldDown = 2;
+
+      // (a) / (b)
+      const dir = {};
+      for (const node of ['rfi', 'limps', 'raise']) {
+        const r = { t: 0, l: 0, s: 0, worst: 0, at: '', nuUp: 0, nuDown: 0, nuWorst: 0, nuAt: '' };
+        for (const pos of P.POSITIONS) {
+          if (P.positionDisabled(pos, node)) continue;
+          for (const vp of VPIP_GRID) {
+            for (const d of DGRID) {
+              const off = sv(node, pos, vp, d, false), on = sv(node, pos, vp, d, true);
+              const dw = on.width - off.width, dn = on.nutShare - off.nutShare;
+              if (dw < -1e-12) r.t++; else if (dw > 1e-12) {
+                r.l++;
+                if (dw > r.worst) { r.worst = dw; r.at = `${pos}@${vp} d${d}`; }
+              } else r.s++;
+              if (dn > 1e-12) r.nuUp++; else if (dn < -1e-12) {
+                r.nuDown++;
+                if (-dn > r.nuWorst) { r.nuWorst = -dn; r.nuAt = `${pos}@${vp} d${d}`; }
+              }
+            }
+          }
+        }
+        dir[node] = r;
+      }
+
+      // (c) the matched-width decomposition. Scored directly through scoreCell so each half of the
+      // transform can be switched on alone; shift is 0 at the RFI node, so this is the whole score.
+      const live = [];
+      for (const k of Object.keys(model.cells)) if (model.cells[k].combos) live.push(k);
+      const nuAtWidth = (pos, N, env, target) => {
+        const rows = live.map((k) => ({ c: model.cells[k], S: P.scoreCell(model.cells[k], pos, N, 0, env).S }));
+        rows.sort((a, b) => b.S - a.S);
+        let cum = 0, acc = 0;
+        for (const r of rows) {
+          if (cum >= target) break;
+          const take = Math.min(r.c.combos, target - cum);
+          cum += take; acc += take * r.c.nu;
+        }
+        return cum ? acc / cum : 0;
+      };
+      const comp = { field: [], depth: [], both: [] };
+      for (const pos of SEATS) {
+        for (const vp of VPIP_GRID) {
+          for (const d of DGRID) {
+            const st = { pos, node: 'rfi', v: vp / 100, limpers: 2, raiserPos: 'CO', d };
+            const off = sv('rfi', pos, vp, d, false);
+            const target = off.width * TOTAL;
+            const nOff = P.nEff(st).N, nOn = P.nEff({ ...st, straddle: true }).N;
+            const eOff = P.envOf(st), eOn = P.envOf({ ...st, straddle: true });
+            const b0 = nuAtWidth(pos, nOff, eOff, target);
+            comp.field.push(nuAtWidth(pos, nOn, eOff, target) - b0);
+            comp.depth.push(nuAtWidth(pos, nOff, eOn, target) - b0);
+            comp.both.push(nuAtWidth(pos, nOn, eOn, target) - b0);
+          }
+        }
+      }
+      const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+      const down = (a) => a.filter((x) => x < -1e-12).length;
+      const mField = mean(comp.field), mDepth = mean(comp.depth), mBoth = mean(comp.both);
+
+      // (e) the structural invariants, straddled
+      const struct = [];
+      for (const d of [P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max]) {
+        for (const node of NODES) {
+          for (const pos of P.POSITIONS) {
+            if (P.positionDisabled(pos, node)) continue;
+            for (const vp of VPIP_GRID) {
+              const c = sv(node, pos, vp, d, true).cells;
+              const at = `d${d} ${node}/${pos}@${vp}`;
+              if (c['AA_BIGPAIR|DS'].tier !== 'T1') struct.push(`I7 ${at}`);
+              for (const k of ['TRASH|RB', 'TRIPS_SMALL|RB']) if (['T1', 'T2'].includes(c[k].tier)) struct.push(`I8 ${k} ${at}`);
+              if (node !== '3bet' && Object.values(sv(node, pos, vp, d, true).composition).reduce((a, b) => a + b, 0) !== TOTAL) struct.push(`I13 ${at}`);
+              for (const row of ROW_ORDER) {
+                let prev = null;
+                for (const col of COL_ORDER) {
+                  const e = c[row + '|' + col];
+                  if (!e) continue;
+                  if (prev && P.TIER_RANK[e.wouldBe] < P.TIER_RANK[prev]) struct.push(`I9 ${at} ${row} ${col}`);
+                  prev = e.wouldBe;
+                }
+              }
+              const band = ['AA_BIGPAIR', 'AA_BROADWAY', 'AA_CONNECTED', 'AA_SMALLPAIR', 'AA_DANGLER', 'A_BLOCKED'];
+              for (const col of COL_ORDER) {
+                let prev = null;
+                for (const row of band) {
+                  const e = c[row + '|' + col];
+                  if (!e) continue;
+                  if (prev && P.TIER_RANK[e.wouldBe] > P.TIER_RANK[prev]) struct.push(`I10 ${at} ${col} ${row}`);
+                  prev = e.wouldBe;
+                }
+              }
+              if (vp === model.meta.vpip.ref && node !== '3bet'
+                && Object.keys(c).some((k) => c[k].tier === 'T2')) struct.push(`I19 ${at}`);
+            }
+          }
+        }
+      }
+      for (const node of ['rfi', 'limps', 'raise']) {
+        const chain = node === 'rfi' ? ['UTG', 'HJ', 'CO', 'BTN'] : ['HJ', 'CO', 'BTN'];
+        for (const vp of VPIP_GRID) {
+          const inRange = (e) => e.tier === 'T1' || e.tier === 'T2'
+            || (e.tier === 'T4' && (e.wouldBe === 'T1' || e.wouldBe === 'T2'));
+          const sets = chain.map((pos) => {
+            const s = sv(node, pos, vp, P.CONSTANTS.depth.ref, true);
+            return new Set(Object.keys(s.cells).filter((k) => inRange(s.cells[k])));
+          });
+          for (let i = 1; i < sets.length; i++) {
+            for (const k of sets[i - 1]) if (!sets[i].has(k)) struct.push(`I6 ${node} v${vp} ${chain[i - 1]}->${chain[i]} ${k}`);
+          }
+        }
+      }
+
+      // (f) the transform's own arithmetic
+      const idBad = [];
+      for (const v of [0.25, 0.55, 0.90]) {
+        for (const node of ['rfi', 'limps', 'raise']) {
+          for (const pos of P.POSITIONS) {
+            if (P.positionDisabled(pos, node)) continue;
+            const a = P.nEff({ pos, node, v, limpers: 2 }).raw;
+            const b = P.nEff({ pos, node, v, limpers: 2, straddle: true }).raw;
+            const want = node === 'raise' ? P.CONSTANTS.vsRaiseBlind * P.cBlind(v) : P.cBlind(v);
+            if (Math.abs((b - a) - want) > 1e-12) idBad.push(`nEff ${node}/${pos}@${v}`);
+          }
+        }
+      }
+      for (const d of [40, 60, 79, 80, 100, 150, 200, 250]) {
+        const want = Math.min(P.CONSTANTS.depth.max, Math.max(P.CONSTANTS.depth.min, d / KS.unit));
+        if (P.envOf({ d, straddle: true }).dEff !== want) idBad.push(`dEff ${d}`);
+        if (P.envOf({ d }).dEff !== d) idBad.push(`dEff plain ${d}`);
+      }
+      for (const pos of P.POSITIONS) {
+        const w0 = P.widthFor(pos, 'rfi', 0.55), w1 = P.widthFor(pos, 'rfi', 0.55, { straddle: true });
+        if (Math.abs(w1 - w0 * P.seatWidthFactor(pos, { straddle: true })) > 1e-15) idBad.push(`widthFor ${pos}`);
+        if (P.seatWidthFactor(pos, undefined) !== 1) idBad.push(`seat factor not 1 unstraddled at ${pos}`);
+      }
+      if (P.breakevenPrice({ straddle: true }) !== P.CONSTANTS.vs3bet.breakeven) idBad.push('the price moved at rake 0');
+      if (P.unitBB({ straddle: true }) !== KS.unit || P.unitBB(undefined) !== 1) idBad.push('unitBB');
+
+      const okA = dir.rfi.l <= tolLoose && dir.limps.l <= tolLoose && dir.rfi.t > 0 && dir.limps.t > 0;
+      const okB = dir.rfi.nuDown <= tolNuDown && dir.limps.nuDown <= tolNuDown
+        && dir.rfi.nuWorst <= tolNuFall && dir.limps.nuWorst <= tolNuFall;
+      const okC = mField > 0 && down(comp.field) <= tolFieldDown && mDepth < 0
+        && mBoth > 0 && mBoth > mDepth && mBoth >= 0.25 * mField;
+      const pass26 = okA && okB && okC && struct.length === 0 && idBad.length === 0;
+      const pct = (x) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(3)}`;
+      G('I26', pass26,
+        `straddle direction (V2-PLAN §3.3) over 5 seats x ${VPIP_GRID.length} VPIP x ${DGRID.length} depths. ` +
+        `(a) the painted OPENING range tightens everywhere: rfi ${dir.rfi.t} tighter / ${dir.rfi.l} looser, ` +
+        `iso ${dir.limps.t} / ${dir.limps.l} (allowance ${tolLoose}). §7.2's "BTN keeps its base" is ` +
+        `FALSIFIED — pinned, the button paints WIDER at 7 of 30 settings (up to +2.49 pts) — so ` +
+        `straddle.seatPinned is empty and the ${KS.seat} factor applies at every seat. The vs-RAISE node ` +
+        `is reported and not asserted: w3bet has no seat base, so the transform has nothing to act on ` +
+        `there and it measures ${dir.raise.t} tighter / ${dir.raise.l} looser / ${dir.raise.s} unchanged — ` +
+        `a straddle tightens what you OPEN, not what you 3-bet. (b) and it gets nuttier: rfi ${dir.rfi.nuUp} ` +
+        `up / ${dir.rfi.nuDown} down (worst ${(dir.rfi.nuWorst * 100).toFixed(2)} pts${dir.rfi.nuAt ? ` at ${dir.rfi.nuAt}` : ''}), ` +
+        `iso ${dir.limps.nuUp} / ${dir.limps.nuDown}. (c) THE COMPOSITION §3.3 ASKED TO BE CHECKED, isolated ` +
+        `at matched width: field-only ${pct(mField)} pts (${down(comp.field)} of ${comp.field.length} going the ` +
+        `other way), depth-only ${pct(mDepth)} (${down(comp.depth)} down), both ${pct(mBoth)} (${down(comp.both)} down) — ` +
+        `**the field wins**, keeping ${(mBoth / mField * 100).toFixed(0)}% of its own effect. lambda(d/2) < 0 really does ` +
+        `fight it and is 2-6x larger on the nu coefficient (d kappa = 0.13*cBlind(v) = +0.032..+0.107 against ` +
+        `-0.189 flat); what completes the field's margin is the MEASUREMENT — the multiway realization slope ` +
+        `(+0.027..+0.122) and rho read further up its N curve. (e) I6/I7/I8/I9/I10/I13/I19 all hold straddled ` +
+        `at 40/100/250 bb. (f) the transform is exact: N_eff gains cBlind(v), dEff = d/2 clamped, widthFor ` +
+        `scales by seatWidthFactor, and the price does not move at rake 0` +
+        (okA ? '' : ` — (a) FAILS: rfi ${dir.rfi.l} looser (worst ${dir.rfi.at}), iso ${dir.limps.l} (${dir.limps.at})`) +
+        (okB ? '' : ` — (b) FAILS: nu falls at ${dir.rfi.nuDown}/${dir.limps.nuDown} settings, worst ${(Math.max(dir.rfi.nuWorst, dir.limps.nuWorst) * 100).toFixed(2)} pts`) +
+        (okC ? '' : ` — (c) FAILS: field ${pct(mField)}, depth ${pct(mDepth)}, both ${pct(mBoth)} — re-read the composition before relaxing this; if the depth half now WINS, that is a finding, not a tolerance`) +
+        (struct.length ? ` — (e) FAILS: ${struct.slice(0, 3).join('; ')}` : '') +
+        (idBad.length ? ` — (f) FAILS: ${idBad.slice(0, 3).join('; ')}` : ''));
+    }
+
+    {
+      // -------------------------------------------------------------------
+      // I29 / I30 — I16 and I21, re-run with the straddle ON.
+      //
+      // Same reasoning as I27/I28 for the depth axis: the two gates that hold the VPIP axis honest
+      // both sweep with the straddle off, and the straddle re-sorts the grid AND moves N_eff, which
+      // is exactly the operation that could make the VPIP axis jump or collapse where nothing looks.
+      // Run at 40 / 100 / 250 bb, i.e. at effective depths of 40 / 50 / 125.
+      //
+      // NEITHER NEEDS A WIDENING. I29's worst non-cliff step is 0 cells at all three depths; I30's
+      // worst dip is 2.86 points against I21's own 4.0 allowance (2.97 on 10k-trial data), i.e.
+      // BETTER than the 3.16 the unstraddled model runs at.
+      //
+      // The one thing that does move is the pair of numbers I27 exists to say do NOT move: the
+      // N_eff = 3.0 discontinuities. Depth leaves them exactly where they are (I27) because depth
+      // is not a field effect; the straddle drags every one of them forward — raise/HJ 45 -> 34,
+      // raise/CO 54 -> 39, raise/BTN 70 -> 47 — and adds a fifth at raise/SB 70 that the
+      // unstraddled table never reaches. That is the kappa(N) / lambda(d) separation asserted from
+      // the other side, and it is asserted structurally rather than as a pinned list: N_eff is
+      // strictly larger with the straddle at every setting, so a crossing of 3.0 can only come
+      // EARLIER.
+      //
+      // The painted floor is the one place the straddle takes the model under a number it states
+      // elsewhere: at rfi/UTG, VPIP 25, the straddled range paints 8.96% against I12's 10% floor.
+      // That floor is a guard against the nut-gate range collapse I11/I21 document, and this is not
+      // that — the TARGET width itself fell 23% with the seat transform and the painted/target
+      // ratio is normal. So it gets its own floor at 8%, stated rather than borrowed.
+      const dipAllow = fast ? 0.05 : 0.04;      // I21's own 4.0; no widening needed
+      const floor = fast ? 0.075 : 0.08;
+      const DS = [P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max];
+      let ok29 = true, ok30 = true;
+      const d29 = [], d30 = [], bad30 = [], cliffOn = [], cliffOff = [];
+      let nBad = 0, nChecked = 0;
+      for (const node of ['rfi', 'limps', 'raise']) {
+        for (const pos of P.POSITIONS) {
+          if (P.positionDisabled(pos, node)) continue;
+          for (let vp = 25; vp <= 90; vp++) {
+            const a = P.nEff({ pos, node, v: vp / 100, limpers: 2 }).raw;
+            const b = P.nEff({ pos, node, v: vp / 100, limpers: 2, straddle: true }).raw;
+            nChecked++;
+            if (!(b > a)) nBad++;
+          }
+        }
+      }
+      for (const d of DS) {
+        let worstCells = 0, worstAt = '', worstCombos = 0, worstDip = 0, worstDipAt = '';
+        let minPainted = 1, minAt = '';
+        for (const node of ['rfi', 'limps', 'raise']) {
+          for (const pos of P.POSITIONS) {
+            if (P.positionDisabled(pos, node)) continue;
+            let prev = null, runMax = -1, dip = 0, dipAt = 0, first = null, last = null;
+            for (let vp = 25; vp <= 90; vp++) {
+              const s = sv(node, pos, vp, d, true);
+              if (vp === 25) first = s.width;
+              last = s.width;
+              if (s.width > runMax) runMax = s.width;
+              if (runMax - s.width > dip) { dip = runMax - s.width; dipAt = vp; }
+              if (node !== 'raise' && s.width < minPainted) { minPainted = s.width; minAt = `d${d} ${node}/${pos}@${vp}`; }
+              if (prev) {
+                let nc = 0, nb = 0;
+                for (const k of Object.keys(s.cells)) {
+                  if (s.cells[k].wouldBe !== prev.cells[k].wouldBe) { nc++; nb += model.cells[k].combos; }
+                }
+                const atCliff = prev.N < 3 && s.N >= 3;
+                const over = nb / TOTAL > 0.03 && nc > 5;
+                if (over && !atCliff) {
+                  if (nc > worstCells) { worstCells = nc; worstAt = `d${d} ${node}/${pos}@${vp}`; worstCombos = nb; }
+                } else if (over && d === P.CONSTANTS.depth.ref) cliffOn.push(`${node}/${pos}@${vp}`);
+              }
+              prev = s;
+            }
+            if (last <= first) { ok30 = false; bad30.push(`d${d} ${node}/${pos} paints ${(last * 100).toFixed(1)}% at 90 vs ${(first * 100).toFixed(1)}% at 25`); }
+            if (dip > dipAllow) { ok30 = false; bad30.push(`d${d} ${node}/${pos} dips ${(dip * 100).toFixed(1)} pts by VPIP ${dipAt}`); }
+            if (dip > worstDip) { worstDip = dip; worstDipAt = `d${d} ${node}/${pos}@${dipAt}`; }
+          }
+        }
+        if (worstCells) ok29 = false;
+        if (minPainted < floor) { ok30 = false; bad30.push(`painted ${(minPainted * 100).toFixed(2)}% at ${minAt}`); }
+        d29.push(`d${d}: worst non-cliff step ${worstCells} cells${worstCells ? ` (${(worstCombos / TOTAL * 100).toFixed(1)}%) at ${worstAt}` : ''}`);
+        d30.push(`d${d}: largest dip ${(worstDip * 100).toFixed(2)} pts at ${worstDipAt}, narrowest painted ${(minPainted * 100).toFixed(2)}% at ${minAt}`);
+      }
+      // the unstraddled cliffs, at the reference depth, for the comparison the detail line makes
+      for (const node of ['rfi', 'limps', 'raise']) {
+        for (const pos of P.POSITIONS) {
+          if (P.positionDisabled(pos, node)) continue;
+          let prev = null;
+          for (let vp = 25; vp <= 90; vp++) {
+            const s = sv(node, pos, vp, P.CONSTANTS.depth.ref, false);
+            if (prev && prev.N < 3 && s.N >= 3) cliffOff.push(`${node}/${pos}@${vp}`);
+            prev = s;
+          }
+        }
+      }
+      ok29 = ok29 && nBad === 0;
+      G('I29', ok29,
+        `I16's continuity holds with the straddle ON at ${DS.join(' / ')} bb (effective ` +
+        `${DS.map((d) => P.envOf({ d, straddle: true }).dEff).join(' / ')}): every VPIP step changes at most ` +
+        `3% of combos or at most 5 of 145 cells — ${d29.join('; ')}. Unlike depth, the straddle DOES move ` +
+        `the N_eff = 3.0 discontinuities, and forward, because it is a field effect: ` +
+        `[${cliffOff.join(', ')}] becomes [${cliffOn.join(', ')}] — the vs-Raise cliffs arrive 11-23 VPIP ` +
+        `points earlier and SB reaches one the unstraddled table never does. Asserted structurally, not as ` +
+        `a pinned list: N_eff is strictly larger straddled at all ${nChecked} (node, seat, VPIP) settings, ` +
+        `so a crossing can only come earlier` +
+        (nBad ? ` — FAILS: N_eff is not strictly larger at ${nBad} settings; the field half is not firing` : ''));
+      G('I30', ok30,
+        `I21's painted widening holds with the straddle ON at ${DS.join(' / ')} bb: the range is wider at ` +
+        `VPIP 90 than at 25 at all 15 (node, position) pairs — ${d30.join('; ')}. No widening of I21's own ` +
+        `${(dipAllow * 100).toFixed(1)}-pt dip allowance was needed (unlike I28's): the straddled model's worst dip is ` +
+        `SMALLER than the 3.16 pts the unstraddled model runs at, because a narrower target width has ` +
+        `fewer cells straddling the cut. The painted floor is its own, at ${(floor * 100).toFixed(1)}% rather than ` +
+        `I12's 10%: at rfi/UTG VPIP 25 a straddled UTG opens 8.96% of hands, which is the seat transform ` +
+        `doing its job (the target itself fell 23%) and not the nut-gate collapse I12 guards against` +
+        (bad30.length ? ` — FAILS: ${bad30.slice(0, 3).join('; ')}` : ''));
+    }
+
+    {
+      // -------------------------------------------------------------------
+      // I31 — the rake (V2-PLAN §3.2). Two halves, and the first is the plan's own model asserted
+      // as a fact rather than discovered as a disappointment.
+      //
+      //  (a) TIER-INERT AT THE THREE PERCENTILE NODES, BY CONSTRUCTION. §3.2 specifies a flat
+      //      multiplier on rho. Every score is 100*rho*M_nut*M_play*R*M_deep, so a factor common to
+      //      every cell scales every score, every interpolated cut and every margin by one number
+      //      and re-orders nothing. Measured at the 5% preset over 27,675 cell-settings: 0 tiers
+      //      move, every score moves, and every score ratio equals (1 - rakeFrac) to within 2 ulp.
+      //      This is asserted so that nobody "fixes" the rake into a non-uniform haircut without
+      //      making that a deliberate, documented model change.
+      //  (b) AND IT BITES WHERE THE THRESHOLD IS ABSOLUTE. At the vs-3-bet node the price is
+      //      arithmetic (`breakeven / (1 - r)`) and the continue floor rides on it, so the continue
+      //      range narrows monotonically in rakePct on the ACTION tier — 45 -> 41 cells at UTG,
+      //      49 -> 44 at CO across 0-6%. Measured on `wouldBe`, not on the MIX overlay, for the
+      //      reason I16 documents: a cell flickering into MIX has not changed the action.
+      //  (c) the arithmetic itself, exactly: the 7-point premium over the price is invariant, the
+      //      cap is min(pct, cap/(potBB*unit)), and a straddle doubles the unit so the same cap
+      //      binds twice as hard (5% -> 2.5% at the shipped 3bb cap).
+      const nodes3 = ['rfi', 'limps', 'raise'];
+      let moved = 0, scored = 0, nCells = 0, worstDev = 0, firstMove = '';
+      for (const node of nodes3) {
+        for (const pos of P.POSITIONS) {
+          if (P.positionDisabled(pos, node)) continue;
+          for (const vp of VPIP_GRID) {
+            for (const d of [P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max]) {
+              const base = { pos, node, v: vp / 100, limpers: 2, raiserPos: 'CO', d };
+              const a = P.solve(model, base);
+              const b = P.solve(model, { ...base, rakePct: KR.preset });
+              const f = P.rakeRhoFactor({ rakePct: KR.preset });
+              for (const k of Object.keys(a.cells)) {
+                nCells++;
+                if (a.cells[k].tier !== b.cells[k].tier) {
+                  moved++;
+                  if (!firstMove) firstMove = `${node}/${pos}@${vp} d${d} ${k}`;
+                }
+                if (!Object.is(a.cells[k].score, b.cells[k].score)) scored++;
+                if (a.cells[k].score) worstDev = Math.max(worstDev, Math.abs(b.cells[k].score / a.cells[k].score - f));
+              }
+            }
+          }
+        }
+      }
+      // (b) the vs-3-bet node, on the action tier
+      const seq = {}, notMono = [];
+      for (const pos of ['UTG', 'CO', 'BTN', 'BB']) {
+        const s = [];
+        for (let pct = KR.min; pct <= KR.max; pct++) {
+          const out = P.solve(model, { pos, node: '3bet', v: 0.55, limpers: 2, raiserPos: 'CO', rakePct: pct });
+          let n = 0;
+          for (const k of Object.keys(out.cells)) if (out.cells[k].wouldBe !== 'T5') n++;
+          s.push(n);
+        }
+        for (let i = 1; i < s.length; i++) if (s[i] > s[i - 1]) notMono.push(`${pos} ${KR.min + i - 1}%->${KR.min + i}% ${s[i - 1]}->${s[i]}`);
+        if (!(s[s.length - 1] < s[0])) notMono.push(`${pos} does not tighten at all (${s[0]} -> ${s[s.length - 1]})`);
+        seq[pos] = s;
+      }
+      // (c) the arithmetic
+      const aBad = [];
+      const prem = P.CONSTANTS.vs3bet.call - P.CONSTANTS.vs3bet.breakeven;
+      for (const pct of [0, 1, 2.5, 3, 5, 6]) {
+        for (const straddle of [false, true]) {
+          const e = P.envOf({ rakePct: pct, straddle });
+          const want = Math.min(pct / 100, KR.capBB / (KR.potBB * (straddle ? KS.unit : 1)));
+          if (Math.abs(P.rakeFraction(e) - want) > 1e-15) aBad.push(`rakeFrac ${pct}%${straddle ? ' straddled' : ''}`);
+          if (Math.abs(P.breakevenPrice(e) - P.CONSTANTS.vs3bet.breakeven / (1 - want)) > 1e-15) aBad.push(`price ${pct}%`);
+          if (Math.abs((P.callFloorAt(e) - P.breakevenPrice(e)) - prem) > 1e-12) aBad.push(`premium ${pct}%`);
+          if (Math.abs(P.rakeRhoFactor(e) - (1 - want)) > 1e-15) aBad.push(`rhoFactor ${pct}%`);
+        }
+      }
+      if (P.rakeRhoFactor(undefined) !== 1 || P.breakevenPrice(undefined) !== P.CONSTANTS.vs3bet.breakeven
+        || P.callFloorAt(undefined) !== P.CONSTANTS.vs3bet.call) aBad.push('not the identity at rake 0');
+      if (!(P.rakeFraction({ rakePct: KR.preset, straddle: true }) < P.rakeFraction({ rakePct: KR.preset }))) {
+        aBad.push('the straddle does not make the cap bind harder');
+      }
+      const tolMoved = fast ? 4 : 0;
+      const pass31 = moved <= tolMoved && scored === nCells && worstDev < 1e-12
+        && notMono.length === 0 && aBad.length === 0;
+      G('I31', pass31,
+        `rake (V2-PLAN §3.2) at the ${KR.preset}% default preset, cap ${KR.capBB}bb, reference pot ${KR.potBB} units. ` +
+        `(a) the flat haircut on rho is TIER-INERT at the three percentile nodes and that is the plan's ` +
+        `model, not an accident: ${moved} of ${nCells} tiers move (allowance ${tolMoved}), all ${scored} scores do, ` +
+        `and every score ratio equals 1 - rakeFrac to ${worstDev.toExponential(1)}. A rake that moves a percentile ` +
+        `tier would have to be non-uniform across cells; making it so is a model change, not a bug fix. ` +
+        `(b) where the threshold is ABSOLUTE it bites: at the vs-3-bet node the continue range narrows ` +
+        `monotonically in rakePct on the action tier — ` +
+        `${['UTG', 'CO'].map((p) => `${p} ${seq[p].join('->')}`).join(', ')} cells over ${KR.min}-${KR.max}%. ` +
+        `(c) the arithmetic is exact: price = ${(P.CONSTANTS.vs3bet.breakeven * 100).toFixed(1)}%/(1 - r) = ` +
+        `${(P.breakevenPrice({ rakePct: KR.preset }) * 100).toFixed(2)}% at the preset, the ` +
+        `${(prem * 100).toFixed(0)}-point premium over it is invariant, and a straddle doubles the unit the cap is ` +
+        `measured against so the same 3bb cap takes ` +
+        `${(P.rakeFraction({ rakePct: KR.preset, straddle: true }) * 100).toFixed(1)}% instead of ` +
+        `${(P.rakeFraction({ rakePct: KR.preset }) * 100).toFixed(1)}%` +
+        (moved > tolMoved ? ` — (a) FAILS: ${moved} tiers moved, first ${firstMove}` : '') +
+        (scored === nCells ? '' : ` — (a) FAILS: only ${scored} of ${nCells} scores moved; the haircut is not reaching the score`) +
+        (worstDev < 1e-12 ? '' : ` — (a) FAILS: the haircut is not uniform (${worstDev.toExponential(2)})`) +
+        (notMono.length ? ` — (b) FAILS: ${notMono.slice(0, 3).join('; ')}` : '') +
+        (aBad.length ? ` — (c) FAILS: ${aBad.slice(0, 3).join('; ')}` : ''));
+    }
+  }
+
   const ok = gates.every((g) => g.pass);
   return { ok, gates, sizes, subCount };
 }
 
 // ---------------------------------------------------------------------------
+/**
+ * Refresh `model.constants` from the live `policy.mjs` CONSTANTS, and report what moved.
+ *
+ * WHY THIS EXISTS. `generate-data.mjs` emits `constants: { ...CONSTANTS, <measured> }`, so a new
+ * scoring constant reaches the shipped file only on a regeneration — and a regeneration is three
+ * hours of Monte Carlo for a change that contains no randomness at all. The Method view renders
+ * `model.constants` and nothing else, so between the two the page cannot show a constant the model
+ * is actually using, which breaks METHODOLOGY's rule 1 harder than the restamp does. This is the
+ * cheap deterministic path: the SAME object literal the generator builds, assembled from the same
+ * two sources, with zero simulation.
+ *
+ * The split is the generator's own, not a new one. Everything in `CONSTANTS` is OPINION and its
+ * source of truth is the code; everything else in the block is MEASUREMENT (`nuBarMeasured`,
+ * `coolerBarMeasured`, `nMax`, `mosaicTotal`, `cooler`, `villainLattice`) and its source of truth
+ * is the run that produced the file, so those keys are carried across untouched and in order. A key
+ * the code no longer defines is preserved rather than dropped: this function refreshes, it does not
+ * prune, because pruning a measurement nobody remembers is how data gets lost.
+ *
+ * Called from the CLI before `verifyModel`, so D6/D7 measure the payload as it will be written.
+ */
+export function stampConstants(model) {
+  const live = P.CONSTANTS;
+  const before = model.constants || {};
+  const has = (k) => Object.prototype.hasOwnProperty.call(live, k);
+  const measured = {};
+  for (const k of Object.keys(before)) if (!has(k)) measured[k] = before[k];
+  const added = Object.keys(live).filter((k) => !Object.prototype.hasOwnProperty.call(before, k));
+  const changed = Object.keys(live).filter((k) => Object.prototype.hasOwnProperty.call(before, k)
+    && JSON.stringify(before[k]) !== JSON.stringify(live[k]));
+  model.constants = { ...live, ...measured };
+  return { added, changed, kept: Object.keys(measured) };
+}
+
 /** the calibration table, printed under the gate list */
 export function formatBenchmarks(model) {
   const L = [];
@@ -1169,9 +2024,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const path = resolve(ROOT, process.argv[2] || 'data/model.json');
   const model = JSON.parse(readFileSync(path, 'utf8'));
   const t = Date.now();
+  // Before the gates, so D6/D7 measure the payload as it will be written rather than the payload
+  // as it was read. Under --no-write nothing lands on disk and this is a preview of the size a
+  // write would produce; the file itself is untouched either way.
+  const cst = stampConstants(model);
   const report = verifyModel(model);
   console.log(formatReport(report));
   console.log(formatBenchmarks(model));
+  if (cst.added.length || cst.changed.length) {
+    console.log(`\n  constants refreshed from policy.mjs — ` +
+      `added [${cst.added.join(', ') || 'none'}], updated [${cst.changed.join(', ') || 'none'}], ` +
+      `${cst.kept.length} measured keys carried across unchanged`);
+  }
   console.log(`  verified in ${((Date.now() - t) / 1000).toFixed(1)}s`);
   if (!process.argv.includes('--no-write')) {
     for (const g of report.gates) model.gates[g.id] = g.pass ? 'pass' : 'FAIL';
