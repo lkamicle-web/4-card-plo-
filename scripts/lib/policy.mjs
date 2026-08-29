@@ -122,6 +122,18 @@ export function cLimper(v) { return Math.min(0.90, 0.45 + 0.50 * v); }
 function behindNonBlind(pos) { return N_NB[pos]; }
 
 /**
+ * Expected opponents at a node, and the field size the equity curve is read at.
+ *
+ * `N` is clamped to the span the Monte Carlo actually covers, and that span is now 1..7
+ * (V2-PLAN §2.2): one deal deals seven villains and yields every prefix, so the iso node's
+ * genuinely six- and seven-way spots are measured rather than pretended to be five-way. The clamp
+ * and the `extrapolated` flag stay — they now bite above 7, which the model still reaches at the
+ * loosest iso settings (HJ over four limpers at VPIP 90 raises 7.40 opponents).
+ *
+ * Unclamping was checked against gate I22 before it landed, not assumed safe: the 15 settings in
+ * the I22 domain whose raw N_eff sits between 5 and 5.61 paint exactly the tiers they painted when
+ * they were clamped to 5.00.
+ *
  * @returns {{raw:number, N:number, extrapolated:boolean}}
  */
 export function nEff(state) {
@@ -139,8 +151,8 @@ export function nEff(state) {
   } else {
     raw = 2; // vs 3-bet is treated heads-up; N_eff is not used for tiering
   }
-  const N = Math.min(5, Math.max(1, raw));
-  return { raw, N, extrapolated: raw > 5.0001 };
+  const N = Math.min(7, Math.max(1, raw));
+  return { raw, N, extrapolated: raw > 7.0001 };
 }
 
 // ---------------------------------------------------------------------------
@@ -155,10 +167,16 @@ export function nuMin(N) {
   return Math.min(CONSTANTS.nutGateCap, CONSTANTS.nutGate[0] + CONSTANTS.nutGate[1] * (N - 3));
 }
 
-/** linear interpolation of a cell's rho over fractional N in [1,5] */
+/**
+ * Linear interpolation of a cell's rho over fractional N, clamped to the span the data covers.
+ * The span is read from the array itself rather than hard-coded, because v2 measures N = 1..7
+ * (V2-PLAN §2.2) while a v1 model carries N = 1..5 — and a policy that silently indexed past the
+ * end of a five-long array would produce NaN rather than a clamp.
+ */
 export function rhoAt(rho, N) {
-  const x = Math.min(5, Math.max(1, N));
-  const i = Math.min(3, Math.floor(x) - 1);
+  const hi = rho.length;
+  const x = Math.min(hi, Math.max(1, N));
+  const i = Math.min(hi - 2, Math.floor(x) - 1);
   const f = x - (i + 1);
   return rho[i] + (rho[i + 1] - rho[i]) * f;
 }

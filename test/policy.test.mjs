@@ -32,10 +32,14 @@ test('N_eff reproduces the published table', () => {
   assert.ok(near(n('UTG', 'rfi', 0.25), 1.78, 0.01));
   assert.ok(near(n('UTG', 'rfi', 0.90), 4.09, 0.01));
   assert.ok(near(n('CO', 'limps', 0.90, 3), 5.92, 0.01));
-  // clamped for equity interpolation, and flagged as extrapolated
+  // v2 measures the equity curve out to seven opponents (V2-PLAN §2.2), so the published 5.92 iso
+  // case is now read where it actually sits instead of being clamped down to 5.00
   const iso = P.nEff({ pos: 'CO', node: 'limps', v: 0.90, limpers: 3 });
-  assert.equal(iso.N, 5);
-  assert.ok(iso.extrapolated);
+  assert.ok(near(iso.N, 5.92, 0.01), 'the 5.92 iso spot is no longer clamped');
+  assert.ok(!iso.extrapolated, 'and no longer flagged as extrapolated');
+  // the clamp and the badge are not gone, they moved: the loosest iso spot still exceeds the data
+  const wide = P.nEff({ pos: 'HJ', node: 'limps', v: 0.90, limpers: 4 });
+  assert.ok(wide.raw > 7 && wide.N === 7 && wide.extrapolated, 'above N=7 the badge still fires');
 });
 
 test('target widths reproduce the published table', () => {

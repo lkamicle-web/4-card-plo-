@@ -193,6 +193,19 @@ source brief asks for: dual-keyed *per cell*, the brief's own finer four-field k
 600 buckets, and its quoted figure of 344 is a global count of that key, not a per-cell one.
 The data ships day one; the expand-in-place UI that consumes it is a post-v1 feature.
 
+Each sub-bucket carries its **own** `mplay` and its own `cooler`, computed from its own hands'
+features rather than borrowed from its cell (V2-PLAN §2.4). This matters because a cell's `mplay`
+is a combo-weighted mean over hands that are not alike: `DBL_CONNECTOR × SS` holds three-flush and
+single-suited hands together, and its buckets' `mplay` values differ by more than the rounding a
+shipped verdict is quoted to. Because every `mplay` factor is raised to a combo *share*, and a
+cell's share is the combo-weighted mean of its sub-buckets' shares, the cell value is exactly the
+combo-weighted **geometric** mean of its buckets' — invariant **I17** asserts that reconstruction
+(worst observed 0.00066 against a 0.002 rounding tolerance). `cooler` is a conditional rate whose
+exact reconstruction weight is combos × P(set or better), which the file does not carry, so I17
+asserts the weaker claim that holds for *any* weighting: the cell's rate lies inside its buckets'
+range, within measurement error (worst observed 0.0130 of 0.04, at a cell holding one bucket where
+the bracket collapses to a straight re-measurement).
+
 ---
 
 ## 3. What is measured
@@ -200,15 +213,28 @@ The data ships day one; the expand-in-place UI that consumes it is a post-v1 fea
 Per cell, the hero hand is **sampled fresh from the cell every trial**, so the measurement
 converges to the cell mean — which is exactly what a cell displays.
 
-- `eq[N]`, N = 1..5 — Monte Carlo equity (%) versus **N random opponents**, split pots counted
-  fractionally.
+- `eq[N]`, N = 1..7 — Monte Carlo equity (%) versus **N random opponents**, split pots counted
+  fractionally. One deal deals seven villains and yields every prefix, so N = 6 and 7 cost extra
+  showdown evaluations, not extra deals.
 - `rho[N] = eq[N] · (N+1) / 100` — equity as a ratio of fair share. ρ = 1.00 is breakeven at any
   N, which is what makes the multiway decay comparable across N. Precomputed and shipped; ρ, not
   raw equity, is what the inspector curve plots.
+- `cooler` — P(hero loses the pot | hero reached a set or better at showdown). §3.2.
+- `vDelta` — the villain-VPIP equity lattice, as deltas from the random-villain baseline. §3.3.
 - `eqVs3bet = { AA, KK, QQ, BWR }` — heads-up equity against a hand drawn from each face-up
   component range (§7). Shipped split into four components; the browser blends them.
 - Per-cell features from enumeration: `danglers` (mean 0–2), `nutSuited` (share), `dom` (mean
   count of distinct hero ranks in {A, K, Q}), `adjMean` (§8), `mplay` (§5).
+
+**Why the field runs to seven.** `N_eff` at the isolation node reaches 5.92 opponents (CO over
+three limpers at VPIP 90) and 7.40 at the loosest setting the page allows (HJ over four limpers at
+VPIP 90). Before v2 the equity curve stopped at five and everything above it was clamped down to
+five and labelled `EXTRAPOLATED`. Measuring to seven removes the clamp everywhere the page can
+actually go except that last case, where the badge still fires and still means what it says. The
+unclamping was checked against invariant **I22** before it was allowed in, not assumed harmless:
+of the 1,386 (node, position, VPIP) settings I22 sweeps, 15 have a raw `N_eff` above 5 — HJ over
+two limpers from VPIP 77 to 90, and CO over two limpers at 90 — and all 15 paint exactly the tiers
+they painted when they were clamped.
 
 ### 3.1 ν — nut scalability, the second number
 
@@ -235,6 +261,120 @@ The model constant `nuBar` = **0.42** is the reference point ν is compared agai
 The generator also emits the actual combo-weighted pool mean of ν as a separate field; the two
 are not the same number and are not meant to be — `nuBar` is a fixed model constant so that the
 scoring surface does not shift under you when the data is regenerated.
+
+**ν stays a [1,5] slope, deliberately, now that ρ runs to 7.** The obvious tidy-up — redefine
+`nuSlope` as `(rho[7] − rho[1]) / 6` — was measured and rejected. It moves the slope by up to
+0.0262, which the `nuNorm` scale of 0.27 turns into **0.10 of ν** on the worst cell
+(`TRIPS_BIG × RB`); ν is the anchor for `nuBar`, the nut gate's floors, `nu3betMin`, `nuOOP` and
+several gate thresholds, every one of which was calibrated against the [1,5] definition. A silent
+0.10 shift in the quantity all of those are pinned to is not a tidy-up. ν is therefore a [1,5]
+slope by calibration history, N = 6 and 7 exist for interpolation, and the day someone wants ν on
+the wider span they will have to re-derive the constants that hang off it in the same commit.
+
+### 3.2 `cooler` — the depth anchor
+
+```
+cooler = P(hero loses the pot outright | hero's best five is a set or better)
+```
+
+Measured on the same S2 and S4 showdowns the equities come from — two counters over hands the
+evaluator has already scored, and **no new randomness at all**, which is what makes it free.
+
+- *A set or better* is the evaluator's category 3 and up: set, straight, flush, full house, quads,
+  straight flush. Two pair does not count; the question is about hands you cannot fold.
+- *Loses* is strictly worse than the best of **three** opponents — a four-handed pot, the modal
+  loose-lobby showdown and close to the model's own typical `N_eff`. A chop is not a loss.
+- Emitted per cell and per sub-bucket to 3 dp. The reference field size, the category floor and the
+  chop rule all ship as named constants in `constants.cooler`.
+
+This is the measured content of "tens and jacks are the low end of top set", and it is what a
+stack-depth axis has to be anchored on: at 100bb a cooler costs a bet, at 250bb it costs a stack.
+Measured range across the 123 non-empty cells: **0.257** (`AA_BROADWAY × DS`) to **0.501**
+(`TRIPS_SMALL × RB`), combo-weighted pool mean **0.3953**. Across the 341 sub-buckets: 0.256 to
+0.752 (`TRIPS_SMALL × RB`, the quads bucket — four of a rank in your hand and the fourth is dead,
+so the set you make is the one everybody else can make too).
+
+Two orderings the data confirms:
+
+| Claim | Measured |
+|---|---|
+| coolers fall as the pair rank rises | small pairs **0.4386** → big pairs (J+) **0.3563** → AA rows **0.3184**, combo-weighted |
+| `cooler(SSA) < cooler(SS)` in the same row — your flushes are the nut ones | holds in **18 of 18** rows that have both, by 0.003 to 0.073 |
+
+One thing the ladder claim cannot be stated more finely than that: the 29-row cascade splits pairs
+at J (`rowOf`: `big = p >= 11`), and the sub-bucket key's `highCardQuality` counts cards of rank T
+or better, so **TT, JJ, QQ and KK are not separable in either key**. The plan's TT > JJ > QQ > KK
+ladder is measurable here only as the three-step small → big → AA ladder above. Separating the
+pair ranks would mean new rows, not a new measurement.
+
+### 3.3 The villain-VPIP equity lattice
+
+`eq[N]` versus **opponents who fold their worst hands**, at v ∈ {25, 40, 55, 70, 90}, shipped as
+1-dp deltas from the random-villain baseline (`vDelta`, one row per v, one column per N).
+
+**The ordering problem, and why it is not the model's own score.** "A villain plays the top v%"
+needs an ordering of all 270,725 hands. Ordering them by this model's score `S` would make the
+model an input to its own measurement — the filtered-villain equities would then be a mirror, and
+every conclusion drawn from them circular. The ordering is therefore frozen to **eq1: equity
+against one random opponent**, which is a fact about the deck and not about this model, and which
+nothing in the scoring layer touches.
+
+eq1 is measured once, on **suit-isomorphism classes** rather than on hands. Renaming suits cannot
+change a hand's equity against a random opponent, so the 270,725 hands collapse into **16,432**
+classes (16.48× fewer), one representative each, at 60,000 shared deals — 27,370 deals per class,
+SE 0.30 pt. Two payoffs beyond the speed: two hands that differ only by suit names can never be
+ordered apart by sampling noise, and the range boundary is suit-symmetric by construction. The
+combo-weighted mean of the measured eq1 is **49.83** against the 50.00 that symmetry demands.
+
+The pools take **whole classes**, so the cut lands on a class boundary and the realised fraction
+misses its target by at most one class — measured, all five land within 0.005% of target. The eq1
+value at each cut: 53.55 at v=25, 50.90 at 40, 48.72 at 55, 46.50 at 70, 42.24 at 90.
+
+**`villainDiscipline` q = 0.85.** Each villain is drawn from the filtered pool with probability q
+and from the whole deck with probability 1 − q. Even a 25-VPIP lobby reg turns up with junk, and a
+hard percentile cliff at the range boundary is a fiction. q is **opinion**, not measurement; it
+ships in `constants.villainLattice.discipline` and this paragraph is the whole of its
+justification.
+
+Villains are dealt **before** the board, which is the physical order and the one that keeps the
+joint law uniform over valid (villains, board) tuples; dealing the board first would silently
+up-weight the boards that block the range. When a pool is so blocked by the cards already dealt
+that no member of it survives 4,000 rejections, the trial deals a random hand instead and the
+generator counts it: **4,179 of 430,500,000 villain draws (0.0010%)** in the shipped run.
+
+**Conservation does not apply here.** Gates I4 and I5 assert that equities over a *uniform* field
+sum to fair share. A filtered field is not uniform and its equities do not: the combo-weighted mean
+delta is negative at every lattice point (−1.36 pt at v=25, −0.67 at v=90), because a hero drawn
+from the whole deck faces opponents drawn from better than the whole deck. Those gates are scoped
+to the random-villain measurements and must stay that way. The scope is written into the code, at
+the V1/I5 and V2/V3/I4 blocks in `scripts/verify.mjs`, so it cannot be lost to a refactor that
+"generalises" the conservation check over whatever equity arrays it can find. And the exemption is
+an assertion rather than an excuse: **I25 asserts that the combo-weighted mean delta is negative at
+every lattice point**, which is the same fact stated positively — the filtered field is measurably
+not uniform, so conservation is not the property to test it against.
+
+**What the measurement says.** The headline is not that weak hands lose equity against a tight
+range — it is that *rank overlap*, not strength, decides who loses:
+
+| At v = 25, versus random | delta at N=1 | at N=3 |
+|---|---|---|
+| `BROADWAY_RUN × RB` | **−25.8** | −20.6 |
+| `RUN0_HIGH × DS` | −19.0 | −14.4 |
+| `ACE_JUNK × RB` | −7.2 | −2.4 |
+| `TRASH × RB` | −1.0 | **+2.7** |
+| `RUN0_LOW × DS` | +8.7 | **+9.6** |
+| `RUN0_LOW × SSA` | +11.2 | +12.5 |
+
+A tight pool is broadway- and pair-heavy, so broadway hands are the ones playing into domination —
+they lose a quarter of their heads-up equity. Low rundowns share no ranks with that pool and *gain*
+nine to twelve points multiway. Trash, which shares nothing with anything, is roughly flat and
+gains slightly multiway. This is §7's domination lesson turning up in the multiway measurement, and
+it is the most useful number v2 adds.
+
+At v = 90 the pool is the deck minus its worst tenth, and it is close to random but not equal to
+it: mean |delta| **0.81 pt**, worst cell **3.6 pt** (`BROADWAY_RUN × RB` again — even the bottom
+tenth of the deck contains the hands it most wants to be up against). Any gate asserting "v=90 ≈
+random" has to be written to that measured 3.6, not to a hopeful half-point.
 
 ---
 
@@ -578,22 +718,49 @@ Within a stage, trial index *t* uses the **same board and villain stream across 
 *ranking* noise is far below absolute noise, and ranking is what the matrix actually displays. Two
 cells 0.3 points apart are ordered reliably even though each carries ±0.16 of absolute error.
 
+**Stream discipline across the v1/v2 boundary.** Invariant I22 requires v2 to paint v1's tiers
+exactly, which requires every v1 equity to reproduce bit for bit, which requires every v1 stream to
+consume exactly the draws it consumed in v1 — in the same order, leaving the same stream position.
+So the new measurements never interleave into an old stream:
+
+| New measurement | Where its randomness comes from |
+|---|---|
+| villains 6 and 7 | a second stream, `stream6\|<stage>`, continuing the same partial Fisher-Yates into deck positions 25–32 after the v1 stream has finished with positions 0–24. The v1 draws cannot see it, and the first 25 positions are never revisited. |
+| `cooler` | nothing. It is two counters over showdowns the kernel has already evaluated. |
+| the eq1 ordering | its own stage and its own stream, `eq1\|<block>`, split into a fixed 30 blocks so that `--workers` cannot move a number. |
+| the villain lattice | `villain\|latt\|<v>`, reseeded per trial so that rejection sampling — whose draw count depends on hero's cards — cannot make one cell's stream drift out of step with another's. Hero is drawn from the *cell* stage's stream, so the shipped delta is a paired comparison, hand for hand. |
+
+Verified, not assumed: the regenerated file reproduces the committed v1 model's `eq[1..5]` on all
+123 cells and all 341 sub-buckets, and its `nu`, `mplay` and `eqVs3bet`, with **zero** differences.
+`test/v2-measure.test.mjs` keeps a frozen copy of the v1 kernel and holds the current one against
+it, so a future edit that perturbs a v1 stream fails with a pointed message rather than as 170,478
+moved tiers.
+
 ### 9.3 Trial budget
 
 | Stage | Work | Trials | Standard error |
 |---|---|---|---|
-| S0 enumerate | classify all 270,725 hands; per-cell lists; combo matrices; empty-cell causes; mosaic geometry | exact | — |
+| S0 enumerate | classify all 270,725 hands; per-cell and per-sub-bucket lists, features, combo matrices; empty-cell causes; mosaic geometry | exact | — |
+| S0b classes | collapse the deck into 16,432 suit-isomorphism classes | exact | — |
 | S1 villain prep | enumerate the four 3-bet component ranges into packed arrays | exact | — |
-| S2 cell equity | 100,000 multiway trials per non-empty cell (hero fresh from cell, 5 villains + board, prefix comparison) | ~14.5M | ±0.16 pt/cell |
-| S3 vs 3-bet | 40,000 heads-up trials per cell per component, villain rejection-sampled by range index against a 52-bit used-mask | ~23.2M | ±0.25 pt |
-| S4 sub-buckets | 40,000 multiway trials per sub-bucket | ~13.8M | ±0.25 pt |
-| S5 derive + emit | ρ, ν, wave delays, `mplay`, `adjMean`, rounding, hashing | — | — |
+| S1b villain ordering | 60,000 shared deals over the 16,432 class representatives → eq1, then the five filtered pools | ~658M showdowns | ±0.30 pt/class |
+| S2 cell equity | 100,000 multiway trials per non-empty cell (hero fresh from cell, 7 villains + board, prefix comparison) + the cooler counters | ~12.3M | ±0.16 pt/cell |
+| S2L villain lattice | 100,000 trials per cell per lattice point, villains from the filtered pool | ~61.5M | ±0.16 pt, paired on hero |
+| S3 vs 3-bet | 40,000 heads-up trials per cell per component, villain rejection-sampled by range index against a 52-bit used-mask | ~19.7M | ±0.25 pt |
+| S4 sub-buckets | 40,000 multiway trials per sub-bucket | ~13.6M | ±0.25 pt |
+| S5 derive + emit | ρ, ν, wave delays, `mplay`, `cooler`, lattice deltas, `adjMean`, rounding, hashing | — | — |
 | S6 verify | all gates, benchmark re-measurement, cross-engine check | ~1.2M | — |
 
-Four workers, items striped `k % W`, results posted as `Float64Array` transferables. Total wall
-clock is roughly 2–3 minutes on a 4-core box with a hard budget of 6 minutes. `--fast` divides
-every trial count by 10 (~25 s), widens verify tolerances, and stamps `meta.fast = true` so a fast
-dataset cannot be shipped into the page by accident.
+Four workers, jobs handed out a chunk at a time so a slow unit cannot starve a worker, results
+posted as `Float64Array` transferables. Measured wall clock for the shipped v2 run on a 4-core box:
+**188 s** — S1b 27 s, S2 12 s, S2L 101 s, S3 5 s, S4 13 s, benchmarks 7 s, verify 22 s. The hard
+budget is still 6 minutes. `--fast` divides every trial count by 10 (~30 s), widens verify
+tolerances, and stamps `meta.fast = true` so a fast dataset cannot be shipped into the page by
+accident.
+
+The lattice is the expensive stage and it is the honest cost of the measurement: five VPIP points
+× 123 cells is five times S2's work, and it is why the villain pools are precomputed once (S1b)
+rather than re-derived per cell.
 
 ### 9.4 Engine gates (run first — they catch evaluator bugs)
 
@@ -703,6 +870,53 @@ the published reference value by more than Monte Carlo error. Those rows are shi
 suppressed, and the Method view renders them. A benchmark table that never disagrees with itself
 is a table nobody is actually running.
 
+### 9.10 Payload budget — what `model.json` costs, and on which basis
+
+The data file is committed, injected verbatim into `index.html`, and therefore paid for twice.
+V2-PLAN §2.5 budgets it at **≤ 220 KB**, and gate **D7** enforces that on the artifact **as
+emitted** — the exact minified byte string `generate-data.mjs` writes to disk, which is also what
+`build.mjs` injects.
+
+| | minified, as emitted | `JSON.stringify(m, null, 1)` |
+|---|---|---|
+| v1 | 105.1 KB (107,667 B) | 161.7 KB |
+| **v2, shipped** (5 lattice rows) | **142.8 KB (146,209 B)** | **241.7 KB** |
+| v2, 3 lattice rows (not shipped) | 134.6 KB (137,854 B) | 221.0 KB |
+
+The v2 row moved by 38 bytes between the measurement pass and the gate pass, and the reason is
+worth knowing before anyone hunts it: `model.gates` is part of the file, so adding three gates
+(I24, I25, D7) added three key/value pairs to it. V2-PLAN §2.5's table records the pre-gate
+reading, 146,171 B. The payload is the same.
+
+**Why the minified basis, stated plainly.** The plan's sentence budgets 220 KB against
+"`model.json` is 105 KB today", and that 105 KB is the *minified* v1 file — v1 pretty-prints to
+161.7 KB. Two numbers in one sentence have to be on the same basis. And read literally as a
+pretty-printed ceiling, the rule is unsatisfiable by its own escape hatch: §2.5's stated fallback
+of dropping the villain lattice to three v-points still pretty-prints to 221.0 KB. A rule its own
+remedy cannot meet is the wrong reading of the rule. The pretty-printed figure is not hidden — it
+is printed in the detail lines of both D6 and D7 on every run, and it is 241.6 KB.
+
+Inside that ceiling, **D6** carries the budget that actually bites: cells ≤ 65 KB (measured
+62.2), sub ≤ 72 KB (69.5), meta + tables ≤ 13 KB (10.6), total ≤ 150 KB (142.7) — 4–5 % headroom
+on the two large blocks, the same margin v1 ran at (38.6 / 40 KB and 58.4 / 60 KB). Those budgets
+are sized to catch a payload that creeps, not to leave room for one, and the meta budget was
+*tightened* from 14 KB because the new measurement constants cost under a kilobyte between them.
+D7 is the published contract and is deliberately slack against D6: if D7 ever fires, D6 fired a
+long time earlier.
+
+One honesty note on the numbers those gates print. At generate time the model has not yet had
+`gates` and `meta.hash` stamped into it, so the size measured inside the generator run is ~0.6 KB
+short of the file that lands on disk; re-running `node scripts/verify.mjs` over the written file
+reports the true 146,209 B. Both readings sit far inside the ceiling, and D7's unit test asserts
+the equality that makes the basis honest — `Buffer.byteLength(JSON.stringify(model))` is exactly
+the size of `data/model.json` on disk.
+
+**What this budget does not cover.** `index.html` is **already 419.1 KB against its own 400 KB
+build gate** before v2 adds anything, and the model is injected into it verbatim; with the v2
+payload the page measures 457.7 KB. That is a `build.mjs` problem, not a `model.json` problem —
+shipping two fewer lattice rows would have saved ~8 KB of a ~58 KB overage — and it is called out
+as such in V2-PLAN §2.5.
+
 ---
 
 ## 10. Known limitations
@@ -796,8 +1010,12 @@ already in the data · the frame-budget harness above, if anything ever needs to
 
 ## 11. Invariants
 
-Twenty-one model invariants, asserted by `scripts/verify.mjs` over v ∈ {25, 40, 55, 70, 90} × 6
-positions × 4 nodes — 34 gates in total with the D and V families and the benchmark gate. **Any
+Twenty-four model invariants, asserted by `scripts/verify.mjs` over v ∈ {25, 40, 55, 70, 90} × 6
+positions × 4 nodes — I22, the regression gate, sweeps every integer v from 25 to 90 instead, and
+I24/I25 assert the shape of the v2 build-time measurements over the emitted data itself — **38
+gates in total** with the D and V families and the benchmark gate. The numbering has two holes:
+I23 (depth direction) and I26 (straddle direction) are reserved by V2-PLAN §3.4 for work that does
+not exist yet, and an unwritten gate is left unwritten rather than stubbed green. **Any
 violation fails the build** and nothing is emitted. The gate results are stamped into
 `model.gates` and rendered by the Method view, so the page shows the gates *this* dataset passed.
 
@@ -819,11 +1037,27 @@ violation fails the build** and nothing is emitted. The gate results are stamped
 | I14 | **The inversion exists.** In ρ it holds exactly for the named pair: `AA_DANGLER×RB` 1.250 > 1.130 at N = 1, and 1.164 < 1.476 at N = 5. In *score* the named pair does not invert at UTG — N_eff is already 1.78 at v = 0.25, past the crossing — so the gate asserts the cell's score rank instead: `AA_DANGLER×RB` falls from rank 45 to rank 72 across the slider, passed by 27 cells (e.g. `BROADWAY_RUN×RB`). The measured figures are stamped into `meta.inversion`. If this fails, the slider does nothing and the product has no reason to exist. |
 | I15 | vs 3-bet at the default mix, both statements unconditional at all six seats: `BROADWAY_RUN×RB` never continues (eqMix 32.2%, under the 36% floor); `RUN0_LOW×DS` always continues (eqMix 41.8%, ν 0.43 against the 0.42 out-of-position floor). Earlier drafts scoped the second to in-position seats and attributed the fold in the first to the domination gate; neither qualifier survives, and the gate asserts the plain statements the docs make. |
 | I16 | Continuity: between adjacent integer VPIP steps, at most 3% of total combos **or** at most 5 of 145 cells change tier. (The combo clause alone is below the taxonomy's own granularity — the largest single cell is 8.1% of all combos — so one cell flipping can exceed 3% without anything discontinuous happening.) Three deliberate discontinuities are excluded and named: raise/HJ @ 45, raise/CO @ 54, raise/BTN @ 70, where N_eff crosses 3.0 and the nut gate and the vs-Raise call floor switch on together. |
-| I17 | Dual-key partition: Σ sub-bucket combos = cell combos for all 145 cells; Σ cells = 270,725. |
+| I17 | Dual-key partition: Σ sub-bucket combos = cell combos for all 145 cells; Σ cells = 270,725. Extended to the fields the sub layer carries in its own right (§2.4): the combo-weighted **geometric** mean of the buckets' `mplay` rebuilds the cell's exactly, to a 3-dp rounding tolerance of 0.002 (worst measured 0.00066, `DBL_CONNECTOR×SS`); and every cell's `cooler` lies inside its buckets' range, widened by 0.04 for the sampling error between a 100k-trial cell and its 40k-trial buckets (worst measured 0.0130 at `BIGPAIR_ACE×DS`, one of the 45 cells holding a single bucket, where the bracket collapses to a straight re-measurement). The `cooler` half is a bracket rather than a reconstruction because the exact weight is combos × P(set or better), which the file deliberately does not carry. |
 | I18 | Geometry: the quantized mosaic column widths sum to exactly 530 px and each is within 1 px of exact proportionality. |
 | I19 | **T2 is empty at v = 25** for every (position, node ∈ {RFI, vs-Limps, vs-Raise}) — the exploit-tier definition holds by construction. |
 | I20 | Cross-engine agreement: `eval5.mjs` and the independently written `equity-ref.mjs` agree within ±0.6 pt on ten benchmark hands. |
 | I21 | **The painted range widens as the table loosens.** `aggrCombos / 270,725` — not `targetWidth` — is wider at VPIP 90 than at VPIP 25 at all 15 (node, position) pairs: rfi UTG 14.1→16.6, HJ 16.5→21.4, CO 24.2→30.8, BTN 40.9→51.3, SB 28.3→36.4; limps HJ 16.9→27.0, CO 23.9→36.9, BTN 39.1→48.5, SB 27.9→44.8, BB 27.9→45.9; raise HJ 6.6→12.4, CO 6.1→11.2, BTN 6.1→12.4, SB 6.1→11.3, BB 6.2→10.0. Asserted as endpoints plus a bounded local dip, **not** pointwise: pointwise is unsatisfiable for the granularity reason I16 documents — one cell crossing the percentile cut is a visible step. The dip allowance is 4.0 points, half the largest single cell (8.1%); the worst measured drawdown is 3.2 points at rfi/BTN, v = 0.73. This gate exists because nothing tested the painted number before, which is how the range could collapse to half its width at the iso nodes without any gate firing. |
+
+| I22 | **v1 reproduction.** At the v1 operating point — 100 bb deep, rake 0, straddle off, random villains, two limpers, a CO raiser, the default 3-bet mix — the pipeline paints the tiers v1 painted, exactly: all 123 non-empty cells at all 1,386 (node, position, integer VPIP ∈ [25, 90]) settings, 170,478 tiers, compared character for character against `data/tiers-v1.fixture.txt` (27 KB, delta-encoded down the VPIP axis because adjacent steps differ by 0.78 cells on average — the same fact I16 asserts). Both halves of each decision are frozen, the action tier *and* the MIX overlay sitting on it, so a change that swaps a CALL for a MIX-over-CALL is caught rather than shrugged at. On failure the gate reports how many settings and how many cell tiers moved, and names the first four. The gate costs ~0.3 s of pure policy math and no Monte Carlo, which is what makes it affordable to keep forever. **Scoped to full-precision data:** on a `--fast` dataset the tier half is explicitly *not asserted* and says so in its own detail line, because 10k-trial equities are a different measurement — 7.4% of tiers move on noise alone, which is not the policy drift this gate exists to catch. What it still asserts on `--fast` data is the structural half: the cell set and the (node, position, VPIP) domain are unchanged. |
+| I24 | **The cooler rate has the shape it measured.** `cooler` is P(the hand loses the pot outright **given** it reached showdown with a set or better), at three opponents, chops not counted as losses (§3.2). Asserted: the three-step *band* ladder, combo-weighted — AA 0.3184 < big pairs 0.3563 < small pairs 0.4386, each step ≥ 0.03; `cooler(SSA) ≤ cooler(SS) + 0.01` in all 18 rows carrying both columns (18/18 hold strictly today, and the gate says so, but the three thinnest margins are 0.003–0.009 against a difference SE of ~0.004, so a strict gate would be a coin flip on `RUN1_BOTTOM` at the next regeneration); `DBLPAIR_SMALL×RB` (2233r) in the top 8 of 123 cells and `AA_BIGPAIR×DS` in the bottom 8 — measured ranks 5 and 4, pinned as rank bounds so the anchors survive a shift of the whole table; every value in [0, 1] and inside the measured envelope (cells 0.257–0.501, sub-buckets 0.256–0.752), which is a guard against a changed *definition* rather than against noise; and `constants.coolerBarMeasured` rebuilding from the shipped cells to 0.00006 of a 0.002 rounding tolerance. **What it does not assert, deliberately:** V2-PLAN §2.1's five-step pair ladder TT > JJ > QQ > KK > AA is not expressible in this taxonomy (`rowOf` splits pairs at J; the sub-bucket key counts T-or-better), and the ladder is not even monotone per *row* inside a band — `AA_SMALLPAIR` 0.3453 sits above `BIGPAIR_CONN` 0.3216. Separating the pair ranks is new rows, not a new measurement. |
+| I25 | **The villain-VPIP lattice has the shape it measured, not the shape that was predicted.** §2.3 wrote three expected shapes before the measurement; two survived and one did not, and the gate is written to the data (§3.3). Asserted: at v = 90 the filtered pool converges on the random baseline without equalling it — mean absolute delta 0.81 pt over 123 cells × 7 N and worst cell 3.6 pt, pinned at ≤ 1.2 and ≤ 5.0, so a "v = 90 ≈ random" tolerance under ~4 pt would have failed; mean absolute delta falling monotonically along the lattice (4.19 / 3.10 / 2.40 / 1.76 / 0.81 pt at v = 25 / 40 / 55 / 70 / 90); at v = 25 the six worst cells at N = 1, 3 and 5 all lying in rows {`BROADWAY_RUN`, `RUN0_HIGH`} with `BROADWAY_RUN×RB` ≤ −15 at N=1 and `RUN0_HIGH×DS` ≤ −8 at N=3 — *rank overlap*, not weakness; the six best all lying in {`RUN0_LOW`, `RUN1_TOPMID`, `RUN1_BOTTOM`}, every `RUN0_LOW` cell gaining at every N, and `RUN0_LOW×SSA` ≥ +5 at N=1 and N=3; and the combo-weighted mean delta negative at every lattice point, which is the positive form of the I4/I5 scope decision. **What it does not assert, deliberately:** §2.3's prediction that junk loses most. It is false — `TRASH×RB` *gains* multiway (+2.7 at N=3) — and the gate reports that measurement in its detail line instead of asserting the prediction. |
+| D7 | **The payload ceiling** (a data gate, listed here with its siblings). `model.json` as emitted — the exact minified byte string written to disk — against V2-PLAN §2.5's 220 KB budget: measured **146,209 B = 142.8 KB, 35% headroom**. The ceiling is read on the minified basis because the plan states it in the same sentence as "`model.json` is 105 KB today", which is the minified v1 file, and because the literal pretty-printed reading is unsatisfiable by the plan's own escape hatch (§9.10). The pretty-printed figure, 241.7 KB, is printed in the gate's detail line and recorded, not asserted. D6 carries the tighter per-block budgets that actually catch a creeping payload; D7 is the published contract and is deliberately slack against it. |
+
+
+I22 is the gate that lets v2 be built at all. The depth axis, the rake slider, the straddle
+toggle and the VPIP-filtered villains all enter the scoring layer as multipliers or deltas that
+are *the identity* at the operating point above; I22 is the only thing standing between "the new
+knob is inert at its default" and "we think it probably is". So the discipline around its
+expectation matters as much as the assertion: **nothing in the build writes the fixture.**
+`scripts/freeze-tiers.mjs` is the sole writer, it refuses to overwrite without `--force`, and
+`--force` prints every tier that is about to move before it moves it. A gate that regenerates its
+own expectation asserts nothing, and the fixture carries a content digest so that hand-editing it
+into agreement fails loudly instead of quietly.
 
 I20 is the one worth dwelling on. `equity-ref.mjs` is a second equity engine written separately
 from the production one, kept in the repo purely to disagree with it. Two independent

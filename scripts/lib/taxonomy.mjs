@@ -390,6 +390,10 @@ export function enumerateAll() {
   const subs = Array.from({ length: NC }, () => new Map());
   const subList = [];                    // [{ cell, key, combos }] in discovery order
   const subOf = new Int32Array(TOTAL);
+  // the same M_play feature accumulators as the cell layer, per sub-bucket, so a sub-bucket can
+  // carry its OWN combo-weighted M_play instead of borrowing its cell's (V2-PLAN §2.4). Grown as
+  // buckets are discovered; the cell-level arrays above are sized up front because NC is known.
+  const sDang = [], sNut = [], sMono = [], sTri = [], sHi9 = [], sQuads = [];
 
   const h = [0, 0, 0, 0];
   let n = 0;
@@ -441,11 +445,19 @@ export function enumerateAll() {
             rec = { combos: 0, ex: [], si: subList.length };
             sm.set(sk, rec);
             subList.push({ cell: ci, key: sk, combos: 0 });
+            sDang.push(0); sNut.push(0); sMono.push(0); sTri.push(0); sHi9.push(0); sQuads.push(0);
           }
           rec.combos++;
           subList[rec.si].combos++;
           subOf[n - 1] = rec.si;
           if (rec.ex.length < 2) rec.ex.push(pk);
+          const si = rec.si;
+          sDang[si] += dg;
+          if (ns) sNut[si]++;
+          if (pat === '4') sMono[si]++;
+          if (pat === '31') sTri[si]++;
+          if (rs[0] <= 9) sHi9[si]++;
+          if (Object.values(mm).some((x) => x === 4)) sQuads[si]++;
         }
       }
     }
@@ -472,6 +484,11 @@ export function enumerateAll() {
     feat: {
       danglers: accDang, nut: accNut, dom: accDom, adj: accAdj,
       mono: accMono, tri: accTri, hi9: accHi9, quads: accQuads,
+    },
+    subFeat: {
+      danglers: Float64Array.from(sDang), nut: Float64Array.from(sNut),
+      mono: Float64Array.from(sMono), tri: Float64Array.from(sTri),
+      hi9: Float64Array.from(sHi9), quads: Float64Array.from(sQuads),
     },
     exByAdj,
   };

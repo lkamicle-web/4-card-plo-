@@ -85,6 +85,15 @@ pin the measured numbers into the gate):
 New per-cell field `cooler` (float, 3 dp), per-sub-bucket likewise. Invariant **I24** asserts the
 orderings above.
 
+> **Measured (phase 1).** Full numbers in METHODOLOGY §3.2. Range 0.257 (`AA_BROADWAY × DS`) to
+> 0.501 (`TRIPS_SMALL × RB`) across cells, 0.256 to 0.752 across sub-buckets, pool mean 0.3953.
+> `cooler(SSA) < cooler(SS)` holds in **18 of 18** rows that have both. `DBLPAIR_SMALL × RB` (the
+> 2233r cell) is 0.454, fifth from the top; `AA_BIGPAIR × DS` is 0.276, fourth from the bottom.
+> **One anchor above is not expressible in this taxonomy**: `rowOf` splits pairs at J and the
+> sub-bucket key's `highCardQuality` counts T-or-better, so TT, JJ, QQ and KK share rows and
+> buckets. I24 can assert the three-step ladder small pairs 0.4386 → big pairs 0.3563 → AA rows
+> 0.3184, not a five-step one. Separating the pair ranks is new rows, not a new measurement.
+
 ### 2.2 N = 6, 7 equity
 
 Extend `eq[]` / `rho[]` to N = 7. One deal with seven villains still yields all N via villain
@@ -125,6 +134,21 @@ Expected shape (write these as gate directions after first measurement, invarian
 - Conservation invariants I4/I5 apply **only** to random-villain measurements; document that the
   filtered pool is not zero-sum-uniform and exclude it from those gates explicitly.
 
+> **Measured (phase 1).** Full numbers in METHODOLOGY §3.3. Two of the three shape predictions
+> above survived measurement and one did not — I25 must be written to the measurement, not to this
+> list.
+> - **v=90 is close to random but not equal to it**: mean |delta| 0.81 pt, worst cell 3.6 pt
+>   (`BROADWAY_RUN × RB`). A tolerance under ~4 pt fails.
+> - **Low rundowns gain, and gain most**: `RUN0_LOW × DS` +8.7 at N=1 and +9.6 at N=3,
+>   `RUN0_LOW × SSA` +11.2 / +12.5. Confirmed, and it is the headline number.
+> - **Junk does NOT lose the most.** `TRASH × RB` is −1.0 at N=1 and *+2.7* at N=3;
+>   `SMPAIR_JUNK × SS` is −0.3 / +2.7. The biggest losers are broadway hands —
+>   `BROADWAY_RUN × RB` −25.8 / −20.6, `RUN0_HIGH × DS` −19.0 / −14.4 — because a tight pool is
+>   broadway-heavy and what a tight pool punishes is *rank overlap*, not weakness. `ACE_JUNK × RB`
+>   (−7.2 / −2.4) is the only junk row that loses much, and it loses it to the aces in the pool.
+> - I4/I5 remain scoped to the random-villain measurements. The filtered field is not uniform: the
+>   combo-weighted mean delta is −1.36 pt at v=25 and −0.67 at v=90.
+
 ### 2.4 Per-sub-bucket `mplay`
 
 The sub layer ships `eq`, `nu`, `combos` but borrows its cell's `mplay`. Emit the real
@@ -139,6 +163,48 @@ reconstruct the cell value within rounding).
 +1/sub-bucket), villain lattice (5 v-points × 7 N × 123 cells as 1-dp deltas), sub `mplay`.
 Budget: **≤ 220 KB** pretty-printed, measured by a new D-gate so it cannot creep silently. If the
 lattice blows the budget, drop to v ∈ {25, 55, 90} and say so here.
+
+> **Measured (phase 1), and the decision: all five v-points ship.**
+>
+> | | minified (as emitted) | `JSON.stringify(m, null, 1)` |
+> |---|---|---|
+> | v1, committed | 105.1 KB (107,667 B) | 161.7 KB |
+> | v2, 5 lattice rows | **142.7 KB (146,171 B)** | 241.6 KB |
+> | v2, 3 lattice rows | 134.6 KB (137,854 B) | 221.0 KB |
+>
+> The ceiling above is read against the file **as emitted**, where 142.7 KB sits comfortably inside
+> 220 KB. Two reasons, in order:
+> 1. The 220 KB is stated against "`model.json` is 105 KB today", and that 105 KB is the minified
+>    file — v1 pretty-prints to 161.7 KB. The two numbers in the same sentence have to be on the
+>    same basis.
+> 2. Read literally as a pretty-printed ceiling, **this section's own remedy does not satisfy it**:
+>    dropping to three v-points still pretty-prints to 221.0 KB. A rule its own escape hatch cannot
+>    meet is the wrong reading of the rule.
+>
+> Dropping to three points also costs real accuracy, which is the argument that would matter if the
+> budget were close. Reconstructing the measured v=40 row by interpolating {25, 55} misses by up to
+> **1.80 pt** (p95 0.80, sd 0.39); v=70 from {55, 90} misses by up to 1.01 (p95 0.43). Against a
+> shipped precision of 0.1 pt and a measurement SE of 0.16, that is not rounding — the delta curve
+> is genuinely convex in v between 25 and 55, which is exactly the interval a loose-lobby tool
+> cares about.
+>
+> Component sizes: cells 62.2 KB, sub 69.5 KB, meta+tables 10.6 KB. Gate D6's sub-budgets are
+> raised to 65 / 72 / 13 / 150 KB with the reasoning stated at the gate.
+>
+> **The D-gate this section asks for is now written: D7**, and it reads the 220 KB against the
+> file *as emitted* (146,209 B = 142.8 KB, 35% headroom — the table above reads 146,171 B because
+> it was measured before three more gate names were stamped into `model.gates`, which is 38 bytes
+> of the same payload) for the two reasons above. The pretty-printed figure is printed in D7's and
+> D6's detail lines on every run — 241.7 KB — and is
+> recorded rather than asserted, precisely so that the reading this section settled on cannot be
+> mistaken for the pretty-printed one going unmeasured. D6 keeps the tighter per-block budgets that
+> catch a creeping payload; D7 is this section's contract and is deliberately slack against D6.
+> Full write-up: METHODOLOGY §9.10.
+>
+> One thing this budget does not cover, and should: the model is injected verbatim into
+> `index.html`, which is **already 419.1 KB against its own 400 KB build gate** before v2 adds
+> anything. With the 5-row model the page would be ~456.6 KB (~448.5 KB with 3 rows). Phase 3 has
+> to deal with that; shipping two fewer lattice rows would not have saved it.
 
 ---
 
@@ -210,10 +276,11 @@ which wins and why).
 |---|---|
 | I22 | **v1 reproduction**: at d=100, rake 0, straddle off, random villains — tier-identical to v1 output for all (node, pos, v). First gate written, never removed. |
 | I23 | Depth direction: the §3.1 anchor set, plus painted-width bounded drift across d. |
-| I24 | Cooler sanity: pair-ladder ordering, SSA < SS same row, range [0,1], AA_BIGPAIR×DS near-bottom. |
-| I25 | Villain filter: v=90 ≈ random within tol; junk loses most at v=25; rundown-DS cells lose least/gain; I4/I5 scoped to random-villain data only. |
+| I24 | **Written (phase 1), to the measurement.** Cooler sanity: the three-step *band* ladder AA 0.3184 < big pairs 0.3563 < small pairs 0.4386 (≥ 0.03 per step) — the five-step pair ladder §2.1 asked for is not expressible in this taxonomy, and the ladder is not monotone per row inside a band either; `cooler(SSA) ≤ cooler(SS) + 0.01` in all 18 rows carrying both (18/18 strict today, tolerance because the thinnest margins are ~1 SE); range [0,1] plus the measured envelope; `DBLPAIR_SMALL×RB` in the top 8 and `AA_BIGPAIR×DS` in the bottom 8 of 123 cells (measured ranks 5 and 4); `coolerBarMeasured` rebuilds from the shipped cells. |
+| I25 | **Written (phase 1), to the measurement — and one bullet of §2.3 is *not* asserted, because it is false.** v=90 converges without equalling random (mean abs delta ≤ 1.2, worst cell ≤ 5.0; measured 0.81 / 3.6), and mean abs delta falls monotonically along the lattice; at v=25 the six worst cells at N=1/3/5 all lie in {`BROADWAY_RUN`, `RUN0_HIGH`} — *rank overlap*, not weakness — and the six best all lie in {`RUN0_LOW`, `RUN1_TOPMID`, `RUN1_BOTTOM`}, every `RUN0_LOW` cell gaining at every N; combo-weighted mean delta negative at every lattice point, which is the I4/I5 scope decision stated positively. The "junk loses most" bullet is reported in the gate's detail line (`TRASH×RB` +2.7 at N=3, a gain) and asserted nowhere. |
 | I26 | Straddle direction per §3.3. |
 | I16/I21 analogues | Continuity and painted-width gates re-run across the d slider endpoints and the straddle toggle. |
+| D7 | **Written (phase 1).** §2.5's payload ceiling, on `model.json` as emitted: 146,209 B = 142.8 KB of 220 KB. Not an invariant, listed here because it was commissioned with I24/I25. |
 
 ---
 
@@ -295,6 +362,15 @@ without touching anything shipped in phases 1–3.
    straddler get an iso node? (Lean: yes and no respectively, but measure the field first.)
 3. `villainDiscipline q` default (0.85 proposed) and whether it is user-editable like the 3-bet
    mix (lean: yes, it's the same kind of pool knob).
+   **Resolved (phase 1) for the generator half only:** q = 0.85 as proposed, shipped as
+   `constants.villainLattice.discipline` and labelled opinion in METHODOLOGY §3.3. Whether the page
+   exposes it is still open, and is a phase-3/4 question — an off-lattice q is exactly the state
+   the Simulate button (§4) exists for.
 4. Villain lattice density if the 220 KB budget bites: {25,55,90} + interpolation vs 5 points.
+   **Resolved (phase 1): all five ship.** The budget does not bite on the emitted file (142.8 KB of
+   220 KB), the three-point fallback would not have satisfied the literal pretty-printed reading
+   either (221.0 KB), and interpolating v=40 out of {25,55} misses the measured row by up to
+   1.80 pt. Full working in §2.5 above; the ceiling is now enforced on that basis by gate **D7**,
+   which reports both readings on every run.
 5. Whether the drill mode should quiz depth spots in v2 or stay VPIP-only (lean: stay, revisit
    in v2.1).

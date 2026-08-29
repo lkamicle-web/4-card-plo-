@@ -167,7 +167,7 @@ Node ≥ 22, **zero npm dependencies** anywhere in the repo — stdlib only (`no
 
 ```bash
 node scripts/generate-data.mjs          # enumerate, measure, derive, emit data/model.json
-node scripts/verify.mjs                 # 34 gates: D1-D6, V1-V6, B, invariants I1-I21
+node scripts/verify.mjs                 # 38 gates: D1-D7, V1-V6, B, invariants I1-I22, I24, I25
 node scripts/build.mjs                  # inject the model into index.html
 node --test test/                       # evaluator, taxonomy and policy unit tests
 node smoke.mjs                          # headless browser gate (Playwright, if installed)
@@ -193,7 +193,7 @@ the build inlines it into the page, so the browser and the data can't disagree a
 
 ```
 index.html              the whole product — data, policy, UI, offline
-data/model.json         committed generator output (105 KB, diffable, reviewable)
+data/model.json         committed generator output (143 KB, diffable, reviewable)
 scripts/
   generate-data.mjs     the pipeline
   verify.mjs            gates and invariants

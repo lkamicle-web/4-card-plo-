@@ -5,18 +5,27 @@
 //
 // Stages
 //   S0 enumerate    classify all 270,725 hands; cells, sub-buckets, features, examples, geometry
+//   S0b classes     collapse the deck into suit-isomorphism classes (the villain ordering's domain)
 //   S1 villain prep enumerate the four face-up 3-bet component ranges
-//   S2 cell equity  per non-empty cell: multi-N trials (one deal -> equity vs N = 1..5)
+//   S1b villain ord eq1 per class over shared deals -> the frozen top-v% pools (V2-PLAN §2.3)
+//   S2 cell equity  per non-empty cell: multi-N trials (one deal -> equity vs N = 1..7) + cooler
+//   S2L lattice     the same, against VPIP-filtered villains at five lattice points
 //   S3 vs-3-bet     per cell x component: heads-up trials vs a rejection-sampled villain
-//   S4 sub-buckets  the depth layer, same kernel as S2
-//   S5 derive+emit  rho, nu, mplay, adjMean, waveD, benchmarks, MODEL assembly
-//   S6 verify       gates D1-D6, V1-V6, benchmarks, I1-I20, size budgets; stamps MODEL.gates
+//   S4 sub-buckets  the depth layer, same kernel as S2 (its own mplay and cooler, V2-PLAN §2.4)
+//   S5 derive+emit  rho, nu, mplay, cooler, lattice deltas, adjMean, waveD, benchmarks, assembly
+//   S6 verify       38 gates: D1-D7, V1-V6, benchmarks, I1-I22 + I24/I25 (the v2 measurement
+//                   shapes), size budgets and the §2.5 payload ceiling; stamps MODEL.gates
 //
 // Zero npm dependencies. All randomness is seeded and runs are reproducible, but there is no
 // global seed knob: every Monte Carlo stream is keyed by its own stage and cell name (see
 // mc.mjs, fnv1a(`hero|${stage}|${key}`)), which is what makes a single cell re-measurable in
 // isolation. meta.seed below is a fixed build label recording that scheme, not an input — a
 // --seed flag used to be accepted here and changed nothing but the label and the hash.
+//
+// v2 stream discipline: every v1 stream consumes exactly the draws it consumed in v1, so every v1
+// number reproduces bit for bit and gate I22 stays green. The new measurements draw from their own
+// seeded streams (`stream6|…` for villains 6-7, `eq1|…`, `villain|latt|…`), never by interleaving
+// into an existing one. The cooler rate adds no randomness at all.
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -29,9 +38,20 @@ import {
 } from './lib/taxonomy.mjs';
 import { handStr, parseHand } from './lib/eval5.mjs';
 import { buildComponentRanges, COMPONENTS } from './lib/villains.mjs';
-import { startPool, stopPool, runJobs, equityFixed, equityVsFixed } from './lib/mc.mjs';
+import {
+  startPool, stopPool, runJobs, equityFixed, equityVsFixed,
+  NMAX, COOLER_MIN_CAT, COOLER_REF_N, VILLAIN_DISCIPLINE,
+} from './lib/mc.mjs';
+import { buildSuitClasses, buildRanges } from './lib/villain-range.mjs';
 import { CONSTANTS } from './lib/policy.mjs';
 import { verifyModel, formatReport } from './verify.mjs';
+
+/** the VPIP lattice the filtered-villain equities are measured at (V2-PLAN §2.3) */
+const LATTICE_V = [25, 40, 55, 70, 90];
+/** how many of those five actually ship, if the size budget bites (V2-PLAN §2.5) */
+const LATTICE_SHIP = [25, 40, 55, 70, 90];
+/** the eq1 measurement is split into a fixed number of blocks so --workers never moves a number */
+const EQ1_BLOCKS = 30;
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -47,8 +67,8 @@ const OUT = resolve(ROOT, arg('out', 'data/model.json'));
 const SEED = 'rundown-v1';   // build label, not an input — see the header note on stream seeding
 
 const TRIALS = FAST
-  ? { cell: 10000, vs3bet: 4000, sub: 4000 }
-  : { cell: 100000, vs3bet: 40000, sub: 40000 };
+  ? { cell: 10000, vs3bet: 4000, sub: 4000, latt: 10000, eq1Deals: 6000 }
+  : { cell: 100000, vs3bet: 40000, sub: 40000, latt: 100000, eq1Deals: 60000 };
 
 const t0 = Date.now();
 const stamp = () => ((Date.now() - t0) / 1000).toFixed(1).padStart(6) + 's';
@@ -67,45 +87,109 @@ log(`S0 done — ${NC} cells (${nonEmpty.length} non-empty, ${NC - nonEmpty.leng
     `${E.subList.length} sub-buckets`);
 
 // ---------------------------------------------------------------------------
+// S0b — suit-isomorphism classes (the domain the villain ordering is measured on)
+// ---------------------------------------------------------------------------
+log('S0b suit-isomorphism classes ...');
+const cls = buildSuitClasses(E.byCell);
+log(`S0b done — ${cls.n} classes (${(E.total / cls.n).toFixed(2)}x collapse), largest ${Math.max(...cls.size)} combos`);
+
+// ---------------------------------------------------------------------------
 // S1 — villain component ranges
 // ---------------------------------------------------------------------------
 log('S1 villain prep ...');
 const ranges = buildComponentRanges();
 log('S1 done — ' + COMPONENTS.map((c) => `${c} ${ranges[c].length}`).join(' · '));
 
-// ---------------------------------------------------------------------------
-// worker pool (shared by S2/S3/S4)
-// ---------------------------------------------------------------------------
-const pool = await startPool({
-  workers: WORKERS,
-  pools: { cell: E.byCell, sub: E.bySub },
-  starts: { cell: E.cellStart, sub: E.subStart },
-  ranges,
-});
-
-function progress(tag, trialsPer) {
+function progress(tag) {
   let last = 0;
   return (done, total) => {
     const now = Date.now();
     if (done !== total && now - last < 1500) return;
     last = now;
-    const rate = Math.round((done * trialsPer) / ((now - t0) / 1000 || 1));
     process.stdout.write(`\r${stamp()} ${tag} ${done}/${total} units`.padEnd(46) + `\r`);
     if (done === total) process.stdout.write('\n');
   };
 }
 
 // ---------------------------------------------------------------------------
+// S1b — the frozen villain ordering (V2-PLAN §2.3)
+//
+// "A villain plays the top v%" needs an ordering. Using the model's own score S would make the
+// model an input to its own measurement, so the ordering is eq1 — equity against ONE random
+// opponent — measured here over every suit-isomorphism class of the deck and never touched again.
+// Its own worker pool, because the ranges it produces have to reach the workers as workerData.
+// ---------------------------------------------------------------------------
+log(`S1b villain ordering — eq1 over ${cls.n} classes x ${TRIALS.eq1Deals} shared deals ...`);
+const eqPool = await startPool({ workers: WORKERS, pools: {}, starts: {}, reps: cls.reps });
+const eq1Jobs = [];
+for (let b = 0; b < EQ1_BLOCKS; b++) {
+  const per = Math.floor(TRIALS.eq1Deals / EQ1_BLOCKS) + (b < TRIALS.eq1Deals % EQ1_BLOCKS ? 1 : 0);
+  eq1Jobs.push({ id: b, kind: 'eq1', block: b, deals: per });
+}
+const s1bt = Date.now();
+const eq1Parts = await runJobs(eqPool, eq1Jobs, progress('S1b'), 1);
+await stopPool(eqPool);
+const eq1 = new Float64Array(cls.n);
+{
+  const win = new Float64Array(cls.n), cnt = new Float64Array(cls.n);
+  for (const p of eq1Parts) for (let i = 0; i < cls.n; i++) { win[i] += p.win[i]; cnt[i] += p.cnt[i]; }
+  let dealsPer = 0;
+  for (let i = 0; i < cls.n; i++) { eq1[i] = (100 * win[i]) / cnt[i]; dealsPer += cnt[i]; }
+  dealsPer /= cls.n;
+  let num = 0, den = 0;
+  for (let i = 0; i < cls.n; i++) { num += cls.size[i] * eq1[i]; den += cls.size[i]; }
+  log(`S1b done in ${((Date.now() - s1bt) / 1000).toFixed(1)}s — ${Math.round(dealsPer)} deals/class ` +
+      `(SE ${(50 / Math.sqrt(dealsPer)).toFixed(2)} pt), combo-weighted mean eq1 ${(num / den).toFixed(3)} (must be 50)`);
+}
+const LAT = buildRanges(eq1, cls, E.byCell, LATTICE_V);
+log('S1b pools — ' + LATTICE_V.map((v) => `v${v} ${LAT.ranges[v].length} (${(LAT.realized[v] * 100).toFixed(2)}%, cut eq1 ${LAT.cutEq[v].toFixed(2)})`).join(' · '));
+
+// ---------------------------------------------------------------------------
+// worker pool (shared by S2/S2L/S3/S4)
+// ---------------------------------------------------------------------------
+const pool = await startPool({
+  workers: WORKERS,
+  pools: { cell: E.byCell, sub: E.bySub },
+  starts: { cell: E.cellStart, sub: E.subStart },
+  ranges,
+  filtered: LAT.ranges,
+});
+
+// ---------------------------------------------------------------------------
 // S2 — cell equity
 // ---------------------------------------------------------------------------
-log(`S2 cell equity — ${nonEmpty.length} cells x ${TRIALS.cell} multi-trials ...`);
+log(`S2 cell equity — ${nonEmpty.length} cells x ${TRIALS.cell} multi-trials (N=1..${NMAX}) ...`);
 const s2Jobs = nonEmpty.map((unit, id) => ({
   id, pool: 'cell', unit, kind: 'multi', stage: 'cell', key: E.cellKeys[unit], trials: TRIALS.cell,
 }));
 const s2t = Date.now();
-const s2 = await runJobs(pool, s2Jobs, progress('S2', TRIALS.cell));
+const s2 = await runJobs(pool, s2Jobs, progress('S2'));
 log(`S2 done in ${((Date.now() - s2t) / 1000).toFixed(1)}s ` +
     `(${Math.round((nonEmpty.length * TRIALS.cell) / ((Date.now() - s2t) / 1000)).toLocaleString()} multi-trials/s)`);
+
+// ---------------------------------------------------------------------------
+// S2L — the villain-VPIP equity lattice
+// ---------------------------------------------------------------------------
+log(`S2L villain lattice — ${nonEmpty.length} cells x ${LATTICE_V.length} VPIP points x ${TRIALS.latt} trials ...`);
+const s2lJobs = [];
+for (let i = 0; i < nonEmpty.length; i++) {
+  for (let vi = 0; vi < LATTICE_V.length; vi++) {
+    s2lJobs.push({
+      id: s2lJobs.length, pool: 'cell', unit: nonEmpty[i], kind: 'latt', stage: 'latt',
+      key: E.cellKeys[nonEmpty[i]], v: LATTICE_V[vi], q: VILLAIN_DISCIPLINE, trials: TRIALS.latt,
+    });
+  }
+}
+const s2lt = Date.now();
+const s2l = await runJobs(pool, s2lJobs, progress('S2L'));
+{
+  let fb = 0;
+  for (const r of s2l) fb += r.fallbacks;
+  const draws = s2lJobs.length * TRIALS.latt * NMAX;
+  log(`S2L done in ${((Date.now() - s2lt) / 1000).toFixed(1)}s — ` +
+      `${fb} of ${draws.toLocaleString()} villain draws (${(100 * fb / draws).toFixed(4)}%) fell back to a ` +
+      `random hand because the filtered pool was fully blocked`);
+}
 
 // ---------------------------------------------------------------------------
 // S3 — vs the face-up 3-bet components
@@ -121,7 +205,7 @@ for (const unit of nonEmpty) {
   }
 }
 const s3t = Date.now();
-const s3 = await runJobs(pool, s3Jobs, progress('S3', TRIALS.vs3bet));
+const s3 = await runJobs(pool, s3Jobs, progress('S3'));
 log(`S3 done in ${((Date.now() - s3t) / 1000).toFixed(1)}s ` +
     `(${Math.round((s3Jobs.length * TRIALS.vs3bet) / ((Date.now() - s3t) / 1000)).toLocaleString()} HU trials/s)`);
 
@@ -133,7 +217,7 @@ const s4Jobs = E.subList.map((s, id) => ({
   id, pool: 'sub', unit: id, kind: 'multi', stage: 'sub', key: `${E.cellKeys[s.cell]}#${s.key}`, trials: TRIALS.sub,
 }));
 const s4t = Date.now();
-const s4 = await runJobs(pool, s4Jobs, progress('S4', TRIALS.sub));
+const s4 = await runJobs(pool, s4Jobs, progress('S4'));
 log(`S4 done in ${((Date.now() - s4t) / 1000).toFixed(1)}s`);
 
 await stopPool(pool);
@@ -191,59 +275,88 @@ const NOTABLE = {
   'SMPAIR_JUNK|SS': 'the biggest leak in the pool',
 };
 
+/**
+ * M_play from combo-weighted feature means; each boolean factor is raised to its share of the unit.
+ * The row-level factors (trips, ace-blocked) are properties of the 29-row cascade, so a sub-bucket
+ * inherits them from its cell's row. Because every factor is a power of a share, and a cell's share
+ * is the combo-weighted mean of its sub-buckets' shares, the cell's M_play is exactly the
+ * combo-weighted GEOMETRIC mean of its sub-buckets' — which is what gate I17 now asserts.
+ */
+function mplayOf(row, share) {
+  const M = CONSTANTS.mplay;
+  let m = Math.pow(M.dangler, share.dangMean);
+  if (row === 'TRIPS_BIG' || row === 'TRIPS_SMALL') m *= M.trips;
+  m *= Math.pow(M.quads, share.quad);
+  if (row === 'A_BLOCKED') m *= M.aBlocked;
+  m *= Math.pow(M.noCardAbove9, share.hi9);
+  m *= Math.pow(M.monotone, share.mono);
+  m *= Math.pow(M.threeFlush, share.tri);
+  m *= Math.pow(M.nutSuited, share.nut);
+  return m;
+}
+
+/** P(hero loses the pot outright | hero reached a set or better) — V2-PLAN §2.1 */
+const coolerOf = (r) => (r.coolDen ? r.coolNum / r.coolDen : 0);
+
 const cells = {};
-let nuBarNum = 0, nuBarDen = 0;
+let nuBarNum = 0, nuBarDen = 0, coolBarNum = 0;
 const cellNu = {};
 const cellRho = {};
 
 nonEmpty.forEach((unit, i) => {
   const key = E.cellKeys[unit];
   const combos = E.combos[unit];
-  const eq = s2[i];
+  const eq = s2[i].eq;
   const rho = eq.map((e, k) => (e * (k + 2)) / 100);
+  // nu stays a [1,5] slope by calibration history — every nu-anchored constant in the model was
+  // fitted against it, and redefining it onto the new [1,7] span would move all of them silently.
+  // N = 6, 7 exist for interpolation (V2-PLAN §2.2).
   const nuSlope = (rho[4] - rho[0]) / 4;
   const nu = Math.min(1, Math.max(0, (nuSlope + CONSTANTS.nuNorm[0]) / CONSTANTS.nuNorm[1]));
+  const cooler = coolerOf(s2[i]);
   cellNu[key] = nu;
   cellRho[key] = rho;
   nuBarNum += combos * nu;
   nuBarDen += combos;
+  coolBarNum += combos * cooler;
 
   const f = E.feat;
   const dangMean = f.danglers[unit] / combos;
-  const nutShare = f.nut[unit] / combos;
-  const monoShare = f.mono[unit] / combos;
-  const triShare = f.tri[unit] / combos;
-  const hi9Share = f.hi9[unit] / combos;
-  const quadShare = f.quads[unit] / combos;
   const row = key.split('|')[0];
-
-  // M_play from combo-weighted cell means; each boolean factor is raised to its cell share
-  const M = CONSTANTS.mplay;
-  let mplay = Math.pow(M.dangler, dangMean);
-  if (row === 'TRIPS_BIG' || row === 'TRIPS_SMALL') mplay *= M.trips;
-  mplay *= Math.pow(M.quads, quadShare);
-  if (row === 'A_BLOCKED') mplay *= M.aBlocked;
-  mplay *= Math.pow(M.noCardAbove9, hi9Share);
-  mplay *= Math.pow(M.monotone, monoShare);
-  mplay *= Math.pow(M.threeFlush, triShare);
-  mplay *= Math.pow(M.nutSuited, nutShare);
+  const mplay = mplayOf(row, {
+    dangMean,
+    nut: f.nut[unit] / combos,
+    mono: f.mono[unit] / combos,
+    tri: f.tri[unit] / combos,
+    hi9: f.hi9[unit] / combos,
+    quad: f.quads[unit] / combos,
+  });
 
   const ex = spanExamples(E.exByAdj[unit], 6).map((pk) => handStr(unpackHand(pk).sort((a, b) => b - a)));
   const v3 = {};
   COMPONENTS.forEach((c, k) => { v3[c] = r1(s3[i * 4 + k]); });
+
+  // the villain lattice, shipped as 1-dp DELTAS from this cell's random-villain baseline. Deltas
+  // are taken against the unrounded baseline, so they never carry the baseline's rounding error.
+  const vDelta = LATTICE_SHIP.map((v) => {
+    const j = i * LATTICE_V.length + LATTICE_V.indexOf(v);
+    return s2l[j].eq.map((x, k) => r1(x - eq[k]));
+  });
 
   cells[key] = {
     combos,
     oneIn: Math.round(TOTAL / combos),
     eq: eq.map(r1),
     nu: r2(nu),
+    cooler: r3(cooler),
     danglers: r2(dangMean),
-    nutSuited: r3(nutShare),
+    nutSuited: r3(f.nut[unit] / combos),
     dom: r2(f.dom[unit] / combos),
     mplay: r3(mplay),
     adjMean: r2(f.adj[unit] / combos),
     waveD: Math.round((1 - nu) * 90),
     eqVs3bet: v3,
+    vDelta,
     ex,
   };
   if (NOTABLE[key]) cells[key].notable = NOTABLE[key];
@@ -256,23 +369,37 @@ for (let i = 0; i < NC; i++) {
 }
 
 const nuBarMeasured = nuBarNum / nuBarDen;
+const coolerBarMeasured = coolBarNum / nuBarDen;
 log(`S5 pool mean nu (combo-weighted, measured) = ${nuBarMeasured.toFixed(4)} · model constant nuBar = ${CONSTANTS.nuBar}`);
+log(`S5 pool mean cooler (combo-weighted, measured) = ${coolerBarMeasured.toFixed(4)}`);
 
-// --- sub-buckets
+// --- sub-buckets. Each carries its OWN combo-weighted mplay and its own cooler rather than
+// borrowing its cell's, so a sub-bucket verdict is not diluted by its row-mates (V2-PLAN §2.4).
 const sub = {};
 E.subList.forEach((s, i) => {
   const ck = E.cellKeys[s.cell];
-  const eq = s4[i];
+  const eq = s4[i].eq;
   const rho = eq.map((e, k) => (e * (k + 2)) / 100);
   const nuSlope = (rho[4] - rho[0]) / 4;
   const nu = Math.min(1, Math.max(0, (nuSlope + CONSTANTS.nuNorm[0]) / CONSTANTS.nuNorm[1]));
   const rec = E.subs[s.cell].get(s.key);
+  const sf = E.subFeat;
+  const mplay = mplayOf(ck.split('|')[0], {
+    dangMean: sf.danglers[i] / s.combos,
+    nut: sf.nut[i] / s.combos,
+    mono: sf.mono[i] / s.combos,
+    tri: sf.tri[i] / s.combos,
+    hi9: sf.hi9[i] / s.combos,
+    quad: sf.quads[i] / s.combos,
+  });
   (sub[ck] ||= []).push({
     key: s.key,
     label: subLabel(s.key),
     combos: s.combos,
     eq: eq.map(r1),
     nu: r2(nu),
+    mplay: r3(mplay),
+    cooler: r3(coolerOf(s4[i])),
     ex: rec.ex.map((pk) => handStr(unpackHand(pk).sort((a, b) => b - a))),
   });
 });
@@ -340,13 +467,18 @@ const MODEL = {
     version: '1.0.0',
     generated: new Date().toISOString().slice(0, 10),
     seed: SEED,
-    trials: { cell: TRIALS.cell, vs3bet: TRIALS.vs3bet, sub: TRIALS.sub },
+    trials: {
+      cell: TRIALS.cell, vs3bet: TRIALS.vs3bet, sub: TRIALS.sub,
+      latt: TRIALS.latt, eq1Deals: TRIALS.eq1Deals,
+    },
     se: {
       cell: r2(50 / Math.sqrt(TRIALS.cell)),
       vs3bet: r2(50 / Math.sqrt(TRIALS.vs3bet)),
       sub: r2(50 / Math.sqrt(TRIALS.sub)),
+      latt: r2(50 / Math.sqrt(TRIALS.latt)),
     },
     comboTotal: TOTAL,
+    nMax: NMAX,
     vpip: { min: 25, max: 90, default: 55, ref: 25 },
     hash: '',
     fast: FAST,
@@ -369,7 +501,38 @@ const MODEL = {
   }),
   cells,
   sub,
-  constants: { ...CONSTANTS, nuBarMeasured: r4(nuBarMeasured), mosaicTotal: MOSAIC_TOTAL },
+  constants: {
+    ...CONSTANTS,
+    nuBarMeasured: r4(nuBarMeasured),
+    mosaicTotal: MOSAIC_TOTAL,
+    // --- v2 measurement constants. These are properties of the MEASUREMENT, not of the scoring
+    // opinion above them, but they live in the same object because the Method view renders this
+    // object and nothing else: a constant the page cannot show is a constant nobody can audit.
+    nMax: NMAX,
+    coolerBarMeasured: r4(coolerBarMeasured),
+    cooler: {
+      // "a strong made hand at showdown" = eval5 category >= 3, i.e. a set or better
+      minCategory: COOLER_MIN_CAT,
+      minCategoryLabel: 'set or better (set, straight, flush, full house, quads, straight flush)',
+      // the field size the loss is judged at: three opponents, a four-handed pot
+      refN: COOLER_REF_N,
+      chopIsNotALoss: true,
+    },
+    villainLattice: {
+      v: LATTICE_SHIP,
+      measuredAt: LATTICE_V,
+      // the ordering is frozen to eq1 — equity vs one random opponent — never the model's score S
+      orderBy: 'eq1',
+      orderDomain: 'suit-isomorphism classes',
+      classes: cls.n,
+      eq1Deals: TRIALS.eq1Deals,
+      // each villain plays a range hand with probability q, a random hand with probability 1 - q
+      discipline: VILLAIN_DISCIPLINE,
+      shipsAs: 'eq deltas from the random-villain baseline, 1 dp, one row per v, one column per N',
+      realized: Object.fromEntries(LATTICE_SHIP.map((v) => [v, r4(LAT.realized[v])])),
+      cutEq1: Object.fromEntries(LATTICE_SHIP.map((v) => [v, r2(LAT.cutEq[v])])),
+    },
+  },
   benchmarks,
   gates: {},
 };
@@ -388,7 +551,9 @@ writeFileSync(OUT, json);
 
 console.log(formatReport(report));
 const bytes = Buffer.byteLength(json);
-log(`wrote ${OUT} — ${(bytes / 1024).toFixed(1)} KB minified (budget 120 KB)`);
+log(`wrote ${OUT} — ${(bytes / 1024).toFixed(1)} KB minified, ` +
+    `${(Buffer.byteLength(JSON.stringify(MODEL, null, 1)) / 1024).toFixed(1)} KB pretty-printed ` +
+    `(gate D6 holds the minified budget; V2-PLAN §2.5 quotes the pretty-printed one)`);
 log(`sha256 ${MODEL.meta.hash}`);
 log(`total wall clock ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
