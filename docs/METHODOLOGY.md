@@ -19,7 +19,7 @@ Two rules govern this document:
 This is **not** a GTO solver and does not approximate one. PLO preflop solutions are not
 publicly solved to equilibrium at 6-max with realistic stacks. What this tool ships is a
 **transparent heuristic model**: for each starting hand we measure, by Monte Carlo, its equity
-against *N* random opponents for N = 1..5, derive two numbers (raw strength, and how well the
+against *N* random opponents for N = 1..7, derive two numbers (raw strength, and how well the
 hand *scales* into multiway pots), combine them with a documented scoring formula, and cut the
 result at percentile thresholds that vary with position, action and table looseness. Every
 constant in the formula is listed in the README and every one is a judgement call. The model's
@@ -31,7 +31,7 @@ The split matters and is worth restating in operational terms:
 | Layer | Status | How to attack it |
 |---|---|---|
 | 5-card evaluator, Omaha 2-of-4 rule, RNG | Objective, gated by exact combinatorial counts | Run `node --test test/`; V5 asserts the nine exact C(52,5) category counts |
-| Equity measurement (`eq[1..5]`, `eqVs3bet`) | Objective up to Monte Carlo error (±0.16 pt/cell) | Re-run with a different seed; cross-check against `equity-ref.mjs` |
+| Equity measurement (`eq[1..7]`, `vDelta`, `eqVs3bet`) | Objective up to Monte Carlo error (±0.16 pt/cell) | Re-run with a different seed; cross-check against `equity-ref.mjs`; or press **Simulate** and let the page re-measure it in front of you (§9.12) |
 | ν, `M_nut`, `M_play`, `R(p)`, tier widths, gates | **Opinion**, informed by measurement | Edit `constants`, regenerate, watch the matrix move |
 
 ---
@@ -334,7 +334,17 @@ value at each cut: 53.55 at v=25, 50.90 at 40, 48.72 at 55, 46.50 at 70, 42.24 a
 and from the whole deck with probability 1 − q. Even a 25-VPIP lobby reg turns up with junk, and a
 hard percentile cliff at the range boundary is a fiction. q is **opinion**, not measurement; it
 ships in `constants.villainLattice.discipline` and this paragraph is the whole of its
-justification.
+justification. **The page exposes it as an editor**, on the same reasoning as the 3-bet mix — it is
+a pool knob and a reader should be able to argue with it — but unlike the mix it cannot be blended
+exactly, because the lattice was measured at one value of it. Any `q ≠ 0.85` is off the measured
+data entirely: the page shows the random-villain baseline, says there is no shipped answer, and
+offers the Simulate button (§9.12), which measures that setting for real.
+
+**The ordering itself ships.** Because the button re-cuts the pool at VPIPs the generator never
+measured, the eq1 permutation of the 16,432 classes is emitted into `model.json` rather than
+re-derived in the browser — a second eq1 run would order classes near the cut differently, and the
+page would then be measuring a different pool from the one this lattice was measured against. Gate
+**D8** pins it; §9.12 has the format, the index space and the regeneration proof.
 
 Villains are dealt **before** the board, which is the physical order and the one that keeps the
 joint law uniform over valid (villains, board) tuples; dealing the board first would silently
@@ -1005,7 +1015,8 @@ grading.
 
 **Every surface that shows this carries the word `estimate`**, and its tooltip says why: *ranked
 by an interpolation, not a measurement; the ranking is reliable, the magnitudes are approximate.*
-No Monte Carlo runs in the browser (§10.9).
+No Monte Carlo runs for this number: the browser's one Monte Carlo (§9.12) re-measures cell and
+sub-bucket equity against a filtered field, and does not touch the within-cell adjustment.
 
 ---
 
@@ -1199,16 +1210,27 @@ emitted** — the exact minified byte string `generate-data.mjs` writes to disk,
 | | minified, as emitted | `JSON.stringify(m, null, 1)` |
 |---|---|---|
 | v1 | 105.1 KB (107,667 B) | 161.7 KB |
-| **v2, shipped** (5 lattice rows) | **143.1 KB (146,551 B)** | **242.2 KB** |
+| v2 at the end of phase 3 (5 lattice rows) | 143.1 KB (146,551 B) | 242.2 KB |
+| **v2, shipped** (+ the frozen villain ordering) | **183.5 KB (187,859 B)** | **282.5 KB** |
 | v2, 3 lattice rows (not shipped) | 134.6 KB (137,854 B) | 221.0 KB |
 
-The v2 row has moved three times since the measurement pass, and none of the moves is payload.
+The phase-3 row moved three times after the measurement pass, and none of those moves is payload.
 `model.gates` is part of the file, so each new gate adds a key/value pair: **+38 B** for I24/I25/D7
 (phase 1, taking 146,171 → 146,209), **+39 B** for I23/I27/I28 (phase 2A, → 146,248), and in phase
 2B **+52 B** for I26/I29/I30/I31 together with **+251 B for `constants.depth`, `constants.rake` and
 `constants.straddle`**, which `stampConstants` put into the file without a regeneration (§5.1)
 — 146,551 in total. V2-PLAN §2.5's table records the original pre-gate reading, 146,171 B. The
 measured payload — cells, sub-buckets, lattice — is unchanged throughout.
+
+**Phase 4's addition is payload, and it is the largest single item in the file after the sub-bucket
+layer: +40.4 KB for `model.order`,** the frozen eq1 ordering of the 16,432 suit-isomorphism classes,
+15-bit packed into 30,810 bytes and base64'd to 41,080 characters, plus `meta.orderHash` and gate
+D8's key. §9.12 is why it has to ship at all — the Simulate button re-cuts the villain pool at a
+VPIP the generator never measured, and it must cut *the same ordering* the shipped lattice was
+measured against or it is correcting one measurement with a different one. It takes the emitted file
+to **187,859 B = 183.5 KB**. The rest of the file is byte-identical to the phase-3 payload: the
+regeneration that produced it differs from the committed model in exactly five fields, and 145,827
+bytes of JSON are the same on both sides once those five are removed (§9.12).
 
 **Why the minified basis, stated plainly.** The plan's sentence budgets 220 KB against
 "`model.json` is 105 KB today", and that 105 KB is the *minified* v1 file — v1 pretty-prints to
@@ -1219,39 +1241,43 @@ remedy cannot meet is the wrong reading of the rule. The pretty-printed figure i
 is printed in the detail lines of both D6 and D7 on every run, and it is 242.2 KB.
 
 Inside that ceiling, **D6** carries the budget that actually bites: cells ≤ 65 KB (measured
-62.2), sub ≤ 72 KB (69.5), meta + tables ≤ 13 KB (10.8), total ≤ 150 KB (143.1) — 4–5 % headroom
-on the two large blocks, the same margin v1 ran at (38.6 / 40 KB and 58.4 / 60 KB). Those budgets
-are sized to catch a payload that creeps, not to leave room for one, and the meta budget was
-*tightened* from 14 KB because the new measurement constants cost under a kilobyte between them.
-D7 is the published contract and is deliberately slack against D6: if D7 ever fires, D6 fired a
-long time earlier.
+62.2), sub ≤ 72 KB (69.5), meta + tables ≤ 13 KB (10.8), **order ≤ 43 KB (40.3)**, total ≤ 195 KB
+(183.5) — 4–7 % headroom per block, close to the margin v1 ran at (38.6 / 40 KB and 58.4 / 60 KB).
+Those budgets are sized to catch a payload that creeps, not to leave room for one, and the meta
+budget was *tightened* from 14 KB because the new measurement constants cost under a kilobyte
+between them. The `order` sub-budget and the total's raise from 150 KB are phase 4's, stated at the
+gate in the same form as the v2 raise above it: the ordering is a fixed-size object — 16,432 classes
+at 15 bits is 40.1 KB whatever else changes — so a budget that leaves it 7 % is not leaving room for
+creep, it is leaving room for the class count to be recounted. D7 is the published contract and is
+deliberately slack against D6: if D7 ever fires, D6 fired a long time earlier.
 
 One honesty note on the numbers those gates print. At generate time the model has not yet had
 `gates` and `meta.hash` stamped into it, so the size measured inside the generator run is ~0.6 KB
 short of the file that lands on disk; re-running `node scripts/verify.mjs` over the written file
-reports the true 146,551 B. Both readings sit far inside the ceiling, and D7's unit test asserts
+reports the true 187,859 B. Both readings sit far inside the ceiling, and D7's unit test asserts
 the equality that makes the basis honest — `Buffer.byteLength(JSON.stringify(model))` is exactly
 the size of `data/model.json` on disk.
 
 **What this budget does not cover: the page itself.** The model is injected into `index.html`
 verbatim, and that file has its own budget. v1 shipped at 419.1 KB against a 400 KB gate; adding
-the v2 payload alone would have made it ~457.7 KB, and by the end of v2 — with the environment
+the v2 payload alone would have made it ~457.7 KB, and by the end of phase 3 — with the environment
 layer in the policy and the controls, sub-view, hand search and longer tour in the shell — it
 reached 572.8 KB unstripped. That was never a `model.json` problem: shipping two fewer lattice rows would have
 saved ~8 KB of it. It was a page problem, and §9.11 is how it was settled.
 
-### 9.11 The page's own size, and why the shell is not minified
+### 9.11 The page's own size, and the source/artifact split
 
-*(v2 decision, 2026-08-29.)* Measured on the shipped build:
+*(v2 decision, 2026-08-29; revised at the phase-4 end, 2026-08-30.)* Measured on the shipped build:
 
 | | bytes | KB |
 |---|---:|---:|
-| `data` — the injected model | 146,566 | 143.1 |
-| model code — inlined `policy.mjs` + `taxonomy.mjs`, **stripped** | 44,775 | 43.7 |
-| app shell — hand-authored CSS, JS and markup | 337,789 | 329.9 |
-| **total `index.html`** | **529,130** | **516.7** |
+| `data` — the injected model | 187,874 | 183.5 |
+| model code — inlined `policy.mjs` + `taxonomy.mjs`, **stripped** | 47,282 | 46.2 |
+| app shell — CSS, markup and the **minified** app JavaScript | 353,054 | 344.8 |
+| *of which:* the inlined Simulate worker bundle | *19,244* | *18.8* |
+| **total `index.html`** | **588,210** | **574.4** |
 
-Two things were done about it, and one deliberately was not.
+Three things were done about it, and the third reverses a decision this section used to defend.
 
 **Done: the injected module copies are stripped.** `scripts/build.mjs` inlines `policy.mjs` and
 `taxonomy.mjs` into the page so the shipped policy can never drift from the one the generator ran.
@@ -1261,7 +1287,7 @@ Those copies are machine-generated duplicates — the commented originals are ri
 whitespace while preserving every literal, every token-separating newline (so automatic semicolon
 insertion is unchanged) and every identifier name. Nothing is renamed and no expression is
 rewritten: it is the same program with the prose taken out. On this build it takes the two blocks
-from **99.8 KB to 43.7 KB — 56.0 KB, 56%**, which is the single largest size reduction in v2.
+from **107.0 KB to 46.2 KB — 60.8 KB, 57%**.
 
 The stripping is proved rather than trusted. `minify()` re-lexes its own output and compares the
 literal lists, failing the build if they differ; the assembled IIFE is parse-checked; and
@@ -1269,39 +1295,327 @@ literal lists, failing the build if they differ; the assembled IIFE is parse-che
 requires identical exports, identical constants, identical scalar results and an identical
 `POLICY.solve` across a state sweep, against a direct import of the module.
 
-**Not done, on purpose: the app shell is not minified.** `index.html` is simultaneously the
-hand-authored source and the shipped artifact. There is no build step that produces it from
-somewhere else — the markup, the CSS and the render loop are written in that file and read in that
-file. Running the shell through the same stripper would therefore not compress a copy; it would
-permanently delete the source's comments. The obvious escape — split source from artifact, minify
-on the way out — buys the bytes at the cost of the property the project is built on: one file you
-can double-click, read end to end, and check against its own claims. A tool whose argument is
-transparency should not ship a shell nobody can read. So the shell stays readable, and the budget
-moved to meet the measurement instead of the other way round. Minifying behind a source/artifact
-split remains available as a Phase 4 option if the total ever has to come down.
+**Done in phase 4, reversing what this section used to say: the app shell is minified too, behind a
+source/artifact split.** Until phase 4 `index.html` was simultaneously the hand-authored source and
+the shipped artifact, and this section defended leaving it unminified on the grounds that stripping
+it would delete the source's own comments, and that splitting source from artifact to avoid *that*
+"would break the single-file contract this project rests on". **The first half was true; the second
+half was wrong, and the split is what shows it.** The contract is that the thing you download is one
+file you can double-click, read end to end, and check against its own claims. Splitting does not
+touch that: `index.html` is still one self-contained offline file with a provenance banner at the
+top naming the source it came from. What the split gives up is a much smaller property — that the
+file you *edit* and the file you *ship* are the same file — and the readable original is not lost,
+it is committed beside the artifact.
 
-**The budgets, retuned to that reality.** All three were recalibrated at the v2 phase end at the
-measured value plus about 5%, replacing numbers that described a page which no longer exists:
+So:
 
-| gate | v1 | v2 | measured | headroom |
-|---|---:|---:|---:|---:|
-| total `index.html` | 400 KB | **540 KB** | 516.7 | 4.5% |
-| app shell | 245 KB | **345 KB** | 329.9 | 4.6% |
-| inlined model code | *(none)* | **46 KB** | 43.7 | 5.2% |
+- **`src/shell.html`** is now the hand-authored source — 445.9 KB of commented markup, CSS and
+  application JavaScript, `git mv`'d out of `index.html` with the three generated regions emptied to
+  bare markers. It is the file you edit and the file a reader should read.
+- **`index.html` is generated and never hand-edited.** `scripts/build.mjs` walks every inline
+  `<script>` in the source and runs its body through the same `jsmin.mjs` lexer the injected module
+  copies go through, splices in the model, the policy, the classifier and the Simulate worker
+  bundle, and writes the banner. Markup and CSS are shipped **as authored** — minifying those needs
+  an HTML/CSS rewriter with no test suite behind it, over the part of the page a browser is most
+  particular about, which is a much worse trade than the JavaScript path where a tested lexer
+  already existed.
+- The same three safety nets run per `<script>` as run on the module copies: parse as authored,
+  minify, parse again — so a syntax error in the shell is reported against the shell rather than
+  blamed on the minifier, and a lexer slip that changed a literal fails the build.
 
-The measured column is a reading, not a target: it moved 513.7 → 516.7 over the phase-end
-verification pass, which fixed four cross-feature defects in the shell (3.0 KB of code and comment).
-The budgets did not move with it — that is the point of a budget. But 4.5% is thinner than the ~5%
-these were set at, and the next change of this size should retune rather than spend the last of it.
+What that bought, measured as a `--no-minify` control build against the shipped one: the whole page
+**785.0 → 574.4 KB**. The app shell's three inline scripts go 371.0 → 251.1 KB, the machine-assembled
+worker bundle 48.1 → 18.8 KB, and the injected module copies 107.0 → 46.2 KB. Roughly 75 KB of
+markup and CSS is untouched in both.
 
-The model-code gate is new and its number was calibrated from scratch, because it now measures a
-stripped quantity — the old unstripped figures are not on the same basis and were not carried
-forward. Its job is narrower than the other two: it catches a `jsmin` regression or a `policy.mjs`
-that has doubled, not "too much prose". Building with `--no-minify` deliberately blows it, and the
-failure says so.
+**Staleness has teeth, because a generated artifact that can silently drift is worse than no split
+at all.** `node scripts/build.mjs --check` rebuilds the whole page in memory and compares it byte
+for byte with the `index.html` on disk. One mechanism catches every direction of drift — an edited
+shell, a regenerated model, a changed `policy.mjs`/`taxonomy.mjs`/`jsmin.mjs`/`build.mjs`, or a
+hand-edit of the artifact — with no hash bookkeeping to keep in sync. The banner's source hash is
+then read back only to *name* the culprit, because "the shell was edited without a rebuild" is the
+common case and deserves a specific message. The banner carries no timestamp: nothing in the
+artifact may vary between two builds of the same inputs, or the comparison stops working. Two builds
+of the same tree are byte-identical, and a `src/shell.html` that ever carries the banner is refused
+as a copy of the built page rather than compiled from.
 
-The honest claim is no longer "it fits in 400 KB". It is half a megabyte of self-contained page, of
-which 143 KB is measured data and 330 KB is source you are meant to read.
+**The budgets, retuned to that reality — once, at the phase end.** All three sit at the finished
+measurement plus about 5 %, the same rule the phase-3 numbers were set by:
+
+| gate | v1 | phase 3 | **shipped** | measured | headroom |
+|---|---:|---:|---:|---:|---:|
+| total `index.html` | 400 KB | 540 KB | **600 KB** | 574.4 | 4.5 % |
+| app shell | 245 KB | 345 KB | **360 KB** | 344.8 | 4.4 % |
+| inlined model code | *(none)* | 46 KB | **50 KB** | 46.2 | 8.3 % |
+
+The total is *up* despite the shell now being minified, and both halves of that are worth stating:
+the split took the page down to 454.1 KB, and phase 4 then spent it — 40.4 KB of frozen villain
+ordering in the dataset (§9.10), 18.8 KB of inlined worker bundle, and the Simulate surface itself,
+the villain-profile control, the q editor, the progress bar, the badges, a twelfth tour step and the
+honesty copy that goes with all of them. A budget is a tripwire, not an allowance, so it was moved
+deliberately and in one place rather than nudged per change: the interim numbers taken during the
+phase (a provisional 580 KB) are gone, replaced by this reading.
+
+The model-code gate was **raised 46 → 50 KB, out of necessity rather than convenience**: `policy.mjs`
+grew the villain-profile equity accessor — the lattice interpolation, the exactness rule at the
+lattice points, and the strict-identity OFF path that keeps gate I22 checkable (§9.12) — which took
+the measurement to 46.2 KB, over the old gate. The new number is that measurement plus about 8 %,
+the margin it was originally calibrated with. Its number was calibrated from scratch in phase 3
+because it measures a *stripped* quantity; the old unstripped figures are not on the same basis and
+were not carried forward. Its job stays narrower than the other two: it catches a `jsmin` regression
+or a `policy.mjs` that has doubled, not "too much prose". Building with `--no-minify` deliberately
+blows it (107.0 KB against 50), and the failure says so.
+
+The honest claim is no longer "it fits in 400 KB", and it is no longer "the shell is source you read
+in the shipped file" either. It is: **574 KB of self-contained offline page — 183 KB of measured
+data, 46 KB of the model's own source, 345 KB of application — generated from 446 KB of commented
+source that is committed next to it and that `--check` will not let it drift from.**
+
+### 9.12 The Simulate button — the one Monte Carlo that runs in your browser
+
+*(v2 phase 4, 2026-08-30.)* Everything in §§1–8 is measured at build time and read out of
+`model.json`; the browser does arithmetic. **One surface is different, and this section is its
+honesty spec.** With the villain profile on and the table VPIP or the discipline `q` off the
+measured lattice, the page can run the same Monte Carlo the generator ran — same evaluator, same
+kernels, same seeding scheme — on your machine, and replace interpolated numbers with measured ones.
+§10.9 used to say no Monte Carlo runs in the browser. One does now, **and only when you press it**.
+
+**What arms it, and what can never arm it.** The villain profile is a control and its default is
+OFF.
+
+| profile | v | q | what the numbers are | button |
+|---|---|---|---|---|
+| off | anything | anything | the shipped random-villain measurement, **by reference** | no |
+| on | ∈ {25, 40, 55, 70, 90} | 0.85 | the shipped `vDelta` row, **exactly** | no |
+| on | off-lattice | 0.85 | linear blend of the two bracketing rows, badged `interpolated` | yes |
+| on | anything | ≠ 0.85 | there is no shipped answer; the baseline is shown and labelled | yes |
+
+Three details in that table are load-bearing. **OFF is object identity, not equality**:
+`POLICY.villainEq` returns `cell.eq` and `cell.rho` by reference, asserted with `assert.equal`
+rather than `deepEqual`, and gate **I22 — v1's tiers, bit for bit — still passes untouched**. A
+helper that reproduced v1 by adding 0.0 would be one rounding change away from not doing so.
+**A lattice hit returns the shipped row itself**, never `a + (b−a)·f`, which is exact at f = 0 and is
+precisely the expression that stops being exact at f = 1; and the "already measured" branch is
+checked before the "measured in this browser" one, so even a simulation at v = 55 cannot put a badge
+on numbers that are already the measurement. **A custom `q` reports `supported: false`** and shows
+the random-villain baseline rather than interpolating an axis with a single measurement on it — that
+is the state the button exists for.
+
+What may **never** arm it: depth, rake percentage, rake cap, straddle, position, node, limper count,
+raiser seat, the 3-bet mix, colouring. None of them moves an equity (V2-PLAN §1) — they are
+*scoring*, not *measurement*. Asserted twice: a decision-table unit test that feeds eleven extra
+keys and requires the answer not to move, and a browser check that drives each control at a lattice
+VPIP and re-reads the DOM.
+
+**The trial budget and the ±.** The default is **25,000 trials per cell over the 123 non-empty
+cells — 3,075,000 trials**. The ± is `50/√n`, the binomial standard error at p = 0.5 in equity
+points, which is **the same expression the generator writes into `meta.se`**, so a simulated badge
+and a shipped one are on the same basis:
+
+| trials/cell | ± | |
+|---|---|---|
+| 100,000 | **0.158** | the shipped lattice (§9.3) |
+| 25,000 | **0.316** | the Simulate default |
+| 500 | 2.236 | the test hook |
+
+V2-PLAN §4 quotes "±0.35 pt vs the shipped ±0.16". Those two numbers cannot come from one formula —
+0.16 *is* `50/√100000`, and `50/√25000` is 0.32. **The 0.35 is an arithmetic slip and the code is
+written to the measurement**, in the same way I25 and D7 were. Every badge derives from the trial
+count that actually ran, never from a constant: the reduced-trials test hook can make a run cheap,
+and it must not be able to make a badge lie about how much measurement is behind a number.
+
+**The ceiling: 100,000 trials/cell, one step, no compounding.** V2-PLAN §4 offers a
+"`Re-run at 4× trials`" link. Left unbounded that is a ladder — 25k → 100k → 400k → 1.6M, each rung
+minting a new settings hash, a new cache entry and a new book entry, for a quarter of a tenth of a
+point and minutes of compute. It is **one step, and it lands on the ceiling**. `100,000` is 4× the
+default *and* `MODEL.meta.trials.latt`, the shipped dataset's own per-cell trial count, which makes
+it the exact point at which a simulated equity is as precise as the file it is arguing with — ±0.16
+either way. The tooltip says so; a test asserts that claim against the data rather than leaving it
+in prose. At the ceiling the badge chip is disabled and the rail button is hidden.
+
+The clamp lives in the engine's `normalize`, not in the button, and **above** the settings hash. A
+ceiling only the UI honours is not a ceiling — a console call, a stale `?simtrials=` or a second
+consumer would all sail past one — and if every rejected excess minted its own key, an unbounded
+caller would still be an unbounded grower of cache entries, which is the same failure moved one
+layer down. So `settingsHash({trials: 4e9}) === settingsHash({trials: 100000})`, and everything
+reported derives from the clamped count: a run that asked for 400,000 measures 100,000 and **says**
+100,000. Measured cost of the two rungs: 3.4 s at 25k, 13.3 s at 100k (12,300,000 trials).
+
+**Seeding, and what "bit-identical" is a claim about.** The same seeded xorshift128 as §9.2. The
+seed is an FNV-1a hash of `sim|<what>|<stage>|<cell key>|<settings hash>|<slice index>` and
+**nothing else** — not the wall clock, not the worker count, not the order chunks were handed out
+in. Three consequences, all asserted:
+
+- a re-run at the same settings is **bit-identical**;
+- a run interrupted by a tab throttle resumes by re-running **only the cell that was in flight**,
+  with no drift;
+- `workers=1` and `workers=8` produce the same numbers.
+
+**Both execution paths slice the work identically**, at a fixed 5,000-trial slice. The main-thread
+fallback *has* to slice, because it must hand the frame back; if only it sliced, the two paths would
+draw different hands and land on different numbers for identical settings — and the cache is keyed
+by settings alone, so a number measured one way could be served to a session running the other. Both
+estimates would be unbiased and inside the same ±, but "the same settings gave me a different
+answer" is exactly what a tool like this may not do quietly. Measured worst `|delta|` between a
+fallback run and a worker run over 123 cells × 7 field sizes: **0**. The slice size is fixed rather
+than adaptive, because an adaptive one would make the *result* depend on how busy the machine was.
+
+**The frozen ordering, and why 40 KB of permutation ships.** The button cuts a villain pool at a
+VPIP the generator never measured, and it cannot re-derive the cut. The ordering is eq1 (§3.3), a
+Monte Carlo over 16,432 suit-isomorphism classes × 60,000 shared deals; a second run would order
+classes near the cut differently, and the browser would then be simulating a **different pool** from
+the one the shipped lattice was measured against while calling the difference a correction. So the
+permutation itself ships, in `model.order`: 16,432 class ids at 15 bits each (2¹⁴ = 16,384 is 48
+short), 30,810 bytes base64'd to 41,080 characters — **40.1 KB** — plus `meta.orderHash`. An
+arithmetic coder would reach the 25.5 KB information-theoretic floor and save ~14 KB; that is not
+worth an unauditable decoder in this page.
+
+The index space is the load-bearing detail. Numbering classes by first appearance would tie the
+payload to `taxonomy.mjs`'s enumeration order, and the taxonomy is deliberately **not** in the
+worker bundle. The shipped permutation is therefore expressed in an enumeration-independent space —
+**classes sorted by their canonical packed representative, ascending** — so any consumer that can
+enumerate the 270,725 hands in any order arrives at the same numbering.
+
+**Gate D8** asserts four claims, in ascending order of what they catch: the payload decodes to an
+**exact permutation** of 0…n−1 (a duplicate or missing id silently changes the pool at every v, and
+a length check would not see it); its hash matches `meta.orderHash` (catching an order transplanted
+from another model, or a hand-edit that is still a valid permutation); re-deriving the classes from
+the enumeration yields exactly n; and running the generator's own cut rule over the shipped order
+reproduces `constants.villainLattice.realized` at all five lattice points to the 4 dp it ships at —
+those fractions land on class boundaries, so they fingerprint the ordering near every cut. It costs
+19 ms and runs on every verify. `test/order-pack.test.mjs` makes the stronger check the gate cannot:
+the pools themselves, hand for hand, at all five cuts (67,682 / 108,291 / 148,893 / 189,506 /
+243,645 hands, all identical), plus four off-lattice cuts landing within a class of target. **The
+browser cuts the same pool the generator cut, and cuts sensible pools where the generator never
+went.**
+
+**The regeneration reproduces the committed model bit-identically.** Adding a field to the emitted
+file means re-running the generator, which means the file's every measured number is re-drawn — so
+it was diffed rather than trusted. A full 184 s run differs from the pre-change model in exactly
+five fields: the new `order` block, `meta.orderHash`, gate D8's key, `meta.hash` (which moves because
+those did) and `meta.generated`. **With those five removed, 145,827 bytes of JSON on each side,
+byte-identical** — every `eq`, every `vDelta`, every `cooler`, `nu`, `mplay`, `combos`, `eqVs3bet`,
+every benchmark and every constant. Recorded in the phase-4 verification artifact `regen-proof.txt`.
+The one further difference the diff surfaced is key *order* in `model.gates` — the committed file
+listed D7 last, a fresh generation lists it where `verifyModel` emits it — which means the committed
+map had been written by a later `verify.mjs` restamp rather than by a generation. That predates and
+is independent of this change; no value differs.
+
+One cosmetic consequence to know when reading a date off the page: **`meta.generated` reads
+`2026-08-30`**, one day ahead of the local date the rest of this phase is stamped with, because the
+generator stamps `new Date().toISOString()` in UTC and the run crossed midnight UTC. It is a build
+label, not an input to anything, and it is the date the Method view and the build banner quote.
+
+**The settings hash: what a measurement depends on, stated as code.** `SIM.settingsHash({v, q,
+trials})` returns 8 hex characters over `meta.hash`, `meta.orderHash`, `v`, `q`, `trials` and
+`nMax` — **and nothing else, by design**. Depth, rake percentage, rake cap, straddle, the 3-bet mix,
+position, node, limper count, raiser seat and colouring are all **out**, for the same reason they
+cannot arm the button: they are scoring, not measurement. A hash that included them would throw away
+a perfectly good measurement every time someone dragged the depth slider, and would be claiming a
+dependency the model does not have. Asserted by a test that walks eleven of them, and from both
+sides in the browser — driving depth/rake/cap/straddle after a measurement leaves the hash, the
+cache entry and the badge untouched. Numbers are canonicalised, so 55, 55.0 and 55.0000000001 are
+one entry.
+
+**Two stages, and when the second is skipped.** Stage 1 is the 123 cells. Stage 2 is the sub-buckets
+of the expanded cell (§2.4), and it runs **only when the expand UI is open on a custom setting**.
+With nothing expanded there is no stage 2, and the bar says so rather than drawing a second segment
+that silently never fills: *"Stage 2 (sub-bucket equity) skipped — no cell is expanded, so there is
+nothing to split."* The keys stage 2 measures are exactly the shipped `MODEL.sub[cell][*].key`
+values, asserted in a unit test and in the browser.
+
+**Where it runs.** The engine is one flat classic script assembled at build time out of
+`eval5.mjs`, `villain-range.mjs`, `order-pack.mjs` and the marked portable slices of `villains.mjs`
+and `mc.mjs` — V2-PLAN §4's "already dependency-free ES modules" was optimistic; the browser needs
+a separate entry twin and a single flat bundle, which is what the spike settled on. It is built in
+**two halves**, a kernel and an entry, because `self === window` on the main thread and evaluating
+the entry outside a worker would install `window.onmessage`; the worker Blob is kernel + entry and
+the fallback evaluates the kernel alone. Same code, no duplication. `taxonomy.mjs` is not in it,
+asserted by a test that greps for its exports, and the portable slices are marked in the source so
+that an edit dragging a Node dependency into one fails the build instead of producing a worker that
+dies with an empty error message.
+
+Measured in headless Chrome on `file://`: the classic Blob worker **does boot** — 4 workers, ~25 ms
+of in-worker init each — at **901,195 filtered trials/s**, giving a full 25k/cell run in **3.42 s**,
+measured end to end rather than extrapolated. (V2-PLAN §4's mock-up bar says "~18s left"; the real
+thing is five times faster.) A one-off ~150 ms main-thread pass groups all 270,725 hands by cell,
+once per page.
+
+**If the worker does not boot it degrades, and says so.** The fallback is rAF-chunked main-thread
+compute inside a 24 ms frame budget at a 0.35 duty cycle — §10.9's frame-budget harness, built for
+real. It is **much slower, often 10× or more**, and that copy is deliberately not a bounded factor:
+measured here at 12× (15.0 s against 1.27 s at 8,000/cell), but the ratio moves with core count and
+with whatever else the page is doing, so an "N–M×" claim would be a number the page cannot stand
+behind. A harness check now fails any bounded-multiplier claim in the painted line. The fallback
+also **stops while the tab is in the background**, and says that too — with a caveat worth recording
+because it was a real bug: the disclosure cannot live inside the rAF loop, since rAF is exactly what
+a hidden tab suspends. It did, for one round, and the result was a frozen bar with a stale countdown
+instead of the word *paused*. A `visibilitychange` listener registered for the lifetime of the run
+reports it now, and `tick`'s own `document.hidden` guard is kept for a browser that does not suspend
+rAF. The run resumes on unhide with a bit-identical result.
+
+**The cache promises nothing, and neither does this document.** It is best-effort. The backend is
+decided once, at load, by a **real write probe** rather than a `typeof` sniff, because WebKit is
+documented to throw `SecurityError` on the first `localStorage` access from a `file://` page; if the
+probe fails, the engine degrades silently to an in-memory `Map` for the session. Keys are namespaced
+`plo4:<model hash>:<settings hash>`, the cap is ~1.5 MB with LRU eviction, and `QuotaExceededError`
+is handled explicitly (evict, retry once, then live in memory). **Chrome shares one `localStorage`
+area across every `file://` page on the machine**, so the store is treated as hostile: every read is
+validated against a tag, the model hash, the settings hash, the field size, **the settings the
+payload itself declares** (a payload whose `v`, `q` or `trials` disagree with what was asked for is
+dropped — the trial count is what sets the tolerance below, and a validator must not let the thing
+it is judging pick its own yardstick) and the shape of every equity array, and anything that fails
+is discarded rather than shown. A sub-bucket block is held to more than shape: it must name a cell
+this model ships, carry **every** bucket that cell ships and no others, and its combo-weighted mean
+must reconstruct that cell's equity **at every field size N**, not at one of them — the partition
+identity the sub layer exists on top of. The tolerance is `max(1 pt, 8σ)` of the payload's own trial
+count, pinned against measurement rather than assumed: 8 passes of all 123 cells × 7 indices —
+6,888 honest gaps at 900, 25,000 and 100,000 trials/cell and at v 25/62/90 — left the worst honest
+gap a factor of 1.8 inside the tolerance at the tightest rung and 2.7 at the widest, and the margin
+is flat across the rungs because both the gap and the tolerance scale as 1/√trials. The page keeps a second, in-memory book of completed runs bounded on
+the same terms — ~1.5 MB **and** a 24-entry cap, evicted least-recently-*used* so a VPIP you keep
+returning to survives a walk along the slider — and runs the same validation on read as on write,
+because an entry can arrive there straight out of the shared store. Validation is not authentication
+and cannot be: it buys well-formed, plausible and internally consistent, never *trustworthy* — there
+is no secret here to key a digest on, so a fabrication that is self-consistent as well as well-formed
+is indistinguishable from a real measurement. The precise residual is *any* fabrication landing
+within `max(1 pt, 8σ)` of the partition identity, which covers two shapes rather than one: the
+obvious one that moves a cell and its buckets together, and the quieter one that leaves `cells`
+honest and shifts the buckets alone by less than the noise band. The second is irreducible — both
+sides are Monte Carlo, so a tolerance of zero would discard honest data — and it shrinks with the
+trial count it is measured against: 13.33 pt of room at 900 trials/cell, 2.53 at the shipped 25,000.
+
+What the page says is that a cache hit "may come back instantly … a pleasant surprise, not a
+promise", and when the backend is memory it says results are kept for this session only.
+**Persistence is measured to work in Chrome on `file://` and is unverified everywhere else, so it is
+not promised anywhere.** Measured: 14.5 KB per stored setting, hit in 0.2–0.3 ms with no bar drawn
+at all — the observable difference between "instant" and "fast".
+
+**When the page's own code fails, you see it on the page.** Two layers, because they answer
+different questions. The engine invokes every caller callback through a wrapper: a throw is logged
+with the callback named, recorded at `SIM.status().callbackError`, and then **swallowed** — the run
+continues and the result is still delivered. Before that, a throw fell into the run's own promise
+chain and came back out as `onError`, so the page announced *"last run failed"* about a measurement
+that had in fact succeeded, and the real defect — a paint function that throws — reached nothing
+anyone looks at. The page then guards each of its own four handlers, and on a throw writes a plain
+*"Display error … the measurement is running and is unaffected"* line with `textContent` — no
+template, because whatever just threw must not be asked to render its own failure — and keeps it
+**sticky** in the rail note, because clearing the bar at the end of a run would otherwise take a
+mid-run display bug away with it.
+
+**What it does not measure.** Equity against the filtered field, and nothing else. `cooler`, `nu`,
+`mplay` and `eqVs3bet` stay shipped build-time measurements; the within-cell hand adjustment (§8) is
+still an interpolation and still says `estimate`. A simulated result re-scores through the same
+`POLICY.villainEq` → `rankTable`/`solve` path as a shipped one: the button changes where an equity
+came from, not what is done with it.
+
+**How this is checked.** 110 unit tests across the packed order, the bundle, the shipped engine text
+and the shipped UI-logic text (both sliced out of `src/shell.html` by their markers and evaluated,
+so the tests cannot drift from a copy); a real-browser harness of 38 sim checks driving genuine
+Monte Carlo runs on `file://` — including a genuinely hidden tab, a worker control run to prove the
+hide was observable at all, a cold/warm cache across an actual page reload, and the re-run chip
+clicked to the ceiling — and 33 mutations, each a one-line lie the page could plausibly tell, every
+one of which turns a check red.
 
 ---
 
@@ -1313,7 +1627,10 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
    a far better approximation than it would be in a tight game — at 90% VPIP an opponent's calling
    range genuinely is close to random — but at the tight end of the slider it overstates
    speculative hands. The vs-Raise `tighten` shift (§6.5) is a patch, not a solution.
-   VPIP-filtered villains are the top of the v2 list.
+   **Partly closed in v2, and only when you ask for it:** the villain-profile control switches the
+   grid onto the VPIP-filtered lattice (§3.3), and the Simulate button (§9.12) measures settings the
+   lattice does not cover. The default is still random opponents — that is what gate I22 pins — so
+   this limitation stands as written for the page as it loads.
 2. **Cell means hide within-cell variance.** `RUN2` spans `QJ97` down to `6432`. One number for a
    cell is a real simplification. The taxonomy is designed to minimize it — rundowns are split by
    gap *count* and gap *position*, and `RUN0` is split high/low in the wheel-aware orientation
@@ -1356,10 +1673,15 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
 8. **3-bet sizing is not modelled.** Every threshold at that node assumes a pot-sized 3-bet
    (~8.5bb to win ~20.5bb ⇒ 29% breakeven). There is no sizing editor in v1; the assumption is
    named in the UI beside the number.
-9. **No live Monte Carlo in the browser.** Every number in the page is precomputed; the browser
-   does arithmetic only. If a future version ever adds runtime compute, the required pattern is a
-   frame-budget harness: chunk the work, yield to the event loop, and never let a compute pass
-   exceed the render budget the slider is measured against.
+9. **Live Monte Carlo in the browser runs only when you press the button** *(v1's "none at all" no
+   longer holds; §9.12)*. Every number the page loads with is precomputed and the browser does
+   arithmetic — nothing computes on load and nothing computes behind your back. The one exception
+   is the **Simulate** button, which appears only when the villain profile is on at a setting the
+   shipped lattice does not cover, and which measures 3,075,000 trials (±0.32) in Web Workers
+   spawned from a Blob URL, or on the main thread if a browser refuses them. That fallback is this
+   limitation's own prescription built for real: chunked work, yielded to the event loop inside a
+   24 ms frame budget at a 0.35 duty cycle, stopped while the tab is hidden. It is much slower,
+   often 10× or more, and the page says so rather than quoting a bound it cannot hold to.
 10. **Positional nesting is enforced, not emergent.** `UTG ⊆ HJ ⊆ CO ⊆ BTN` is imposed as a
     post-pass. It is what a human expects a range chart to obey; it is not something the score
     function produces on its own, and the UI marks it where it bites.
@@ -1423,12 +1745,35 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
     vs-3-bet node, whose threshold is an absolute price. A rake model that re-sorted the grid would
     have to be non-uniform across cells, which is a different and much bigger claim about what rake
     does to hand values, and it is not made.
+15. **Every claim about the browser is measured in one browser, on one machine.** The page itself is
+    plain DOM and has no reason to differ, but §9.12's three load-bearing browser facts do: that a
+    classic Blob worker boots from a `file://` page, that `localStorage` is reachable there, and
+    that a hidden tab suspends `requestAnimationFrame`. All three are **headless Chrome on macOS**,
+    and Firefox and Safari have not been run at all. The engine is written so that either answer is
+    safe — a browser that refuses the worker gets the main-thread fallback, and one that throws on
+    `localStorage` gets a session-only in-memory cache, both disclosed on screen — but "written to
+    be safe" is not "measured". The throughput figures, the 12× fallback ratio and the cache's
+    survival across a restart are all one-machine readings and are quoted as such. Separately,
+    `smoke.mjs` needs Playwright, which is not installed here, so the screenshot gate and the 8 ms
+    slider-morph p95 budget have not been re-measured since v1.
 
-### v2 list
+### v2 list — shipped
 
-Monte Carlo to N = 7 · stack-depth axis · a rake model · VPIP-filtered villains instead of random
-ones · a 3-bet sizing control · the expand-in-place sub-bucket UI that consumes the depth layer
-already in the data · the frame-budget harness above, if anything ever needs to compute at runtime.
+Every item on the v1 wish list is now in the page: Monte Carlo to N = 7 · a stack-depth axis (§5.1)
+· a rake model (§5.2) · VPIP-filtered villains instead of random ones (§3.3) · the expand-in-place
+sub-bucket UI that consumes the depth layer already in the data (§2.4) · the frame-budget harness,
+built for real as the Simulate button's main-thread fallback (§9.12). A straddle toggle (§5.3) was
+added along the way and was not on the list.
+
+**One item did not ship: a 3-bet sizing control.** Every threshold at the vs-3-bet node still
+assumes a pot-sized 3-bet — limitation 8 above stands unchanged, and the assumption is still named
+in the UI beside the number. The 3-bet *mix* is editable; the *sizing* is not.
+
+The honest v2.1 list is now short and mostly about coverage rather than model: Firefox and Safari
+have never run the worker path or the `localStorage` probe (limitation 15); the sub-bucket layer
+carries no `eqVs3bet`, so there is no bucket verdict at the vs-3-bet node; `q` is opinion with
+nothing calibrating it; and 5-card PLO and street-by-street postflop realization remain out of
+scope by decision rather than by omission (V2-PLAN §0).
 
 ---
 
@@ -1438,7 +1783,7 @@ Thirty-one model invariants, asserted by `scripts/verify.mjs` over v ∈ {25, 40
 positions × 4 nodes — I22, the regression gate, sweeps every integer v from 25 to 90 instead,
 I24/I25 assert the shape of the v2 build-time measurements over the emitted data itself,
 I23/I27/I28 sweep the depth axis on top of the same grid, and I26/I29/I30/I31 sweep the straddle
-toggle and the rake slider — **45 gates in total** with the D and V families and the benchmark
+toggle and the rake slider — **46 gates in total** with the D and V families and the benchmark
 gate. The numbering has no holes left: I26 was reserved by V2-PLAN §3.4 for the straddle and is now
 written to the measurement, like the rest of the I23–I31 block. **Any violation fails the build**
 and nothing is emitted. The gate results are stamped into `model.gates` and rendered by the Method
@@ -1479,7 +1824,8 @@ themselves (§5.1).
 | I29 | **I16's continuity, re-run with the straddle ON** at 40 / 100 / 250 bb (effective 40 / 50 / 125). Every VPIP step changes at most 3% of combos or at most 5 of 145 cells; worst non-cliff step is 0 cells at all three depths, so no widening was needed. The interesting half is the mirror of I27: depth leaves the `N_eff = 3.0` discontinuities exactly where they are, and the **straddle drags every one of them forward** — raise/HJ 45 → 34, raise/CO 54 → 39, raise/BTN 70 → 47 — and adds a fifth at raise/SB 70 that the unstraddled table never reaches. Asserted structurally rather than as a pinned list: `N_eff` is strictly larger straddled at all 990 (node, seat, VPIP) settings, so a crossing of 3.0 can only come earlier. Between them I27 and I29 make the κ(N) / λ(d) separation testable from both sides. |
 | I30 | **I21's painted widening, re-run with the straddle ON** at 40 / 100 / 250 bb. Wider at VPIP 90 than at 25 at all 15 (node, position) pairs. **No widening of I21's own 4.0-point dip allowance was needed** — unlike I28's — because a narrower target width has fewer cells straddling the cut: the straddled worst dip is 2.86 points against the 3.16 the unstraddled model runs at. The painted **floor** is its own, at 8% rather than I12's 10%: a straddled UTG opens 8.96% of hands at VPIP 25, which is the seat transform doing its job (the target itself fell 23%) and not the nut-gate collapse I12 guards against. |
 | I31 | **The rake does what §3.2's model can do, and is asserted not to do what it cannot** (§5.2). **(a)** The flat haircut on ρ is **tier-inert at the three percentile nodes by construction**: 0 of 27,675 tiers move at the 5% preset, all 27,675 scores do, and every score ratio equals (1 − rakeFrac) to within 2 ulp. Asserted so that turning rake into a non-uniform haircut has to be a deliberate model change. **(b)** Where the threshold is absolute it bites: the vs-3-bet continue range narrows monotonically in `rakePct` on the **action** tier, 45 → 41 cells at UTG and 49 → 44 at CO across 0–6%. **(c)** The arithmetic is exact — `price = breakeven / (1 − r)`, the 7-point premium over it is invariant, `rakeFrac = min(pct, cap / (potBB·unit))`, and a straddle doubles the unit the cap is measured against so the same 3bb cap takes 2.5% instead of 5%. |
-| D7 | **The payload ceiling** (a data gate, listed here with its siblings). `model.json` as emitted — the exact minified byte string written to disk — against V2-PLAN §2.5's 220 KB budget: measured **146,551 B = 143.1 KB, 35% headroom**. The ceiling is read on the minified basis because the plan states it in the same sentence as "`model.json` is 105 KB today", which is the minified v1 file, and because the literal pretty-printed reading is unsatisfiable by the plan's own escape hatch (§9.10). The pretty-printed figure, 242.2 KB, is printed in the gate's detail line and recorded, not asserted. D6 carries the tighter per-block budgets that actually catch a creeping payload; D7 is the published contract and is deliberately slack against it. |
+| D7 | **The payload ceiling** (a data gate, listed here with its siblings). `model.json` as emitted — the exact minified byte string written to disk — against V2-PLAN §2.5's 220 KB budget: measured **187,859 B = 183.5 KB, 17% headroom**. The ceiling is read on the minified basis because the plan states it in the same sentence as "`model.json` is 105 KB today", which is the minified v1 file, and because the literal pretty-printed reading is unsatisfiable by the plan's own escape hatch (§9.10). The pretty-printed figure, 282.5 KB, is printed in the gate's detail line and recorded, not asserted. D6 carries the tighter per-block budgets that actually catch a creeping payload; D7 is the published contract and is deliberately slack against it. |
+| D8 | **The frozen villain ordering is a real permutation, and it is *this* model's** (a data gate, phase 4; §9.12). Four claims in ascending order of what they catch: the 15-bit packed payload decodes to an **exact permutation of 0…16,431** — a duplicate or missing class id silently changes the pool at every VPIP and a length check would not see it; its own 64-bit hash matches `meta.orderHash`, which catches an order transplanted from another model or a hand-edit that happens to still be a valid permutation; re-deriving the classes from the enumeration yields exactly 16,432, so the index space the payload is expressed in is real; and **running the generator's own cut rule over the shipped order reproduces `constants.villainLattice.realized` at all five lattice points to the 4 dp it ships at** (25.00 / 40.00 / 55.00 / 70.00 / 90.00 %) — those realized fractions land on class boundaries, so they fingerprint the ordering near every cut. It costs 19 ms on the enumeration D1 already pays for and runs unconditionally. The stronger check the gate cannot make is in `test/order-pack.test.mjs`, which compares the *pools* hand for hand at all five cuts. |
 
 
 I22 is the gate that lets v2 be built at all. The depth axis, the rake slider, the straddle

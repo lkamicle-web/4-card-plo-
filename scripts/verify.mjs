@@ -3,8 +3,9 @@
 //
 //   node scripts/verify.mjs [data/model.json]
 //
-//   D1-D7  data gates      partition, empty cells, dual-key, schema, geometry, size budgets, and
-//                          the V2-PLAN §2.5 payload ceiling on the emitted artifact
+//   D1-D8  data gates      partition, empty cells, dual-key, schema, geometry, size budgets, the
+//                          V2-PLAN §2.5 payload ceiling on the emitted artifact, and the integrity
+//                          of the shipped villain ordering the Simulate button re-cuts (§4)
 //   V1-V6  engine gates    zero-sum, conservation, seed independence, category counts, Omaha rule
 //   B      benchmarks      the calibration tables, +/-0.6 pt (+/-1.5 in --fast data)
 //   I1-I21 model gates     the sanity invariants, over v in {25,40,55,70,90} x 6 pos x 4 nodes
@@ -24,7 +25,7 @@
 //   I31    rake            the §3.2 haircut: tier-inert at the percentile nodes BY CONSTRUCTION
 //                          (asserted, not lamented) and biting at the one absolute threshold.
 //
-// 45 gates in total. V1/I5 and V2/V3/I4 are RANDOM-VILLAIN gates: the filtered-villain lattice is
+// 46 gates in total. V1/I5 and V2/V3/I4 are RANDOM-VILLAIN gates: the filtered-villain lattice is
 // exempt from conservation by construction (see the scope comment at V1, and I25).
 //
 // Any failure exits non-zero. Gate results are stamped into MODEL.gates for the Method view, and
@@ -42,6 +43,8 @@ import {
   eval5, categoryOf, parseHand, makeTriplePartials, fillTriplePartials, bestOmaha, Rng, fnv1a,
 } from './lib/eval5.mjs';
 import { omahaBest as refOmahaBest, equity as refEquity } from './lib/equity-ref.mjs';
+import { cutAt, classTableCanonical } from './lib/villain-range.mjs';
+import { ORDER_BITS, unpackOrder, orderHash, permutationProblem } from './lib/order-pack.mjs';
 import { equityFixed, equityVsFixed, equityPaired, sharedDealEquities, crossEngineEquity, crossEngineEquityVs, uniformMeanEquity } from './lib/mc.mjs';
 import * as P from './lib/policy.mjs';
 import * as TF from './lib/tier-fixture.mjs';
@@ -255,6 +258,7 @@ export function verifyModel(model, opts = {}) {
     sizes = {
       cells: b(model.cells), sub: b(model.sub),
       meta: b(model.meta) + b(model.rows) + b(model.cols) + b(model.bands) + b(model.constants) + b(model.benchmarks),
+      order: model.order ? b(model.order) : 0,
       total: b(model),
     };
     // Budgets, raised for the v2 payload (V2-PLAN §2.5), in the same spirit as build.mjs's own
@@ -273,6 +277,16 @@ export function verifyModel(model, opts = {}) {
     // Headroom is 4-5% on the two large blocks, the same margin v1 ran (38.6/40K, 58.4/60K): these
     // are meant to catch a payload that creeps, not to leave room for one.
     //
+    // PHASE 4 RAISE, stated and paid for in the same spirit:
+    //   order   new, 43K   measured 40.3K. The frozen eq1 permutation over 16,432 suit-isomorphism
+    //                     classes, 15 bits each, base64. It is here because V2-PLAN §4's Simulate
+    //                     button cuts a villain pool at an off-lattice v, and eq1 is a 10^9-showdown
+    //                     measurement the browser cannot repeat — repeating it would land on a
+    //                     DIFFERENT ordering and quietly re-answer a different question. This is
+    //                     the price of the button being honest; gate D8 audits the bytes.
+    //   total 150 -> 195K measured 183.5K. Exactly the order block plus the old 143.1K reading of
+    //                     the file on disk. Headroom 6%, the same margin as the blocks above.
+    //
     // V2-PLAN §2.5 quotes its ceiling as "220 KB pretty-printed". Measured, the emitted file is
     // 143.1 KB as written and 242.2 KB under JSON.stringify(m, null, 1). The plan compares that
     // ceiling against "model.json is 105 KB today", which is the MINIFIED v1 file (v1
@@ -280,12 +294,13 @@ export function verifyModel(model, opts = {}) {
     // v-points, still pretty-prints to 221.0 KB. So the literal reading is not satisfiable by the
     // plan's own remedy, and the ceiling is read on the basis it was written against: the file as
     // emitted. See docs/V2-PLAN.md §2.5, updated with these measurements.
-    const BUD = { cells: 65 * 1024, sub: 72 * 1024, meta: 13 * 1024, total: 150 * 1024 };
-    const ok = sizes.cells <= BUD.cells && sizes.sub <= BUD.sub
-      && sizes.meta <= BUD.meta && sizes.total <= BUD.total;
+    const BUD = { cells: 65 * 1024, sub: 72 * 1024, meta: 13 * 1024, order: 43 * 1024, total: 195 * 1024 };
+    const ok = sizes.cells <= BUD.cells && sizes.sub <= BUD.sub && sizes.meta <= BUD.meta
+      && sizes.order <= BUD.order && sizes.total <= BUD.total;
     G('D6', ok, `cells ${(sizes.cells / 1024).toFixed(1)}K/${BUD.cells / 1024}K · ` +
       `sub ${(sizes.sub / 1024).toFixed(1)}K/${BUD.sub / 1024}K · ` +
       `meta+tables ${(sizes.meta / 1024).toFixed(1)}K/${BUD.meta / 1024}K · ` +
+      `order ${(sizes.order / 1024).toFixed(1)}K/${BUD.order / 1024}K · ` +
       `total ${(sizes.total / 1024).toFixed(1)}K/${BUD.total / 1024}K ` +
       `(pretty-printed ${(Buffer.byteLength(JSON.stringify(model, null, 1)) / 1024).toFixed(1)}K)`);
   }
@@ -324,6 +339,70 @@ export function verifyModel(model, opts = {}) {
       `${((1 - emitted / BUDGET) * 100).toFixed(0)}% headroom; pretty-printed (null, 1) ` +
       `${(pretty / 1024).toFixed(1)} KB — recorded, not asserted (see the gate comment: the plan's ` +
       `own 3-point fallback pretty-prints to 221.0 KB, so that reading is unsatisfiable)`);
+  }
+
+  // =========================================================================
+  // D8 — the shipped villain ordering (V2-PLAN §4)
+  // =========================================================================
+  {
+    // The Simulate button cuts a villain pool at a v this generator never measured, so the frozen
+    // eq1 ordering ships with the model (scripts/lib/order-pack.mjs explains why it cannot be
+    // recomputed in the browser). This gate is the whole integrity story for those 40 KB, and it
+    // is cheap enough — 20 ms of class-building on top of an enumeration D1 already paid for — to
+    // run on every verify rather than behind a flag.
+    //
+    // Four claims, in ascending order of what they would catch:
+    //   1. it decodes, and is an EXACT permutation of 0..n-1. A duplicated or missing class id
+    //      silently changes which hands are in the pool at every v; a length check alone would not
+    //      see it.
+    //   2. its hash matches meta.orderHash — so an order transplanted from another model, or a
+    //      hand-edited payload, is caught even if it happens to be a valid permutation.
+    //   3. the index space is real: the number of distinct suit-isomorphism classes recomputed
+    //      from the enumeration is n, and the class ids the browser will derive (ascending
+    //      canonical representative) span exactly the same range.
+    //   4. RECONSTRUCTION — the part that actually ties the order to the shipped measurement. Run
+    //      the generator's own cut rule over the shipped order at each lattice point and check the
+    //      realised range fraction reproduces `constants.villainLattice.realized`, to the 4 dp
+    //      those numbers ship at. Those fractions land on class boundaries, so they are a fine
+    //      fingerprint of the ordering near every cut: a swap anywhere in the first 90% of the
+    //      order that moved a class across any of the five cuts would change one of them.
+    const o = model.order;
+    const vl = (model.constants && model.constants.villainLattice) || {};
+    const notes = [];
+    let ok = false;
+    if (!o || typeof o.packed !== 'string') {
+      notes.push('model.order is missing');
+    } else if (o.bits !== ORDER_BITS) {
+      notes.push(`model.order.bits ${o.bits}, this build packs at ${ORDER_BITS}`);
+    } else if (vl.classes != null && o.n !== vl.classes) {
+      notes.push(`model.order.n ${o.n} disagrees with constants.villainLattice.classes ${vl.classes}`);
+    } else {
+      let order = null;
+      try { order = unpackOrder(o.packed, o.n); }
+      catch (e) { notes.push(`decode failed: ${e.message}`); }
+      if (order) {
+        const perm = permutationProblem(order, o.n);
+        if (perm) notes.push(`not a permutation: ${perm}`);
+        const h = orderHash(order);
+        if (h !== model.meta.orderHash) notes.push(`hash ${h} != meta.orderHash ${model.meta.orderHash}`);
+        const ct = classTableCanonical(E.byCell);
+        if (ct.n !== o.n) notes.push(`enumeration yields ${ct.n} classes, order carries ${o.n}`);
+        else {
+          const shipped = Object.keys(vl.realized || {}).map(Number).sort((a, b) => a - b);
+          const bad = [];
+          for (const v of shipped) {
+            const got = +(cutAt(order, ct.size, E.total, v).cum / E.total).toFixed(4);
+            if (got !== vl.realized[v]) bad.push(`v${v} ${got} != ${vl.realized[v]}`);
+          }
+          if (bad.length) notes.push(`realised fractions do not reconstruct: ${bad.join(', ')}`);
+          else notes.push(`${shipped.length} lattice cuts reconstruct exactly ` +
+            `(${shipped.map((v) => `v${v} ${(vl.realized[v] * 100).toFixed(2)}%`).join(' · ')})`);
+        }
+        if (!notes.some((s) => /missing|failed|!=|not a permutation|disagrees|yields/.test(s))) ok = true;
+      }
+    }
+    G('D8', ok, `villain order: ${o ? `${o.n} classes, ${o.bits}-bit packed, ` +
+      `${(o.packed.length / 1024).toFixed(1)} KB base64, hash ${model.meta.orderHash} · ` : ''}${notes.join('; ')}`);
   }
 
   // =========================================================================

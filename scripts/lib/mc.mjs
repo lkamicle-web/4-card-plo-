@@ -28,6 +28,12 @@ import { sampleFromRange } from './villains.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 
+/* @worker-slice-start — everything from here to @worker-slice-end is the portable kernel:
+   no Node APIs, no imports of its own beyond the eval5 / villains names bound above. The browser
+   Simulate bundle (scripts/lib/sim-bundle.mjs) slices exactly this region out and rebinds those
+   names from its own IIFEs, so the page and the generator run the SAME measurement code and cannot
+   drift. Do not move a Node dependency inside these markers. */
+
 /** opponents measured in one deal: eq[N] for N = 1..NMAX (V2-PLAN §2.2) */
 export const NMAX = 7;
 
@@ -224,6 +230,8 @@ export function runMultiFiltered(pool, lo, hi, range, q, trials, heroSeed, villS
   for (let k = 0; k < NMAX; k++) eq[k] = (100 * acc[k]) / trials;
   return { eq, fallbacks };
 }
+
+/* @worker-slice-end */
 
 /**
  * eq1 for a list of hands over SHARED deals (the frozen villain ordering, V2-PLAN §2.3).

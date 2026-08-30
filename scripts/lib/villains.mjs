@@ -50,6 +50,11 @@ export function buildComponentRanges() {
   return out;
 }
 
+/* @worker-slice-start — sampleFromRange is the only thing the browser worker needs from this file,
+   and it is self-contained (it calls rng.next() and nothing else). Everything above it reaches for
+   rowOf, and therefore for all 22 KB of taxonomy.mjs, which is main-thread work whose output
+   travels in the boot payload. See scripts/lib/sim-bundle.mjs. */
+
 /**
  * Sample one hand from `range` that is disjoint from the used-card mask (lo/hi int32 pair).
  * Returns the packed hand, or -1 if `tries` rejections in a row (never observed in practice
@@ -69,6 +74,8 @@ export function sampleFromRange(range, rng, loMask, hiMask, tries = 400) {
   }
   return -1;
 }
+
+/* @worker-slice-end */
 
 /** Default pool mix, per the model brief. */
 export const DEFAULT_MIX = { AA: 0.60, KK: 0.25, QQ: 0.10, BWR: 0.05 };

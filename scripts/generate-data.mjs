@@ -7,13 +7,14 @@
 //   S0 enumerate    classify all 270,725 hands; cells, sub-buckets, features, examples, geometry
 //   S0b classes     collapse the deck into suit-isomorphism classes (the villain ordering's domain)
 //   S1 villain prep enumerate the four face-up 3-bet component ranges
-//   S1b villain ord eq1 per class over shared deals -> the frozen top-v% pools (V2-PLAN §2.3)
+//   S1b villain ord eq1 per class over shared deals -> the frozen top-v% pools (V2-PLAN §2.3),
+//                   and the class ORDER itself, packed for the browser's Simulate button (§4)
 //   S2 cell equity  per non-empty cell: multi-N trials (one deal -> equity vs N = 1..7) + cooler
 //   S2L lattice     the same, against VPIP-filtered villains at five lattice points
 //   S3 vs-3-bet     per cell x component: heads-up trials vs a rejection-sampled villain
 //   S4 sub-buckets  the depth layer, same kernel as S2 (its own mplay and cooler, V2-PLAN §2.4)
 //   S5 derive+emit  rho, nu, mplay, cooler, lattice deltas, adjMean, waveD, benchmarks, assembly
-//   S6 verify       45 gates: D1-D7, V1-V6, benchmarks, I1-I22 + I24/I25 (the v2 measurement
+//   S6 verify       46 gates: D1-D8, V1-V6, benchmarks, I1-I22 + I24/I25 (the v2 measurement
 //                   shapes) + I23/I27/I28 (the depth axis, §3.1) + I26/I29/I30/I31 (the straddle
 //                   and the rake, §3.2/§3.3), size budgets and the §2.5 payload ceiling; stamps
 //                   MODEL.gates
@@ -44,7 +45,8 @@ import {
   startPool, stopPool, runJobs, equityFixed, equityVsFixed,
   NMAX, COOLER_MIN_CAT, COOLER_REF_N, VILLAIN_DISCIPLINE,
 } from './lib/mc.mjs';
-import { buildSuitClasses, buildRanges } from './lib/villain-range.mjs';
+import { buildSuitClasses, buildRanges, canonicalRanks } from './lib/villain-range.mjs';
+import { packOrder, orderHash, ORDER_BITS, permutationProblem } from './lib/order-pack.mjs';
 import { CONSTANTS } from './lib/policy.mjs';
 import { verifyModel, formatReport } from './verify.mjs';
 
@@ -145,6 +147,25 @@ const eq1 = new Float64Array(cls.n);
 }
 const LAT = buildRanges(eq1, cls, E.byCell, LATTICE_V);
 log('S1b pools — ' + LATTICE_V.map((v) => `v${v} ${LAT.ranges[v].length} (${(LAT.realized[v] * 100).toFixed(2)}%, cut eq1 ${LAT.cutEq[v].toFixed(2)})`).join(' · '));
+
+// --- the ordering, packed for the browser (V2-PLAN §4).
+//
+// The Simulate button re-measures at an OFF-LATTICE v, which means cutting a pool this generator
+// never cut. It cannot re-derive the ordering: eq1 is a Monte Carlo measurement and a second run
+// would order the classes near the cut slightly differently, so the browser would be simulating a
+// different pool from the one the shipped lattice was measured against. The permutation therefore
+// ships. See scripts/lib/order-pack.mjs for the format and for why the shipped index space is the
+// canonical-ascending one rather than this file's enumeration order.
+const cidOf = canonicalRanks(cls.reps);
+const ORDER_CANON = Int32Array.from(LAT.order, (ci) => cidOf[ci]);
+{
+  const bad = permutationProblem(ORDER_CANON, cls.n);
+  if (bad) throw new Error(`the villain order is not a permutation of 0..${cls.n - 1}: ${bad}`);
+}
+const ORDER_PACKED = packOrder(ORDER_CANON);
+const ORDER_HASH = orderHash(ORDER_CANON);
+log(`S1b order — ${cls.n} classes packed at ${ORDER_BITS} bits into ${ORDER_PACKED.length} base64 ` +
+    `chars (${(ORDER_PACKED.length / 1024).toFixed(1)} KB), hash ${ORDER_HASH}`);
 
 // ---------------------------------------------------------------------------
 // worker pool (shared by S2/S2L/S3/S4)
@@ -482,6 +503,8 @@ const MODEL = {
     comboTotal: TOTAL,
     nMax: NMAX,
     vpip: { min: 25, max: 90, default: 55, ref: 25 },
+    // integrity check on the shipped villain ordering below — gate D8 recomputes it
+    orderHash: ORDER_HASH,
     hash: '',
     fast: FAST,
   },
@@ -503,6 +526,15 @@ const MODEL = {
   }),
   cells,
   sub,
+  // The frozen villain ordering, so the page can cut a pool at a v this generator never measured
+  // (V2-PLAN §4). Format and index space: scripts/lib/order-pack.mjs.
+  order: {
+    n: cls.n,
+    bits: ORDER_BITS,
+    by: 'eq1 descending, ties by ascending class index',
+    domain: 'suit-isomorphism classes, indexed by ascending canonical packed representative',
+    packed: ORDER_PACKED,
+  },
   constants: {
     ...CONSTANTS,
     nuBarMeasured: r4(nuBarMeasured),

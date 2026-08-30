@@ -90,11 +90,41 @@ export function buildSuitClasses(hands) {
 }
 
 /**
+ * THE CUT RULE, in one place. Walk `order` (classes, best first) taking whole classes until the
+ * next one would carry the cut further from the target than stopping does.
+ *
+ * Factored out of `buildRanges` so the browser can reproduce a pool at an ARBITRARY v from the
+ * shipped order (V2-PLAN §4) through the same code the generator cut the shipped lattice with. Two
+ * implementations of a rounding rule are two rules.
+ *
+ * @param {Int32Array|number[]} order class indices, eq1-descending
+ * @param {Int32Array|number[]} size combos per class, indexed by class index
+ * @param {number} total combos in the universe
+ * @param {number} v VPIP percentage
+ * @returns {{keep: Uint8Array, cum: number, lastIdx: number}} `lastIdx` is the last class taken —
+ *   the one whose eq1 is the cut equity. When nothing is taken it is `order[0]`, which is what the
+ *   pre-refactor code reported.
+ */
+export function cutAt(order, size, total, v) {
+  const target = (v / 100) * total;
+  const keep = new Uint8Array(size.length);
+  let cum = 0, lastIdx = order[0];
+  for (let i = 0; i < order.length; i++) {
+    const ci = order[i];
+    const next = cum + size[ci];
+    // stop before this class if including it lands further from the target than excluding it
+    if (next > target && (next - target) > (target - cum)) break;
+    keep[ci] = 1; cum = next; lastIdx = ci;
+    if (cum >= target) break;
+  }
+  return { keep, cum, lastIdx };
+}
+
+/**
  * Turn per-class eq1 into one packed hand list per VPIP lattice point.
  *
  * Classes are ranked by eq1 descending (ties broken by class index, so the result is a pure
- * function of the measurement) and taken whole until the next class would carry the cut further
- * from the target than stopping does.
+ * function of the measurement) and cut by `cutAt` above.
  *
  * @param {Float64Array|number[]} eq1 per-class equity vs one random opponent, in %
  * @param {{reps, clsOf, size, n}} cls the class table from buildSuitClasses
@@ -110,23 +140,62 @@ export function buildRanges(eq1, cls, hands, vPoints) {
 
   const ranges = {}, realized = {}, cutEq = {};
   for (const v of vPoints) {
-    const target = (v / 100) * total;
-    const keep = new Uint8Array(cls.n);
-    let cum = 0, lastEq = eq1[order[0]];
-    for (let i = 0; i < order.length; i++) {
-      const ci = order[i];
-      const next = cum + cls.size[ci];
-      // stop before this class if including it lands further from the target than excluding it
-      if (next > target && (next - target) > (target - cum)) break;
-      keep[ci] = 1; cum = next; lastEq = eq1[ci];
-      if (cum >= target) break;
-    }
+    const { keep, cum, lastIdx } = cutAt(order, cls.size, total, v);
     const out = new Uint32Array(cum);
     let w = 0;
     for (let j = 0; j < total; j++) if (keep[cls.clsOf[j]]) out[w++] = hands[j];
     ranges[v] = out;
     realized[v] = cum / total;
-    cutEq[v] = lastEq;
+    cutEq[v] = eq1[lastIdx];
   }
   return { ranges, realized, cutEq, order };
+}
+
+/**
+ * Rank every class by its canonical representative, ascending.
+ *
+ * `buildSuitClasses` numbers classes by first appearance, which ties the numbering to the caller's
+ * enumeration order. This gives the ENUMERATION-INDEPENDENT numbering the shipped order is
+ * expressed in (see order-pack.mjs): sort the canonical values and use the position.
+ *
+ * @param {Uint32Array} reps `cls.reps`
+ * @returns {Int32Array} `cid[classIndex]` = its rank among the canonical values, ascending
+ */
+export function canonicalRanks(reps) {
+  const idx = Int32Array.from({ length: reps.length }, (_, i) => i)
+    .sort((a, b) => (reps[a] < reps[b] ? -1 : reps[a] > reps[b] ? 1 : 0));
+  const cid = new Int32Array(reps.length);
+  for (let r = 0; r < idx.length; r++) cid[idx[r]] = r;
+  return cid;
+}
+
+/**
+ * Build the class table directly in the canonical-ascending index space — the consumer side of
+ * `canonicalRanks`, for a caller that has no taxonomy and therefore no canonical enumeration order
+ * of its own (the browser worker). Any hand list containing the whole universe, in any order, gives
+ * the same class ids.
+ *
+ * @param {Uint32Array} hands the packed universe
+ * @returns {{reps: Uint32Array, cidOf: Int32Array, size: Int32Array, n: number}}
+ *   reps sorted ascending; `cidOf[j]` the canonical-ascending class id of hands[j]
+ */
+export function classTableCanonical(hands) {
+  const canon = new Uint32Array(hands.length);
+  const seen = new Map();
+  for (let j = 0; j < hands.length; j++) {
+    const pk = hands[j];
+    const c = canonicalOf(pk & 63, (pk >>> 6) & 63, (pk >>> 12) & 63, (pk >>> 18) & 63);
+    canon[j] = c;
+    if (!seen.has(c)) seen.set(c, 0);
+  }
+  const reps = Uint32Array.from(seen.keys()).sort();
+  const rank = new Map();
+  for (let i = 0; i < reps.length; i++) rank.set(reps[i], i);
+  const cidOf = new Int32Array(hands.length);
+  const size = new Int32Array(reps.length);
+  for (let j = 0; j < hands.length; j++) {
+    const c = rank.get(canon[j]);
+    cidOf[j] = c; size[c]++;
+  }
+  return { reps, cidOf, size, n: reps.length };
 }

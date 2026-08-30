@@ -14,11 +14,16 @@ supports: a **29-row × 5-column hand-class matrix** — rank archetype × suit 
 partition of all 270,725 hands — where every cell is colored by action tier and the whole
 surface morphs live under a table-VPIP slider.
 
-![RUNDOWN — the class matrix at UTG, RFI, VPIP 55](docs/screenshot.png)
+![RUNDOWN — the class matrix at UTG, RFI, VPIP 62, villain profile on](docs/screenshot.png)
 
-<!-- docs/screenshot.png is the shipping page at 1440×900: Matrix view, UTG · RFI · VPIP 55,
+<!-- docs/screenshot.png is the shipping page at 1440×900: Matrix view, UTG · RFI · VPIP 62,
      AA + dangler × Rainbow selected so the rail Tier Ribbon and the inspector Summary are both
-     populated. Regenerate it from the built page at the same viewport and state if the UI moves. -->
+     populated, and the villain profile ON at an off-lattice VPIP so the `interpolated` badge and
+     its Simulate sentence are in frame. Regenerate it from the built page at the same viewport and
+     state if the UI moves. Note the page auto-runs its 12-step tour 400 ms after a first visit
+     (gated on sessionStorage 'rundown.tour' and an empty location.hash), so a capture from a fresh
+     browser profile must set that key before the page's own scripts run — otherwise the tour opens
+     over the grid and its per-step paint() resets the villain profile. -->
 
 ---
 
@@ -27,7 +32,7 @@ surface morphs live under a table-VPIP slider.
 This is **not** a GTO solver and does not approximate one. PLO preflop solutions are not
 publicly solved to equilibrium at 6-max with realistic stacks. What this tool ships is a
 **transparent heuristic model**: for each starting hand we measure, by Monte Carlo, its equity
-against *N* random opponents for N = 1..5, derive two numbers (raw strength, and how well the
+against *N* random opponents for N = 1..7, derive two numbers (raw strength, and how well the
 hand *scales* into multiway pots), combine them with a documented scoring formula, and cut the
 result at percentile thresholds that vary with position, action and table looseness. Every
 constant in the formula is listed in the README and every one is a judgement call. The model's
@@ -62,8 +67,9 @@ hand class with live example hands, and every **?** in the left rail defines the
 it — including the Δ-pin colour mode and the rest of the display controls.
 
 **GitHub Pages:** the repo is Pages-ready as-is. Settings → Pages → *Deploy from a branch* →
-root of your default branch. `index.html` is the whole site; `data/`, `scripts/` and `test/`
-are there for people who want to audit or regenerate the numbers, not for the page to load.
+root of your default branch. `index.html` is the whole site; `src/`, `data/`, `scripts/` and
+`test/` are there for people who want to read, audit or regenerate what is in it, not for the
+page to load.
 
 ---
 
@@ -132,6 +138,45 @@ something qualifies. See [`docs/METHODOLOGY.md` §7](docs/METHODOLOGY.md).
 
 ---
 
+## What v2 added
+
+Five things. All of them are off, or the identity, at their defaults — invariant **I22** asserts
+that the whole v2 pipeline reproduces v1's tiers *bit for bit* at 100bb, no rake, no straddle,
+random villains — so the page you open is still the one v1 shipped, and everything below is
+something you turn on.
+
+- **Stack depth, rake and a UTG straddle.** Three dials in the rail, all scoring-layer. Depth
+  (40–250bb) re-sorts the grid along the nut-potential axis; the straddle tightens the opening
+  range at every seat and makes it nuttier. Depth is **scored, never measured**, and the page says
+  so next to the slider. The rake dial is honest about doing almost nothing: a flat haircut cannot
+  move a percentile, so it changes every score and no tier — except at the vs-3-bet node, where the
+  threshold is an absolute price.
+- **A villain profile.** Equity against opponents who *fold their worst hands* instead of against
+  random ones, measured at table VPIP 25 / 40 / 55 / 70 / 90. The headline is not that weak hands
+  do badly against a tight pool — it is that **rank overlap decides who loses**: at a 25% table a
+  broadway run × rainbow gives up **−25.8** equity points heads-up, while a low rundown × nut-suited
+  *gains* **+11.2**. Off by default, because it is a different measurement from the one the shipped
+  tiers are cut from.
+- **Expand a cell in place.** Click a cell and it splits into its sub-buckets — combos, equity, ν,
+  and the tier each would earn *scored as-if standalone*. It is where the TT/JJ story becomes
+  visible. At the vs-3-bet node it reports that there is no bucket verdict rather than inventing
+  one from machinery that measures something else.
+- **Hand search.** Type `9655DS` — four ranks in any order, with an optional `R`/`SS`/`SSA`/`DS`/`F`
+  suffix — and the grid goes to that cell, or opens the one sub-bucket the shape pins.
+- **A Simulate button.** When the villain profile is on at a VPIP or a discipline the shipped
+  lattice never measured, the page stops interpolating and offers to measure it for real:
+  **3,075,000 trials** in Web Workers spawned from a Blob URL, about **3.4 seconds** with four
+  workers, **±0.32** points against the shipped ±0.16. There is exactly one re-run on offer and it
+  lands on a hard ceiling of 100,000 trials/cell — the point at which a simulated number is as
+  precise as the file it is arguing with. Seeded, so a re-run is bit-identical. Cached, but never
+  advertised as saved. And every equity on screen carries a badge saying whether it is shipped,
+  interpolated, or measured in your browser.
+
+Still no network: the Simulate button is the only code in the page that computes on demand, and it
+runs only when you press it.
+
+---
+
 ## Who this is for
 
 Players in **loose, low-stakes 4-card PLO lobbies** — the games where five people see a flop
@@ -167,9 +212,9 @@ Node ≥ 22, **zero npm dependencies** anywhere in the repo — stdlib only (`no
 
 ```bash
 node scripts/generate-data.mjs          # enumerate, measure, derive, emit data/model.json
-node scripts/verify.mjs                 # 45 gates: D1-D7, V1-V6, B, invariants I1-I31
-node scripts/build.mjs                  # inject the model into index.html
-node --test test/                       # evaluator, taxonomy and policy unit tests
+node scripts/verify.mjs                 # 46 gates: D1-D8, V1-V6, B, invariants I1-I31
+node scripts/build.mjs                  # compile src/shell.html -> index.html
+node --test test/*.test.mjs             # evaluator, taxonomy and policy unit tests
 node smoke.mjs                          # headless browser gate (Playwright, if installed)
 ```
 
@@ -189,16 +234,43 @@ and cross-checks the production evaluator against a second, independently writte
 `scripts/lib/policy.mjs` is the single source of the scoring model. The generator imports it and
 the build inlines it into the page, so the browser and the data can't disagree about the rules.
 
+## Editing the page
+
+**`index.html` is generated. Do not edit it.** The file you edit is
+[`src/shell.html`](src/shell.html) — the hand-authored markup, CSS and application JavaScript,
+fully commented. `scripts/build.mjs` compiles it into `index.html` by splicing in the model, the
+policy and the classifier, and by running every inline `<script>` through
+`scripts/lib/jsmin.mjs`, which strips comments and dead whitespace and changes nothing else (no
+renaming, no rewriting, every literal byte-for-byte, every token-separating newline kept). Markup
+and CSS are shipped as authored.
+
+```bash
+$EDITOR src/shell.html                  # markup, CSS, app JS — with the comments
+node scripts/build.mjs                  # regenerate index.html
+node scripts/build.mjs --check          # exit 1 if index.html is stale; prints which input drifted
+```
+
+The artifact opens with a banner naming the source and its hash, so a page you found on its own
+still tells you where it came from. `--check` rebuilds in memory and compares, which catches a
+shell edited without a rebuild, a regenerated model, a changed policy — or a hand-edit of
+`index.html` itself. Commit both files: `src/shell.html` is the source of record and `index.html`
+is what a user downloads and what GitHub Pages serves.
+
+`--no-minify` emits the JavaScript verbatim, which is the control build the correctness harness
+diffs against. `--source=` and `--out=` move either end elsewhere.
+
 ## Repo layout
 
 ```
-index.html              the whole product — data, policy, UI, offline
-data/model.json         committed generator output (143 KB, diffable, reviewable)
+index.html              GENERATED — the whole product in one offline file
+src/shell.html          the hand-authored source of that page: markup, CSS, app JS
+data/model.json         committed generator output (183 KB, diffable, reviewable)
 scripts/
   generate-data.mjs     the pipeline
   verify.mjs            gates and invariants
-  build.mjs             injects model + policy into index.html
-  lib/                  eval5 · taxonomy · mc · villains · policy · equity-ref
+  build.mjs             compiles src/shell.html + model + policy -> index.html
+  lib/                  eval5 · taxonomy · mc · villains · villain-range · policy · equity-ref
+                        jsmin · shell-compile · order-pack · sim-bundle · sim-kernel · sim-worker
 test/                   node --test unit tests
 docs/METHODOLOGY.md     the full technical honesty document
 smoke.mjs               headless load + interaction gate
@@ -210,6 +282,9 @@ Issues and pull requests are welcome. Two things make a PR easy to merge:
 
 - **Keep the zero-dependency, single-file, offline promise.** No npm packages, no bundler, no
   runtime fetches. If a change needs a build step for the *user*, it is the wrong change.
+- **If you touch the page, edit `src/shell.html` and rebuild.** A PR that edits the generated
+  `index.html` will be reverted by the next build, and `node scripts/build.mjs --check` exits 1
+  on a stale artifact, so run the build and commit both files.
 - **If you touch the model, regenerate and paste the gate output.** `verify.mjs` must exit 0
   with every gate stamped `pass`; the invariants are the contract. Changing a constant is a
   legitimate contribution — the constants are opinion and they are in one object precisely so

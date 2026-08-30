@@ -25,6 +25,9 @@ and every new constant gets named, shipped in `constants`, and rendered by the M
 7. **In-browser Simulate button** — Web-Worker Monte Carlo with a chunked, stage-labelled
    progress bar ("Simulating 3.1M trials · cell 47/123 · ±0.35 pt"). The §10.9 frame-budget
    harness, built for real.
+   *(Shipped. The ± is **±0.32**, not ±0.35 — see §4's annotation; both numbers claim to come from
+   `50/√trials` and only one of them does. The frame-budget harness shipped as the worker-less
+   fallback path.)*
 
 **Out (decided, not deferred by accident):**
 
@@ -189,13 +192,16 @@ lattice blows the budget, drop to v ∈ {25, 55, 90} and say so here.
 > cares about.
 >
 > Component sizes: cells 62.2 KB, sub 69.5 KB, meta+tables 10.6 KB. Gate D6's sub-budgets are
-> raised to 65 / 72 / 13 / 150 KB with the reasoning stated at the gate.
+> raised to 65 / 72 / 13 / 150 KB with the reasoning stated at the gate. *(Phase 4 adds a fifth
+> block — `order`, 40.3 KB of 43 — and takes D6's total from 150 to 195 KB; see §4.)*
 >
 > **The D-gate this section asks for is now written: D7**, and it reads the 220 KB against the
-> file *as emitted* (146,551 B = 143.1 KB, 35% headroom — the table above reads 146,171 B because
-> it was measured before the phase-1 and phase-2 gate names and constant blocks were stamped into
-> the same payload; METHODOLOGY §9.10 carries the byte-by-byte accounting) for the two reasons above. The pretty-printed figure is printed in D7's and
-> D6's detail lines on every run — 242.2 KB — and is
+> file *as emitted*, for the two reasons above: **146,551 B = 143.1 KB, 35% headroom** at the
+> phase-1 reading, and **187,859 B = 183.5 KB, 17% headroom as shipped**, once phase 4 added the
+> frozen villain ordering the Simulate button re-cuts. (The table above reads 146,171 B because it
+> was measured before the phase-1 and phase-2 gate names and constant blocks were stamped into the
+> same payload; METHODOLOGY §9.10 carries the byte-by-byte accounting.) The pretty-printed figure
+> is printed in D7's and D6's detail lines on every run — 242.2 KB then, 282.5 KB now — and is
 > recorded rather than asserted, precisely so that the reading this section settled on cannot be
 > mistaken for the pretty-printed one going unmeasured. D6 keeps the tighter per-block budgets that
 > catch a creeping payload; D7 is this section's contract and is deliberately slack against D6.
@@ -228,6 +234,33 @@ lattice blows the budget, drop to v ∈ {25, 55, 90} and say so here.
 >    source/artifact split, if the total ever has to come down. It is the only remaining large lever
 >    (330 KB of the 517 KB), and it costs the property the tool argues for, so it should be taken
 >    only for a reason better than tidiness.
+>
+> **Reversed (phase 4, 2026-08-30) — point 3's reasoning was half wrong, and the split shows which
+> half.** The refusal rested on two claims. *Stripping the shell in place would destroy the source*:
+> true, and still true. *Splitting source from artifact would break the single-file contract*:
+> **false.** The contract is about the thing you download — one file you can double-click, read end
+> to end, and check against its own claims — and the split does not touch it. `index.html` is still
+> one self-contained offline file, now with a provenance banner naming the source and its hash. What
+> was given up is the much smaller property that the file you edit and the file you ship are the
+> same file, and the readable original is not lost; it is committed beside the artifact as
+> `src/shell.html` (445.9 KB, fully commented). Phase 3 was right to defer it and wrong about why.
+>
+> The split needed teeth to be safe, and got them: `build.mjs --check` rebuilds the whole page in
+> memory and compares it byte for byte against the artifact on disk, which catches an edited shell,
+> a regenerated model, a changed `policy.mjs`/`taxonomy.mjs`/`jsmin.mjs`/`build.mjs`, **and** a
+> hand-edit of `index.html` itself — one mechanism, no hash bookkeeping. The banner carries no
+> timestamp so that two builds of the same inputs are byte-identical, and a `src/shell.html` that
+> ever carries the banner is refused as a copy of the built page rather than compiled from.
+>
+> **Final bytes, and where they went.** The split alone took the page 516.7 → **454.1 KB** (app
+> shell 329.9 → 267.3; the data and model-code blocks bit-identical, and markup + CSS untouched but
+> for the 419-byte banner). Phase 4 then spent that and more: **+40.4 KB** of frozen villain
+> ordering in the dataset (§4, gate D8), **+18.8 KB** of inlined Simulate worker bundle, and the
+> surface itself. Shipped: **574.4 KB = data 183.5 + model code 46.2 + app 344.8**, against a
+> `--no-minify` control build of 785.0 KB. The budgets were retuned once, at the phase end, at the
+> measurement plus ~5 %: total **540 → 600 KB**, app shell **345 → 360 KB**, model code
+> **46 → 50 KB** (that last one out of necessity — the villain-profile accessor took the
+> measurement to 46.2, over the old gate).
 >
 > Full accounting, with the byte table and the proof obligations: METHODOLOGY §9.11.
 
@@ -421,7 +454,8 @@ which wins and why).
 | I29/I30 | **Written (phase 2B)** — the straddle half of the I16/I21 analogues, at 40 / 100 / 250 bb with the toggle on. Neither needed a widening: I29's worst non-cliff step is 0 cells, I30's worst dip is 2.86 pts against I21's own 4.0 (better than the unstraddled 3.16). I30 does carry its own painted floor, 8% rather than I12's 10%, because a straddled UTG opens 8.96% at VPIP 25 and that is the seat transform working, not a range collapse. I29's finding is the mirror of I27's: depth leaves the N_eff = 3.0 cliffs where they are, the straddle drags all of them forward (raise/HJ 45→34, CO 54→39, BTN 70→47) and adds a fifth at raise/SB. |
 | I31 | **Written (phase 2B), to the measurement.** Rake per §3.2: (a) the flat haircut is tier-inert at the three percentile nodes BY CONSTRUCTION — 0 of 27,675 tiers move at the 5% preset, all 27,675 scores do, every ratio equals 1 − rakeFrac to 2 ulp — asserted so that making it non-uniform has to be a deliberate model change; (b) at the vs-3-bet node the continue range narrows monotonically in rakePct on the action tier (45→41 cells at UTG, 49→44 at CO); (c) the arithmetic is exact, including the straddle interaction on the cap. |
 | I27/I28 | **Written (phase 2)** — the depth half. I27 is I16's continuity and I28 is I21's painted widening, both re-run at 40 and 250 bb. I27 needed no widening at all. I28's dip allowance is widened from 4.0 to 6.5 pts because the worst event at 250 bb is a simultaneous three-cell exchange (net 5.45 pts at rfi/BTN VPIP 82), not the single-cell flicker I21 sized against. The straddle half is I29/I30 below. |
-| D7 | **Written (phase 1).** §2.5's payload ceiling, on `model.json` as emitted: 146,551 B = 143.1 KB of 220 KB. Not an invariant, listed here because it was commissioned with I24/I25. |
+| D7 | **Written (phase 1).** §2.5's payload ceiling, on `model.json` as emitted: **187,859 B = 183.5 KB of 220 KB, 17% headroom** (143.1 KB at the phase-3 end; phase 4 added the 40.4 KB frozen villain ordering). Not an invariant, listed here because it was commissioned with I24/I25. |
+| D8 | **Written (phase 4), and not anticipated by this table.** The frozen villain ordering §4's button re-cuts must be *this* model's: the 15-bit packed payload decodes to an exact permutation of 0…16,431, its hash matches `meta.orderHash`, re-deriving the classes from the enumeration yields exactly 16,432, and the generator's own cut rule over the shipped order reproduces `constants.villainLattice.realized` at all five lattice points to 4 dp. 19 ms, unconditional. Full write-up: METHODOLOGY §9.12; the hand-for-hand pool comparison is `test/order-pack.test.mjs`. |
 
 ---
 
@@ -459,6 +493,95 @@ trials/sec, not a guess. On completion: numbers swap in with the badge flip
 `interpolated → measured (25k)`, and the result caches in `localStorage` keyed by settings-hash +
 model hash, so revisiting a custom setting is instant. A `Re-run at 4× trials` link in the badge
 tooltip for the suspicious.
+
+> **Implemented (phase 4, 2026-08-30). Six of this section's claims survived as written; four did
+> not, and this is which.** Full write-up: METHODOLOGY §9.12.
+>
+> **Survived:** the trigger conditions and the depth/rake/straddle exclusion (§1, now also asserted
+> as a settings-hash contract); 25k trials/cell ≈ 3.1M total (3,075,000 exactly, over the 123
+> non-empty cells); the seeded xorshift128 keyed by (stage, cell, settings-hash), with bit-identical
+> re-runs and drift-free resume after a tab throttle; the segmented one-segment-per-stage bar with
+> the ETA computed from a measured rate; the stage-2 rule, including "otherwise skipped and the bar
+> says so"; and the badge flip on completion.
+>
+> **1. "`eval5.mjs` and `mc.mjs` are already dependency-free ES modules" — not in the sense this
+> sentence needs.** They are free of *npm*, not free of Node: `mc.mjs`'s worker body imports
+> `node:worker_threads`, and the classifier the pools are built from is not wanted in a worker at
+> all. What ships is a build-time **bundle**: one flat classic script assembled from `eval5.mjs`,
+> `villain-range.mjs`, `order-pack.mjs` and explicitly marked portable slices of `villains.mjs` and
+> `mc.mjs`, plus a **browser entry twin** (`sim-worker.js`) standing in for the Node worker body. It
+> is emitted in two halves — kernel and entry — because `self === window` on the main thread, so
+> evaluating the entry outside a worker would install `window.onmessage`; the Blob is kernel+entry
+> and the rAF fallback evaluates the kernel alone. Same code, no duplication, and a marker check
+> fails the build if a Node dependency is ever dragged into a portable slice.
+>
+> **2. The spike's risk retired cleanly: classic Blob workers DO boot from `file://`** in Chrome —
+> 4 workers, ~25 ms of in-worker init each — so the worker path ships and the rAF fallback is the
+> contingency rather than the plan. Not measured in Firefox or Safari (METHODOLOGY §10.15).
+>
+> **3. "±0.35 pt vs the shipped ±0.16" is an arithmetic slip.** Both figures come from
+> `50/√trials`, the same expression the generator writes into `meta.se`: `50/√100000` = 0.158 (the
+> shipped ±0.16) and `50/√25000` = **0.316**. They cannot both be right, and 0.35 is the one that is
+> not. Written to the measurement, per this repo's own precedent (I25, D7, §7.2): the badge reads
+> **±0.32**, derived from the trial count that actually ran, never hard-coded. **Read `±0.32`
+> wherever this section says `±0.35`, here and in §0.7.**
+>
+> **4. "~18s left" in the mock-up bar is about 5× pessimistic.** Measured, end to end and not
+> extrapolated: **901,195 filtered trials/s** across 4 workers, so the full 3,075,000-trial run
+> takes **3.42 s**. The example line the bar actually paints at that point reads `~3s left`.
+>
+> **5. "A `Re-run at 4× trials` link … for the suspicious" needed a ceiling.** Unbounded it is a
+> ladder — 25k → 100k → 400k → 1.6M — each rung minting a new settings hash, a new cache entry and
+> a new in-page book entry, buying a quarter of a tenth of a point for minutes of compute. It ships
+> as **one step that lands on a hard ceiling of 100,000 trials/cell**, which is 4× the default *and*
+> `meta.trials.latt`, the shipped dataset's own per-cell count — the exact point at which a
+> simulated number is as precise as the file it is arguing with (±0.16 either way). The clamp is in
+> the engine's `normalize` and *above* the settings hash, not in the button: a ceiling only the UI
+> honours is not a ceiling, and a rejected excess that minted its own key would move the unbounded
+> growth one layer down instead of stopping it. At the ceiling the chip is disabled and the rail
+> button is hidden.
+>
+> **6. "the result caches in `localStorage` … so revisiting a custom setting is instant" is
+> best-effort, and the page never promises it.** The backend is decided once by a real write probe
+> (WebKit throws `SecurityError` on first `localStorage` access from `file://`), degrading silently
+> to an in-memory `Map`; the cap is ~1.5 MB with LRU eviction and explicit `QuotaExceededError`
+> handling; and because Chrome shares one `localStorage` area across every `file://` page on the
+> machine, the store is treated as hostile — every read is validated against the model hash, the
+> settings hash, the field size, the settings the payload declares (its own `v`/`q`/`trials` must be
+> the ones that were asked for, because `trials` is what sets the tolerance below) and the shape of
+> every equity array, and anything that fails is discarded. A sub-bucket block must additionally
+> carry **every** bucket its cell ships and reconstruct that cell's equity **at every field size**,
+> to `max(1 pt, 8σ)` — a tolerance measured over 6,888 honest gaps (123 cells × 7 indices × 8
+> passes, three trial rungs, three villain operating points) to sit 1.8× clear of the worst of them
+> at the tightest rung. Measured 14.5 KB per setting, hit in 0.2–0.3 ms with no bar drawn. The copy
+> says a hit "may come back instantly … a pleasant surprise, not a promise", and says "kept for this
+> session only" when the backend is memory. **This document should not be read as promising
+> persistence either.** Nor as promising authenticity: validation buys well-formed, plausible and
+> internally consistent, never *trustworthy* — a self-consistent fabrication in that shared store is
+> indistinguishable from a real measurement, and closing that would need a keyed digest this page has
+> no secret for. Stated exactly, the residual is anything within `max(1 pt, 8σ)` of the partition
+> identity: not only the fabrication that moves a cell and its buckets together, but also one that
+> leaves `cells` honest and shifts the buckets alone by less than the noise band. The second shape is
+> irreducible rather than unclosed — both sides are Monte Carlo — and the band it hides in is the
+> tolerance above, 2.53 pt at the shipped 25,000 trials/cell.
+>
+> **7. What arms the button is narrower than "any setting that leaves the measured lattice".** It is
+> gated behind an explicit **villain-profile control whose default is OFF**, and OFF is strict
+> object identity with the shipped random-villain data — `POLICY.villainEq` returns `cell.eq`/
+> `cell.rho` by reference, and **gate I22 still passes untouched**. With the profile on, a lattice
+> point (v ∈ {25,40,55,70,90} at q = 0.85) shows the shipped row exactly and offers nothing; an
+> off-lattice `v` badges `interpolated`; a custom `q` reports that there is no shipped answer at all.
+> That last case is §7.3's resolution: `q` ships user-editable, and moving it off 0.85 is precisely
+> the state this button exists for.
+>
+> **8. Two things the section did not ask for and the implementation owes anyway.** The degraded
+> main-thread path is disclosed as *"much slower, often 10× or more"* rather than a bounded factor —
+> measured at 12× here (15.0 s against 1.27 s at 8,000/cell), but it moves with core count and page
+> load, and a harness check now fails any `N–M×` claim in the painted line. And a **throwing caller
+> callback cannot kill a run or be swallowed silently**: the engine logs it, records it at
+> `SIM.status().callbackError` and delivers the result anyway, while the page writes a plain
+> "Display error … the measurement is running and is unaffected" line and keeps it sticky after the
+> bar clears.
 
 ---
 
@@ -545,6 +668,14 @@ Phase 4 last is deliberate: the button needs the villain lattice to exist so "of
 meaningful state, and the spike result (Blob workers on file://) can still reshape its internals
 without touching anything shipped in phases 1–3.
 
+> **All four phases landed.** The spike came back positive — classic Blob workers boot from
+> `file://` in Chrome — and it did reshape the internals (§4's annotation 1: a build-time bundle and
+> a browser entry twin, not the plan's "already dependency-free modules"). It reshaped nothing
+> shipped in phases 1–3: gate **I22 still passes bit for bit**, and the only change to the dataset
+> is an added field, with the regeneration proved byte-identical on every measured number
+> (METHODOLOGY §9.12). Phase 4 also cashed the source/artifact split phase 3 deferred (§2.5). End
+> state: **46 gates**, 245 `node --test` tests, `index.html` 574.4 KB.
+
 ## 7. Open questions for the implementation session (none block phase 1)
 
 1. λ(d), μ(d) exact curves and β for the positional spread — calibrate against §3.1 anchors,
@@ -566,10 +697,16 @@ without touching anything shipped in phases 1–3.
    hero seat. Working, and the three rejected candidates, in METHODOLOGY §5.3.
 3. `villainDiscipline q` default (0.85 proposed) and whether it is user-editable like the 3-bet
    mix (lean: yes, it's the same kind of pool knob).
-   **Resolved (phase 1) for the generator half only:** q = 0.85 as proposed, shipped as
-   `constants.villainLattice.discipline` and labelled opinion in METHODOLOGY §3.3. Whether the page
-   exposes it is still open, and is a phase-3/4 question — an off-lattice q is exactly the state
-   the Simulate button (§4) exists for.
+   **Resolved (phase 1) for the generator half:** q = 0.85 as proposed, shipped as
+   `constants.villainLattice.discipline` and labelled opinion in METHODOLOGY §3.3.
+   **Resolved (phase 4): YES — the lean holds, `q` is user-editable and ships that way.** It sits on
+   the villain-profile surface beside the VPIP slider, and it behaves differently from the 3-bet mix
+   in exactly the way the two knobs differ: the mix is a *blend of four measured components*, so a
+   custom mix stays an exact live calculation, while `q` is a *parameter the lattice was measured
+   at*, so a custom `q` has no shipped answer at all. Moving it off 0.85 therefore does not
+   interpolate — `POLICY.villainEq` reports `supported: false`, the page shows the random-villain
+   baseline and says so, and the **Simulate** button appears. That is the state §4's button exists
+   for, and it is now reachable from a control rather than only from an off-lattice VPIP.
 4. Villain lattice density if the 220 KB budget bites: {25,55,90} + interpolation vs 5 points.
    **Resolved (phase 1): all five ship.** The budget does not bite on the emitted file (142.8 KB of
    220 KB), the three-point fallback would not have satisfied the literal pretty-printed reading

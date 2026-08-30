@@ -1,10 +1,10 @@
 // jsmin.mjs — strip comments and dead whitespace from a JavaScript source.
 //
-// scripts/build.mjs uses this on the two module sources it inlines into index.html
-// (scripts/lib/policy.mjs and scripts/lib/taxonomy.mjs). Those inlined copies are machine-generated
-// duplicates: the reader who wants the commented version reads the module. The hand-authored app
-// shell in index.html is never passed through here — index.html is simultaneously source and
-// artifact, so minifying the shell would destroy the source.
+// scripts/build.mjs runs every piece of JavaScript in the shipped page through this: the two
+// module sources it inlines (scripts/lib/policy.mjs and scripts/lib/taxonomy.mjs) and the app
+// shell's own inline <script> blocks. What it produces is an artifact — index.html — and every
+// input to it stays on disk, commented: the modules in scripts/lib/, the shell in src/shell.html.
+// The reader who wants the readable version reads the source, which is the point of the split.
 //
 // A character-level lexer, not a regex sweep: `//` inside a string, a `/*` inside a template, and
 // a regex literal containing a quote all break the naive version. It tracks code, string, template

@@ -528,6 +528,146 @@ export function rhoAt(rho, N) {
 }
 export function eqAt(eq, N) { return rhoAt(eq, N); }
 
+// ---------------------------------------------------------------------------
+// 2b. the villain profile — reading the VPIP lattice (V2-PLAN §2.3, §4)
+// ---------------------------------------------------------------------------
+/**
+ * The villain profile is OFF, and the whole point of this object is that OFF is not a value of
+ * `v` — it is the absence of the axis. Every accessor below returns the SHIPPED arrays by
+ * reference when the profile is off, so the random-villain path is `===`-identical to what it was
+ * before this section existed. Gate I22 (v1 tier reproduction, bit for bit) is the proof, and it
+ * is left untouched deliberately: a helper that "happened to" reproduce v1 through a zero delta
+ * would be one rounding change away from not doing so.
+ */
+export const VILLAIN_OFF = Object.freeze({ on: false, v: null, q: null, measured: null });
+
+/**
+ * Normalise a villain-profile bag. Anything falsy, or `{on:false}`, is the OFF profile.
+ * @param {object|null} p `{ on, v, q, measured }` — `measured` is a per-cell eq map from the
+ *   Simulate engine (V2-PLAN §4), keyed by cell key, each value an eq array in N = 1..NMAX order.
+ * @param {object} [model] read for the lattice span and the shipped discipline. The lattice lives
+ *   in the DATA (the generator measures it), not in this file's CONSTANTS, so without a model the
+ *   clamp falls back to the page's own VPIP dial, [25, 90].
+ * @returns {{on:boolean, v:number|null, q:number|null, measured:object|null}}
+ */
+export function villainProfileOf(p, model) {
+  if (!p || p.on !== true) return VILLAIN_OFF;
+  const V = (model && model.constants && model.constants.villainLattice) || {};
+  const vp = (model && model.meta && model.meta.vpip) || {};
+  const pts = V.v || [];
+  const lo = pts.length ? pts[0] : (vp.min || 25), hi = pts.length ? pts[pts.length - 1] : (vp.max || 90);
+  const v = (p.v == null || !isFinite(p.v)) ? null : Math.min(hi, Math.max(lo, p.v));
+  const q = (p.q == null || !isFinite(p.q)) ? (V.discipline == null ? null : V.discipline) : p.q;
+  return { on: true, v, q, measured: p.measured || null };
+}
+
+/**
+ * Where `v` sits on the shipped lattice.
+ * @returns {{lo:number, hi:number, f:number, exact:boolean}} indices into the lattice array, and
+ *   the blend weight. `exact` is true only when `v` IS a lattice point, in which case `lo === hi`
+ *   and the caller must not blend at all — see `interpolateDelta`.
+ */
+export function latticeBracket(pts, v) {
+  const n = pts.length;
+  if (!n) return { lo: -1, hi: -1, f: 0, exact: false };
+  for (let i = 0; i < n; i++) if (pts[i] === v) return { lo: i, hi: i, f: 0, exact: true };
+  if (v <= pts[0]) return { lo: 0, hi: 0, f: 0, exact: false };
+  if (v >= pts[n - 1]) return { lo: n - 1, hi: n - 1, f: 0, exact: false };
+  let i = 0;
+  while (i < n - 2 && pts[i + 1] < v) i++;
+  return { lo: i, hi: i + 1, f: (v - pts[i]) / (pts[i + 1] - pts[i]), exact: false };
+}
+
+/**
+ * Linear interpolation of one cell's shipped equity deltas over v.
+ *
+ * EXACTNESS AT THE LATTICE POINTS IS A REQUIREMENT, not a happy accident: the page labels an
+ * off-lattice number `interpolated` and an on-lattice number as measured, and those two labels must
+ * not disagree about the same cell at v = 55. So a lattice hit returns the shipped row itself
+ * rather than `a + (b - a) * f` with f = 0 — which is exact here but is exactly the expression that
+ * stops being exact at f = 1 (a + (b - a) is not b in IEEE-754 for every a, b).
+ *
+ * @param {number[]} pts the lattice v-points, ascending
+ * @param {number[][]} vDelta one row per lattice point, one column per N
+ * @param {number} v
+ * @returns {{delta:number[], exact:boolean}}
+ */
+export function interpolateDelta(pts, vDelta, v) {
+  const br = latticeBracket(pts, v);
+  if (br.lo < 0) return { delta: null, exact: false };
+  if (br.exact || br.lo === br.hi) return { delta: vDelta[br.lo], exact: br.exact };
+  const a = vDelta[br.lo], b = vDelta[br.hi], f = br.f;
+  const out = new Array(a.length);
+  for (let k = 0; k < a.length; k++) out[k] = a[k] + (b[k] - a[k]) * f;
+  return { delta: out, exact: false };
+}
+
+/**
+ * The profile-aware equity accessor. THE one place the page should read equity from once the
+ * villain axis exists.
+ *
+ * Three sources, in priority order:
+ *   'measured'     the Simulate engine ran and handed back real trials for this cell (§4)
+ *   'interpolated' the shipped lattice, blended in v (and labelled as such)
+ *   'shipped'      the random-villain baseline, by reference
+ *
+ * The lattice is measured at ONE discipline (q = 0.85). At any other q there is no shipped answer —
+ * that is precisely the state the Simulate button exists for — so `supported` goes false and the
+ * accessor falls back to the baseline rather than pretending the q axis is interpolable.
+ *
+ * @param {object} model
+ * @param {string} key the cell key, needed only to look up a measured result
+ * @param {object} cell the MODEL cell (hydrated)
+ * @param {object|null} profile see `villainProfileOf`
+ * @returns {{eq:number[], rho:number[], source:string, exact:boolean, supported:boolean,
+ *            v:number|null, q:number|null}}
+ */
+export function villainEq(model, key, cell, profile) {
+  const p = villainProfileOf(profile, model);
+  const base = { eq: cell.eq, rho: cell.rho, source: 'shipped', exact: true, supported: true, v: null, q: null };
+  if (!p.on || p.v == null) return base;
+
+  if (p.measured) {
+    const m = p.measured[key];
+    if (m && m.length === cell.eq.length) {
+      return { eq: m, rho: m.map((e, i) => (e * (i + 2)) / 100), source: 'measured', exact: true, supported: true, v: p.v, q: p.q };
+    }
+  }
+  const V = (model && model.constants && model.constants.villainLattice) || {};
+  const pts = V.v || [];
+  const disc = V.discipline;
+  if (!pts.length || !Array.isArray(cell.vDelta) || cell.vDelta.length !== pts.length) {
+    return { ...base, supported: false, v: p.v, q: p.q };
+  }
+  if (p.q != null && disc != null && p.q !== disc) {
+    // an off-lattice discipline has no shipped answer at all — say so, do not invent one
+    return { ...base, supported: false, v: p.v, q: p.q };
+  }
+  const { delta, exact } = interpolateDelta(pts, cell.vDelta, p.v);
+  if (!delta) return { ...base, supported: false, v: p.v, q: p.q };
+  const eq = new Array(cell.eq.length);
+  for (let k = 0; k < eq.length; k++) eq[k] = cell.eq[k] + delta[k];
+  return {
+    eq,
+    rho: eq.map((e, i) => (e * (i + 2)) / 100),
+    source: exact ? 'lattice' : 'interpolated',
+    exact, supported: true, v: p.v, q: p.q,
+  };
+}
+
+/**
+ * The standard error the page should quote for a measurement of `trials` multiway trials, in
+ * equity points: `50 / sqrt(trials)`, the binomial SE at p = 0.5 — the same expression the
+ * generator writes into `meta.se` for the shipped dataset, so a simulated badge and a shipped one
+ * are on the same basis. 100k -> 0.16 (the shipped figure), 25k -> 0.32.
+ *
+ * NOTE, and it matters for badge copy: V2-PLAN §4 quotes "+/-0.35 pt" at 25k trials against "the
+ * shipped +/-0.16". Those two cannot both come from one formula — 0.16 is 50/sqrt(100,000), and
+ * 50/sqrt(25,000) is 0.32, not 0.35. The plan's 0.35 is an arithmetic slip, and this returns the
+ * figure that is on the same basis as the one the model already ships.
+ */
+export function seOfTrials(trials) { return trials > 0 ? 50 / Math.sqrt(trials) : Infinity; }
+
 /**
  * Aggressive target width for (pos, node, v). The straddle shifts the OPENING bases one seat
  * tighter (§3.3) and nothing else: `w3bet` has no seat base, so the vs-Raise width is untouched.
