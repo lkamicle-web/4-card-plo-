@@ -2,6 +2,7 @@
 // build.mjs — inject the model, the policy and the classifier into index.html.
 //
 //   node scripts/build.mjs [data/model.json] [--allow-fast] [--check] [--page=index.html] [--out=path]
+//                          [--no-minify] [--allow-over-budget]
 //
 // index.html carries three marked regions. Everything between a start and end marker is replaced;
 // if only the start marker is present the end marker is inserted after it on first build.
@@ -17,16 +18,26 @@
 //
 // The classifier is truncated at its `@browser-cut` marker, which drops the full-enumeration code
 // the page has no use for.
+//
+// The two injected code regions — and ONLY those — are stripped of comments and of the whitespace
+// that carries no meaning, by scripts/lib/jsmin.mjs. They are machine-generated copies of module
+// sources that live, fully commented, in scripts/lib/; the reader who wants them reads the module. The
+// hand-authored app shell around them is left byte-for-byte alone: index.html is simultaneously the
+// source and the artifact, so minifying the shell would destroy the source. --no-minify turns the
+// stripping off, which is what the correctness harness diffs against.
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { minify, JsminError } from './lib/jsmin.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 const ALLOW_FAST = argv.includes('--allow-fast');
 const CHECK_ONLY = argv.includes('--check');
+const NO_MINIFY = argv.includes('--no-minify');
+const ALLOW_OVER_BUDGET = argv.includes('--allow-over-budget');
 const MODEL_PATH = resolve(ROOT, argv.find((a) => !a.startsWith('--')) || 'data/model.json');
 const PAGE_ARG = argv.find((a) => a.startsWith('--page='));
 const PAGE_PATH = resolve(ROOT, PAGE_ARG ? PAGE_ARG.slice(7) : 'index.html');
@@ -75,7 +86,19 @@ function moduleToIife(path, name, { cutAt } = {}) {
   if (/^export\s/m.test(src)) die(`${path} has an export form build.mjs does not understand`);
   if (!names.length) die(`${path} exports nothing`);
 
-  return `const ${name} = (() => {\n${src}\nreturn { ${names.join(', ')} };\n})();`;
+  /* minify() re-lexes its own output and compares literal lists, so a state-machine slip is a
+     build failure rather than a silently corrupted page. */
+  if (!NO_MINIFY) {
+    try { src = minify(src); }
+    catch (e) {
+      if (e instanceof JsminError) die(`${path}: ${e.message} — refusing to ship it`);
+      throw e;
+    }
+  }
+
+  const block = `const ${name} = (() => {\n${src}\nreturn { ${names.join(', ')} };\n})();`;
+  try { new Function(block); } catch (e) { die(`${path}: injected block does not parse — ${e.message}`); }
+  return block;
 }
 
 const blocks = {
@@ -111,23 +134,58 @@ const report = `index.html ${(total / 1024).toFixed(1)} KB `
   + `(data ${(dataBytes / 1024).toFixed(1)} + model code ${(modelCode / 1024).toFixed(1)} `
   + `+ app ${(app / 1024).toFixed(1)} KB)`;
 
-// Budgets. The hard gate is the 400 KB total the page must never exceed — that is the number that
-// decides whether this stays a single double-clickable file, and it is now the one that actually
-// binds: the built page sits within about a kilobyte of it. Anything added from here has to pay for
-// itself by removing something else, which is the intended effect.
+// Budgets. Three numbers, retuned 2026-08-29 for v2 (previously: 400 KB total, 245 KB app, and no
+// gate at all on the inlined model code). v2 grew all three inputs at once — the dataset went to
+// N=7 with a cooler rate and a villain lattice, the policy grew a whole environment layer (depth,
+// rake, straddle), and the shell grew the controls, the expand-in-place sub view, hand search, the
+// Method env section and an 11-step tour — so the old numbers describe a page that no longer
+// exists. Measured 2026-08-29 at 516.7 KB total = data 143.1 + model code 43.7 + app 329.9; each
+// budget below is that measurement plus about 5%, rounded. (Calibrated against 513.7/326.8 and
+// re-read at 516.7/329.9 when the phase-end verification pass fixed four cross-feature defects in
+// the shell. The budgets deliberately did not move with the reading, which now sits 4.5% under.)
 //
-// The app figure is reported separately from the inlined policy/taxonomy, which are the model's own
-// source rather than interface code. It is held at 245 KB, raised from 230 when the review round
-// landed: the explanation surfaces those fixes added (a glossary behind every "?", the vs-3-bet
-// equity histogram, the drill's curriculum mode and its always-fold baseline, orientation steps in
-// the tour) are prose and markup, and the page is deliberately authored, commented and readable —
-// an open-source tool whose claim is transparency should not ship minified.
-const APP_BUDGET = 245 * 1024;
+//   TOTAL 540 KB (was 400). Still the number that decides whether this stays one double-clickable
+//   file, and still the one meant to bind. It is no longer a "fits in 400" claim: the honest claim
+//   is half a megabyte of self-contained page, most of it measured data.
+//
+//   APP 345 KB (was 245, itself raised from 230 when the review round landed). The app figure is
+//   reported apart from the inlined policy/taxonomy, which are the model's own source rather than
+//   interface code. The decision behind this number, taken at the v2 phase end and recorded in
+//   docs/V2-PLAN.md: THE APP SHELL IS NOT MINIFIED. index.html is simultaneously the hand-authored
+//   source and the shipped artifact, so running the shell through jsmin in place would permanently
+//   destroy the source's comments, and splitting source from artifact to avoid that would break the
+//   single-file contract the whole project rests on. An open-source tool whose claim is
+//   transparency should not ship a shell nobody can read. Minifying the shell behind a
+//   source/artifact split remains available as a Phase 4 option if the total ever has to come down.
+//
+//   MODEL CODE 46 KB (new gate). Calibrated from scratch, because since Phase 3 this measures a
+//   STRIPPED quantity: scripts/lib/jsmin.mjs removes comments and dead whitespace from the two
+//   injected module copies, which at this build takes them from 99.8 KB to 43.7 KB. The old
+//   unstripped figure is not comparable and must not be carried forward. Because these blocks are
+//   machine-generated copies, the gate's job is narrower than the other two — it catches a jsmin
+//   regression or a policy.mjs that has doubled in size, not "too much prose".
+//
+// The data block carries no budget here; its ceiling is gate D7 in scripts/verify.mjs, which owns
+// the payload size question and can reason about what the bytes buy.
+const TOTAL_BUDGET = 540 * 1024;
+const APP_BUDGET = 345 * 1024;
+const MODEL_CODE_BUDGET = 46 * 1024;
 
 const problems = [];
-if (total > 400 * 1024) problems.push(`index.html is ${(total / 1024).toFixed(1)} KB, budget 400 KB`);
-if (app > APP_BUDGET) problems.push(`app CSS+JS+markup is ${(app / 1024).toFixed(1)} KB, budget ${APP_BUDGET / 1024} KB`);
+const sizeProblems = [];
+const kb = (b) => (b / 1024).toFixed(1);
+if (total > TOTAL_BUDGET) sizeProblems.push(`index.html is ${kb(total)} KB, budget ${TOTAL_BUDGET / 1024} KB`);
+if (app > APP_BUDGET) sizeProblems.push(`app CSS+JS+markup is ${kb(app)} KB, budget ${APP_BUDGET / 1024} KB`);
+if (modelCode > MODEL_CODE_BUDGET) {
+  sizeProblems.push(`inlined model code is ${kb(modelCode)} KB, budget ${MODEL_CODE_BUDGET / 1024} KB`
+    + (NO_MINIFY ? ' (this build passed --no-minify; the budget assumes stripping)' : ''));
+}
 if (/\bfetch\s*\(/.test(page)) problems.push('index.html calls fetch(), which is CORS-blocked on file://');
+/* --allow-over-budget exists for one job: producing an inspectable artifact mid-rebuild, when the
+   page is knowingly over budget and the point of the build is to measure how far over. It never
+   suppresses a correctness gate, and CI must not pass it. */
+if (sizeProblems.length && ALLOW_OVER_BUDGET) console.error(`build: OVER BUDGET (--allow-over-budget): ${sizeProblems.join('; ')}`);
+else problems.push(...sizeProblems);
 if (problems.length) { console.error(report); die(problems.join('; ')); }
 
 if (CHECK_ONLY) {

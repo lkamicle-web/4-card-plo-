@@ -14,14 +14,21 @@
  * and writes screenshots at 1440×900 / 1024×768 / 390×844.
  *
  * Playwright is imported by absolute path and pointed at the preinstalled
- * Chromium; nothing is downloaded.
+ * Chromium; nothing is downloaded. The two paths below are the CI image's.
+ * On any other machine, point them somewhere real:
+ *
+ *   RUNDOWN_PLAYWRIGHT=/path/to/playwright/index.mjs   (or a bare "playwright")
+ *   RUNDOWN_BROWSER=/path/to/chromium                  (empty string = Playwright's own)
+ *
+ * With no Playwright at all, scripts/../scratchpad browser-check.mjs covers the
+ * same assertions by driving a system Chrome with --headless=new --dump-dom.
  */
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
 import { existsSync, mkdirSync } from 'node:fs';
 
-const PLAYWRIGHT = '/opt/node22/lib/node_modules/playwright/index.mjs';
-const CHROMIUM = '/opt/pw-browsers/chromium';
+const PLAYWRIGHT = process.env.RUNDOWN_PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright/index.mjs';
+const CHROMIUM = process.env.RUNDOWN_BROWSER ?? '/opt/pw-browsers/chromium';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 const argv = process.argv.slice(2);
@@ -49,8 +56,21 @@ const check = (ok, label, detail) => {
 const isFontNoise = (t) =>
   /fonts\.(googleapis|gstatic)\.com/.test(t) || /net::ERR_(NAME_NOT_RESOLVED|INTERNET_DISCONNECTED|BLOCKED|CONNECTION|PROXY|TUNNEL)/.test(t);
 
+if (PLAYWRIGHT.includes('/') && !existsSync(PLAYWRIGHT)) {
+  console.error(`smoke: no Playwright at ${PLAYWRIGHT} — set RUNDOWN_PLAYWRIGHT to its index.mjs`);
+  process.exit(2);
+}
+if (CHROMIUM && !existsSync(CHROMIUM)) {
+  console.error(`smoke: no browser at ${CHROMIUM} — set RUNDOWN_BROWSER to a Chromium binary, `
+    + 'or to the empty string to use the one Playwright installed');
+  process.exit(2);
+}
+
 const { chromium } = await import(PLAYWRIGHT);
-const browser = await chromium.launch({ executablePath: CHROMIUM, args: ['--allow-file-access-from-files'] });
+const browser = await chromium.launch({
+  ...(CHROMIUM ? { executablePath: CHROMIUM } : {}),
+  args: ['--allow-file-access-from-files'],
+});
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 const page = await ctx.newPage();
 

@@ -195,7 +195,7 @@ lattice blows the budget, drop to v ∈ {25, 55, 90} and say so here.
 > file *as emitted* (146,551 B = 143.1 KB, 35% headroom — the table above reads 146,171 B because
 > it was measured before the phase-1 and phase-2 gate names and constant blocks were stamped into
 > the same payload; METHODOLOGY §9.10 carries the byte-by-byte accounting) for the two reasons above. The pretty-printed figure is printed in D7's and
-> D6's detail lines on every run — 241.7 KB — and is
+> D6's detail lines on every run — 242.2 KB — and is
 > recorded rather than asserted, precisely so that the reading this section settled on cannot be
 > mistaken for the pretty-printed one going unmeasured. D6 keeps the tighter per-block budgets that
 > catch a creeping payload; D7 is this section's contract and is deliberately slack against D6.
@@ -205,6 +205,31 @@ lattice blows the budget, drop to v ∈ {25, 55, 90} and say so here.
 > `index.html`, which is **already 419.1 KB against its own 400 KB build gate** before v2 adds
 > anything. With the 5-row model the page would be ~456.6 KB (~448.5 KB with 3 rows). Phase 3 has
 > to deal with that; shipping two fewer lattice rows would not have saved it.
+>
+> **Resolved (phase 3 end, 2026-08-29).** It did not save it: by the phase end the page reached
+> 572.8 KB unstripped. Two moves, one refusal.
+>
+> 1. **The injected `policy.mjs` / `taxonomy.mjs` copies are now stripped** by the new
+>    `scripts/lib/jsmin.mjs` — comments and dead whitespace out, every literal, token-separating
+>    newline and identifier untouched. **99.8 KB → 43.7 KB, a 56.0 KB saving**, the largest single
+>    reduction in v2. Those blocks are machine-generated duplicates of files that sit commented in
+>    `scripts/lib/`, so nothing readable was lost. Proven by `test/jsmin.test.mjs` (export, constant,
+>    scalar and `solve` parity against a direct import) plus a per-build literal-list self-check.
+> 2. **The budgets were retuned to the measurement**, at measured + ~5%: total **400 → 540 KB**,
+>    app shell **245 → 345 KB**, and a new **46 KB** gate on the inlined model code, calibrated from
+>    scratch because it now measures a stripped quantity. Shipped: 516.7 KB = data 143.1 + model
+>    code 43.7 + app shell 329.9.
+> 3. **The app shell is NOT minified, and this is the decision, not an omission.** `index.html` is
+>    simultaneously the hand-authored source and the shipped artifact; there is no upstream file it
+>    is generated from. Stripping it in place would delete the source's own comments, and splitting
+>    source from artifact to avoid that would break the single-file contract this project rests on —
+>    one file you can double-click, read end to end, and check against its own claims. The shell
+>    stays readable and the budget moved instead. **Deferred to Phase 4:** minification behind a
+>    source/artifact split, if the total ever has to come down. It is the only remaining large lever
+>    (330 KB of the 517 KB), and it costs the property the tool argues for, so it should be taken
+>    only for a reason better than tidiness.
+>
+> Full accounting, with the byte table and the proof obligations: METHODOLOGY §9.11.
 
 ---
 
@@ -453,7 +478,17 @@ Data verdict: **feasible now** — `sub` ships 123 keys with per-bucket `eq[1..5
 - Keyboard nav descends into expanded rows and announces; structurally-empty sub-buckets don't
   exist (the layer only ships non-empty buckets), so no void handling needed.
 - One cell expanded at a time; expansion state survives position/node/VPIP changes; Esc
-  collapses.
+  collapses. (Esc collapses the panel; it does not restore scroll position, and nothing here asks
+  it to — the cell it was opened from stays where it was.)
+- **Amended at the phase-3 verification pass: no bucket verdict at the vs-3-bet node.** That node
+  cuts on `eqVs3bet`, equity against the face-up 3-bet mix, which is measured *per cell*; the sub
+  layer does not carry it, and inventing one from the percentile machinery would be a different
+  quantity wearing the same label. `POLICY.subVerdicts` therefore returns `supported: false` there
+  and the panel renders that sentence instead of rows — an honest "no verdict" over a made-up one.
+  Two consequences the UI owes that refusal, and now honours: keyboard descent must fall straight
+  through to the grid (there are no rows to descend into, even though the cell's raw bucket count
+  is non-zero), and §5.1's search must not announce a bucket "scored as-if standalone" at that
+  node — it lands on the cell and says why the bucket has no verdict.
 
 ### 5.1 Hand search (added 2026-08-29, ships with Phase 3)
 
@@ -478,6 +513,16 @@ Data verdict: **feasible now** — `sub` ships 123 keys with per-bucket `eq[1..5
   the shape pins a specific sub-bucket, opens §5's expand-in-place view with that sub-bucket
   highlighted. A bare rank string with no suffix highlights the rank-row across all suit columns
   instead of expanding anything.
+- **Amended at the phase-3 verification pass: the `void` verdict has two halves and they get
+  different answers.** A query can be well-formed and still name a shape no legal hand has —
+  `9655SSA` asks for a nut-suited hand with no ace in it. The parser reports one status; the UI
+  must not conflate the two truths under it. If the *cell* is structurally empty (`AAA9DS` — no
+  trips hand is double-suited), highlight the cell: that is the same void §2.3 already announces on
+  an arrow-key landing. If the cell is *live* but holds no hand with those ranks (`SMPAIR_CONN|SSA`
+  is full of wheel-ace hands), highlighting it would point at a cell that answers a different
+  question, so the **rank row** is highlighted instead and the copy names which half failed. This
+  is why the bullet above says "resolves to the cell" and the shipped behaviour sometimes does not:
+  resolution succeeded, population did not.
 - Keyboard: reachable by shortcut, consistent with §5's existing nav; `Esc` clears the search and
   any resulting highlight/expansion; matches and no-match both announced for screen readers, the
   same pattern §2.3 uses for void-cell announcements.

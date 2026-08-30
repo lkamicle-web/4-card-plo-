@@ -410,10 +410,14 @@ and a CO iso over three limpers = 5.92.
 vs-Limps or vs-Raise node — nobody acts before UTG in 6-max — and the segment renders disabled
 rather than silently producing a number.
 
-**The clamp.** `N_eff` is clamped to [1, 5] for equity interpolation, which the iso node exceeds
-at high VPIP (5.92). When it bites, the readout shows `N_eff 5.92 → clamped 5.00` with an
-`EXTRAPOLATED` badge and reason strings append the pre-clamp value. This is a real limitation
-(§10.5), surfaced rather than smoothed.
+**The clamp.** `N_eff` is clamped to [1, 7] for equity interpolation. v1 clamped at 5 and the iso
+node crossed it routinely (5.92 at VPIP 90); v2 measured the equity table out to seven villains, so
+the clamp now sits above almost everything the field model produces and the readout is the raw
+number. Where the clamp still bites — the reachable case is a high-VPIP isolation spot with three
+or four limpers, more easily with the straddle on, since the straddler joins `N_eff` at `c_blind(v)`
+— the number is scored at 7, the equity is read off the end of the measured curve, and the readout
+carries an `EXTRAPOLATED` badge whose tooltip names the raw value. Method → Known weaknesses counts
+every setting that reaches it. This is a real limitation (§10.5), surfaced rather than smoothed.
 
 ---
 
@@ -1229,11 +1233,75 @@ reports the true 146,551 B. Both readings sit far inside the ceiling, and D7's u
 the equality that makes the basis honest — `Buffer.byteLength(JSON.stringify(model))` is exactly
 the size of `data/model.json` on disk.
 
-**What this budget does not cover.** `index.html` is **already 419.1 KB against its own 400 KB
-build gate** before v2 adds anything, and the model is injected into it verbatim; with the v2
-payload the page measures 457.7 KB. That is a `build.mjs` problem, not a `model.json` problem —
-shipping two fewer lattice rows would have saved ~8 KB of a ~58 KB overage — and it is called out
-as such in V2-PLAN §2.5.
+**What this budget does not cover: the page itself.** The model is injected into `index.html`
+verbatim, and that file has its own budget. v1 shipped at 419.1 KB against a 400 KB gate; adding
+the v2 payload alone would have made it ~457.7 KB, and by the end of v2 — with the environment
+layer in the policy and the controls, sub-view, hand search and longer tour in the shell — it
+reached 572.8 KB unstripped. That was never a `model.json` problem: shipping two fewer lattice rows would have
+saved ~8 KB of it. It was a page problem, and §9.11 is how it was settled.
+
+### 9.11 The page's own size, and why the shell is not minified
+
+*(v2 decision, 2026-08-29.)* Measured on the shipped build:
+
+| | bytes | KB |
+|---|---:|---:|
+| `data` — the injected model | 146,566 | 143.1 |
+| model code — inlined `policy.mjs` + `taxonomy.mjs`, **stripped** | 44,775 | 43.7 |
+| app shell — hand-authored CSS, JS and markup | 337,789 | 329.9 |
+| **total `index.html`** | **529,130** | **516.7** |
+
+Two things were done about it, and one deliberately was not.
+
+**Done: the injected module copies are stripped.** `scripts/build.mjs` inlines `policy.mjs` and
+`taxonomy.mjs` into the page so the shipped policy can never drift from the one the generator ran.
+Those copies are machine-generated duplicates — the commented originals are right there in
+`scripts/lib/`, and anyone reading the model reads them, not the paste. So since v2 they go through
+`scripts/lib/jsmin.mjs`, a zero-dependency character-level lexer that removes comments and dead
+whitespace while preserving every literal, every token-separating newline (so automatic semicolon
+insertion is unchanged) and every identifier name. Nothing is renamed and no expression is
+rewritten: it is the same program with the prose taken out. On this build it takes the two blocks
+from **99.8 KB to 43.7 KB — 56.0 KB, 56%**, which is the single largest size reduction in v2.
+
+The stripping is proved rather than trusted. `minify()` re-lexes its own output and compares the
+literal lists, failing the build if they differ; the assembled IIFE is parse-checked; and
+`test/jsmin.test.mjs` evaluates both stripped and unstripped blocks in fresh VM contexts and
+requires identical exports, identical constants, identical scalar results and an identical
+`POLICY.solve` across a state sweep, against a direct import of the module.
+
+**Not done, on purpose: the app shell is not minified.** `index.html` is simultaneously the
+hand-authored source and the shipped artifact. There is no build step that produces it from
+somewhere else — the markup, the CSS and the render loop are written in that file and read in that
+file. Running the shell through the same stripper would therefore not compress a copy; it would
+permanently delete the source's comments. The obvious escape — split source from artifact, minify
+on the way out — buys the bytes at the cost of the property the project is built on: one file you
+can double-click, read end to end, and check against its own claims. A tool whose argument is
+transparency should not ship a shell nobody can read. So the shell stays readable, and the budget
+moved to meet the measurement instead of the other way round. Minifying behind a source/artifact
+split remains available as a Phase 4 option if the total ever has to come down.
+
+**The budgets, retuned to that reality.** All three were recalibrated at the v2 phase end at the
+measured value plus about 5%, replacing numbers that described a page which no longer exists:
+
+| gate | v1 | v2 | measured | headroom |
+|---|---:|---:|---:|---:|
+| total `index.html` | 400 KB | **540 KB** | 516.7 | 4.5% |
+| app shell | 245 KB | **345 KB** | 329.9 | 4.6% |
+| inlined model code | *(none)* | **46 KB** | 43.7 | 5.2% |
+
+The measured column is a reading, not a target: it moved 513.7 → 516.7 over the phase-end
+verification pass, which fixed four cross-feature defects in the shell (3.0 KB of code and comment).
+The budgets did not move with it — that is the point of a budget. But 4.5% is thinner than the ~5%
+these were set at, and the next change of this size should retune rather than spend the last of it.
+
+The model-code gate is new and its number was calibrated from scratch, because it now measures a
+stripped quantity — the old unstripped figures are not on the same basis and were not carried
+forward. Its job is narrower than the other two: it catches a `jsmin` regression or a `policy.mjs`
+that has doubled, not "too much prose". Building with `--no-minify` deliberately blows it, and the
+failure says so.
+
+The honest claim is no longer "it fits in 400 KB". It is half a megabyte of self-contained page, of
+which 143 KB is measured data and 330 KB is source you are meant to read.
 
 ---
 
@@ -1267,9 +1335,18 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
    decision. Only the vs-3-bet node, whose threshold is absolute, actually tightens. A rake model
    that re-sorted the grid would have to be non-uniform across cells, which is a much bigger claim
    about what rake does to hand values, and it is not made. Gate I31 asserts both halves.
-5. **`N_eff` saturates at 5.** The iso node genuinely reaches 5.9 expected opponents at VPIP 90;
-   the equity table stops at five villains, so it clamps and says so on screen. Extending the
-   Monte Carlo to N = 7 is cheap in code and expensive in runtime — an easy v2 win.
+5. **`N_eff` clamps at 7.** *(v2: was "saturates at 5". The Monte Carlo was extended to seven
+   villains, which is what v1 listed here as the easy win, so the limitation moved rather than
+   disappeared.)* The equity table now stops at seven, above almost everything the field model
+   produces: the iso node's 5.9 at VPIP 90, which used to clamp on sight, is now read directly off
+   measured data. The clamp still exists, and it is still reachable — a high-VPIP isolation spot
+   over three or four limpers can push raw `N_eff` past 7, more easily with the straddle on, since
+   the straddler joins the count at `c_blind(v)`. When it bites, the score is taken at N = 7 and the
+   equity is read off the end of the measured curve, so the number is an extrapolation and the
+   readout says so: the `N_eff` figure is marked and an `EXTRAPOLATED` badge carries the raw value
+   in its tooltip. The page counts how many settings reach it and prints that census in Method →
+   Known weaknesses, so the size of the limitation is a measured number rather than a claim.
+   Depth and rake do not move `N_eff` at all; only the field does.
 6. **The scoring constants are opinion.** `kappa`, `M_play`, `base_raise`, `R(p)`, `nu_min` and
    the tier widths are judgement calls informed by measurement, not derived from it. They live in
    one `constants` object precisely so a skeptic can change them and re-render.

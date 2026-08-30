@@ -351,6 +351,146 @@ export function subLabel(key) {
   return `${psL}, ${cnL}, ${hqL}, ${suL}`;
 }
 
+// ---------------------------------------------------------------------------
+// HAND SEARCH — V2-PLAN §5.1.  A pure parser, above the browser cut on purpose:
+// it needs rowOf / colOf / subKeyOf and the page needs it, so it is inlined with them.
+// ---------------------------------------------------------------------------
+// Grammar:   <4 ranks, any order> <optional suit code>
+//   ranks    2..9 T J Q K A, case-insensitive, separators ignored
+//   suffix   R | RB -> RB · SS -> SS · SSA -> SSA · DS -> DS · F | FLAW -> FLAW, narrowed to ms4
+//
+// The suffix table is read off COL_ORDER, and its `sub` field is the `suitSub` value that column
+// implies. Four of the five columns imply exactly one suit pattern, so a suffix pins a sub-bucket
+// as a side effect: `subKeyOf` is pairStructure|suitSub|connectivity|highCardQuality and the other
+// three fields are rank-only, already fixed by the rank string.
+//
+// FLAW is the exception and the reason `F` exists. `colOf` folds BOTH the three-flush ('31') and
+// the monotone ('4') pattern into the one "suit-wasted" column, so rank+FLAW is ambiguous at the
+// cell level; `suitSub` separates them as ms3 / ms4. `F` therefore means "the FLAW cell, narrowed
+// to its monotone bucket" — and where no monotone hand carries those ranks (any pair needs two
+// suits, so a paired hand can never be four of one suit) it falls back to the FLAW cell itself.
+// That fallback is the whole reason the ladder has three rungs and not two.
+export const SEARCH_SUFFIXES = {
+  R: { col: 'RB', sub: 'rb' },
+  RB: { col: 'RB', sub: 'rb' },
+  SS: { col: 'SS', sub: 'ss' },
+  SSA: { col: 'SSA', sub: 'ss' },
+  DS: { col: 'DS', sub: 'ds' },
+  F: { col: 'FLAW', sub: 'ms4' },
+  FLAW: { col: 'FLAW', sub: 'ms4' },
+};
+
+export const RANK_CHARS = '23456789TJQKA';
+/** 'T' -> 10, 'A' -> 14, anything else -> 0 */
+export function rankCharValue(ch) { const i = RANK_CHARS.indexOf(ch); return i < 0 ? 0 : i + 2; }
+/** 10 -> 'T', 14 -> 'A' */
+export function rankValueChar(v) { return RANK_CHARS[v - 2] || '?'; }
+
+/**
+ * The first legal 4-card hand with these rank VALUES whose suit topology matches `want`
+ * ({col} and/or {sub}; `{}` matches anything). Exhaustive over the 256 suit assignments and
+ * decided by the shipped `colOf`/`suitSub`, so "no such hand" is a proof, not a guess — which is
+ * what lets the parser distinguish an empty cell from an unrealizable sub-bucket.
+ * @returns {number[]|null} card indices, descending, or null
+ */
+export function suitsForRanks(ranks, want) {
+  const r0 = [ranks[0] - 2, ranks[1] - 2, ranks[2] - 2, ranks[3] - 2];
+  const cards = [0, 0, 0, 0];
+  for (let a = 0; a < 256; a++) {
+    cards[0] = r0[0] * 4 + (a & 3); cards[1] = r0[1] * 4 + ((a >> 2) & 3);
+    cards[2] = r0[2] * 4 + ((a >> 4) & 3); cards[3] = r0[3] * 4 + ((a >> 6) & 3);
+    let dup = false;
+    for (let i = 0; i < 4 && !dup; i++) for (let j = i + 1; j < 4; j++) if (cards[i] === cards[j]) { dup = true; break; }
+    if (dup) continue;
+    if (want.col && colOf(cards) !== want.col) continue;
+    if (want.sub && suitSub(cards) !== want.sub) continue;
+    return cards.slice().sort((x, y) => y - x);
+  }
+  return null;
+}
+
+/**
+ * Parse a §5.1 hand-search query and resolve it as deep as the input determines.
+ *
+ * status  'ok'          resolved; read `level`
+ *         'incomplete'  a legal prefix — keep typing (''/'96'/'9655S')
+ *         'invalid'     cannot become a legal query ('9655X', '965DS', 'AAAAA')
+ *         'void'        well-formed, but NO legal hand has those ranks in that column
+ * level   'row'   ranks only — the rank row, identical in all five suit columns
+ *         'cell'  ranks + F where no monotone hand exists: the FLAW cell, unnarrowed
+ *         'sub'   ranks + suffix: one (cell, sub-bucket)
+ *
+ * Pure: no model, no DOM, no clock. Every field is derived from the taxonomy above.
+ */
+export function parseHandQuery(q) {
+  const input = q == null ? '' : String(q);
+  const s = input.replace(/[\s,\-_./]/g, '').toUpperCase();
+  const out = {
+    input, query: s, status: 'incomplete', level: null,
+    ranks: null, canon: '', suffix: null, wantSub: null,
+    row: null, col: null, cellKey: null, subKey: null, cards: null, message: '',
+  };
+  if (!s) { out.message = 'four ranks — 9655, or 9655DS'; return out; }
+
+  const ranks = [];
+  let i = 0;
+  while (i < s.length && ranks.length < 4 && RANK_CHARS.indexOf(s[i]) >= 0) { ranks.push(rankCharValue(s[i])); i++; }
+  const rest = s.slice(i);
+  if (ranks.length < 4) {
+    if (rest) {
+      out.status = 'invalid';
+      out.message = '"' + rest[0] + '" is not a rank — four ranks come first (2-9, T, J, Q, K, A)';
+    } else {
+      out.message = (4 - ranks.length) + (ranks.length === 3 ? ' more rank' : ' more ranks');
+    }
+    return out;
+  }
+  /* order never matters: canonicalise to the descending rank pattern the taxonomy reasons on */
+  ranks.sort((a, b) => b - a);
+  out.ranks = ranks;
+  out.canon = ranks.map(rankValueChar).join('');
+
+  /* rowOf is rank-only, so ANY legal suiting of these ranks names the row */
+  const anyCards = suitsForRanks(ranks, {});
+  out.row = rowOf(anyCards);
+
+  if (!rest) {
+    out.status = 'ok'; out.level = 'row'; out.cards = anyCards;
+    out.message = 'rank row — the same row in all five suit columns';
+    return out;
+  }
+  if (RANK_CHARS.indexOf(rest[0]) >= 0) {
+    out.status = 'invalid'; out.message = 'more than four ranks — a PLO hand holds exactly four';
+    return out;
+  }
+  const suf = Object.prototype.hasOwnProperty.call(SEARCH_SUFFIXES, rest) ? SEARCH_SUFFIXES[rest] : null;
+  if (!suf) {
+    const partial = Object.keys(SEARCH_SUFFIXES).some((k) => k.length > rest.length && k.slice(0, rest.length) === rest);
+    out.status = partial ? 'incomplete' : 'invalid';
+    out.message = partial ? 'keep typing — R/RB, SS, SSA, DS or F'
+      : '"' + rest + '" is not a suit code — use R/RB, SS, SSA, DS or F';
+    return out;
+  }
+  out.suffix = rest; out.col = suf.col; out.wantSub = suf.sub;
+  out.cellKey = out.row + '|' + suf.col;
+
+  let cards = suitsForRanks(ranks, suf);
+  if (cards) {
+    out.status = 'ok'; out.level = 'sub'; out.cards = cards; out.subKey = subKeyOf(cards);
+    out.message = 'one sub-bucket — the suit code fixes the only sub-key field the ranks do not';
+    return out;
+  }
+  cards = suitsForRanks(ranks, { col: suf.col });
+  if (cards) {
+    out.status = 'ok'; out.level = 'cell'; out.cards = cards;
+    out.message = 'no monotone hand holds a pair, so this is the suit-wasted cell itself, unnarrowed';
+    return out;
+  }
+  out.status = 'void';
+  out.message = 'no legal hand has those ranks — that cell is structurally empty';
+  return out;
+}
+
 /* @browser-cut — everything below this line is Node-side only and is not inlined into the page */
 
 // ---------------------------------------------------------------------------
