@@ -161,8 +161,12 @@ something you turn on.
   and the tier each would earn *scored as-if standalone*. It is where the TT/JJ story becomes
   visible. At the vs-3-bet node it reports that there is no bucket verdict rather than inventing
   one from machinery that measures something else.
-- **Hand search.** Type `9655DS` — four ranks in any order, with an optional `R`/`SS`/`SSA`/`DS`/`F`
-  suffix — and the grid goes to that cell, or opens the one sub-bucket the shape pins.
+- **One hand finder, two grammars.** **FIND HAND** in the top bar takes either question and tells
+  them apart on the second character, so there is no mode to pick. `AsKh9s8d` — four specific
+  cards — opens the inspector on that hand and outlines the cell it lives in. `9655DS` — four
+  ranks in any order, with an optional `R`/`SS`/`SSA`/`DS`/`F` suffix — moves the grid to that
+  class, or opens the one sub-bucket the shape pins. `/` focuses it, `↓` steps into the grid,
+  `Esc` clears it and everything it opened.
 - **A Simulate button.** When the villain profile is on at a VPIP or a discipline the shipped
   lattice never measured, the page stops interpolating and offers to measure it for real:
   **3,075,000 trials** in Web Workers spawned from a Blob URL, about **3.4 seconds** with four

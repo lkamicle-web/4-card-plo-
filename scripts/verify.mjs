@@ -3,12 +3,13 @@
 //
 //   node scripts/verify.mjs [data/model.json]
 //
-//   D1-D8  data gates      partition, empty cells, dual-key, schema, geometry, size budgets, the
-//                          V2-PLAN §2.5 payload ceiling on the emitted artifact, and the integrity
+//   D1-D8  data gates      partition, empty cells, schema, geometry, size budgets, the
+//   (no D3)                V2-PLAN §2.5 payload ceiling on the emitted artifact, and the integrity
 //                          of the shipped villain ordering the Simulate button re-cuts (§4)
 //   V1-V6  engine gates    zero-sum, conservation, seed independence, category counts, Omaha rule
 //   B      benchmarks      the calibration tables, +/-0.6 pt (+/-1.5 in --fast data)
 //   I1-I21 model gates     the sanity invariants, over v in {25,40,55,70,90} x 6 pos x 4 nodes
+//   (no I17)
 //   I22    regression      v1 tier reproduction against data/tiers-v1.fixture.txt, over every
 //                          integer v in 25..90 x 21 legal (pos, node) pairs. Read-only: the
 //                          fixture is written by scripts/freeze-tiers.mjs, by hand, never here.
@@ -25,7 +26,10 @@
 //   I31    rake            the §3.2 haircut: tier-inert at the percentile nodes BY CONSTRUCTION
 //                          (asserted, not lamented) and biting at the one absolute threshold.
 //
-// 46 gates in total. V1/I5 and V2/V3/I4 are RANDOM-VILLAIN gates: the filtered-villain lattice is
+// 44 gates in total — D3 and I17 went with the sub-bucket layer they asserted (the dual-key
+// partition, and the geometric-mean reconstruction of a cell's M_play from its buckets'). D1
+// already pins sum(cells) === 270,725, which is what is left of the partition claim.
+// V1/I5 and V2/V3/I4 are RANDOM-VILLAIN gates: the filtered-villain lattice is
 // exempt from conservation by construction (see the scope comment at V1, and I25).
 //
 // Any failure exits non-zero. Gate results are stamped into MODEL.gates for the Method view, and
@@ -135,65 +139,6 @@ export function verifyModel(model, opts = {}) {
   }
 
   // =========================================================================
-  // D3 / I17 — dual-key partition, and the sub layer's own mplay and cooler
-  // =========================================================================
-  let subCount = 0;
-  {
-    let bad = 0, total = 0;
-    // V2-PLAN §2.4 gives every sub-bucket its own combo-weighted M_play and its own cooler rate
-    // instead of borrowing its cell's, and asks that the weighted means reconstruct the cell.
-    //   M_play is a product of per-feature factors raised to combo SHARES, so log(M_play) is linear
-    //   in those shares; a cell's share is the combo-weighted mean of its sub-buckets' shares;
-    //   therefore the cell's M_play is EXACTLY the combo-weighted GEOMETRIC mean of its
-    //   sub-buckets'. Nothing but 3-dp rounding on both sides stands between them, so the tolerance
-    //   is a rounding tolerance and not a fudge factor.
-    //   `cooler` is a conditional rate. Its exact reconstruction weight is combos x P(set or
-    //   better), which the shipped file deliberately does not carry, and the two sides are separate
-    //   Monte Carlo samples besides (100k trials per cell against 40k per sub-bucket). So the
-    //   assertion here is the one that is true for EVERY weighting — a mixture lies between its
-    //   own extremes — widened by the sampling error of the two measurements. Cells with a single
-    //   sub-bucket are the binding case: there the bracket collapses to a straight re-measurement.
-    const tolM = 0.002;
-    const tolC = fast ? 0.12 : 0.04;
-    let worstM = 0, worstMAt = '', worstC = 0, worstCAt = '', outOfRange = 0, single = 0;
-    for (const k of Object.keys(model.cells)) {
-      const c = model.cells[k];
-      const list = model.sub[k];
-      if (!c.combos) { if (list) bad++; continue; }
-      if (!list) { bad++; continue; }
-      const s = list.reduce((a, b) => a + b.combos, 0);
-      if (s !== c.combos) bad++;
-      total += s;
-      subCount += list.length;
-
-      if (c.mplay !== undefined && list.every((x) => x.mplay !== undefined)) {
-        let lg = 0;
-        for (const x of list) lg += (x.combos / c.combos) * Math.log(x.mplay);
-        const d = Math.abs(Math.exp(lg) - c.mplay);
-        if (d > worstM) { worstM = d; worstMAt = k; }
-      }
-      if (c.cooler !== undefined && list.every((x) => x.cooler !== undefined)) {
-        const cs = list.map((x) => x.cooler);
-        const d = Math.max(c.cooler - Math.max(...cs), Math.min(...cs) - c.cooler);
-        if (d > worstC) { worstC = d; worstCAt = k + (list.length === 1 ? ' (single bucket)' : ''); }
-        if (list.length === 1) single++;
-        for (const x of cs) if (!(x >= 0 && x <= 1)) outOfRange++;
-        if (!(c.cooler >= 0 && c.cooler <= 1)) outOfRange++;
-      }
-    }
-    const inBand = subCount >= 300 && subCount <= 400;
-    const fieldsOk = worstM <= tolM && worstC <= tolC && outOfRange === 0;
-    G('D3', bad === 0 && total === TOTAL && inBand,
-      `${subCount} sub-buckets across ${Object.keys(model.sub).length} cells, sum ${total}, cell-sum mismatches ${bad}`);
-    G('I17', bad === 0 && total === TOTAL && inBand && fieldsOk,
-      `sum(sub) === combos(cell) for all cells; sum(cells) === ${total}; ${subCount} non-empty sub-buckets; ` +
-      `combo-weighted geometric mean of sub mplay rebuilds the cell to ${worstM.toFixed(5)} of ${tolM} ` +
-      `(worst ${worstMAt || 'n/a'}); every cell cooler sits inside its sub-buckets' range to ` +
-      `${worstC.toFixed(4)} of ${tolC} (worst ${worstCAt || 'n/a'}; ${single} cells hold a single bucket, ` +
-      `where the bracket is a straight re-measurement); ${outOfRange} cooler values outside [0,1]`);
-  }
-
-  // =========================================================================
   // D4 — schema completeness and number formatting
   // =========================================================================
   {
@@ -218,14 +163,6 @@ export function verifyModel(model, opts = {}) {
           if (row.length !== NM) bad++;
           else for (const d of row) if (+d.toFixed(1) !== d) fmt++;
         }
-      }
-    }
-    for (const k of Object.keys(model.sub || {})) {
-      for (const s of model.sub[k]) {
-        if (s.eq.length !== NM) bad++;
-        if (NM > 5 && (s.mplay === undefined || s.cooler === undefined)) bad++;
-        if (s.cooler !== undefined && +s.cooler.toFixed(3) !== s.cooler) fmt++;
-        if (s.mplay !== undefined && +s.mplay.toFixed(3) !== s.mplay) fmt++;
       }
     }
     const notable = Object.keys(model.cells).filter((k) => model.cells[k].notable).length;
@@ -256,7 +193,7 @@ export function verifyModel(model, opts = {}) {
   {
     const b = (o) => Buffer.byteLength(JSON.stringify(o));
     sizes = {
-      cells: b(model.cells), sub: b(model.sub),
+      cells: b(model.cells),
       meta: b(model.meta) + b(model.rows) + b(model.cols) + b(model.bands) + b(model.constants) + b(model.benchmarks),
       order: model.order ? b(model.order) : 0,
       total: b(model),
@@ -267,14 +204,11 @@ export function verifyModel(model, opts = {}) {
     //                     `cooler` (§2.1), plus the villain-VPIP lattice — the whole reason v2
     //                     exists — shipped as 1-dp deltas from the random-villain baseline rather
     //                     than as absolute equities, precisely to keep this number down.
-    //   sub   60 -> 72K   measured 69.5K. The same two extra equities, plus the sub layer's own
-    //                     `mplay` and `cooler` (§2.4), which is what makes a sub-bucket verdict
-    //                     self-contained instead of borrowed from its row-mates.
     //   meta  14 -> 13K   measured 10.8K, and TIGHTENED from 14K: the new measurement constants
     //                     (the cooler definition, the lattice points, villainDiscipline q, the
     //                     realised range fractions) cost under a kilobyte between them.
     //   total 120 -> 150K measured 142.7K.
-    // Headroom is 4-5% on the two large blocks, the same margin v1 ran (38.6/40K, 58.4/60K): these
+    // Headroom is 4-5% on the large blocks, the same margin v1 ran (38.6/40K, 58.4/60K): these
     // are meant to catch a payload that creeps, not to leave room for one.
     //
     // PHASE 4 RAISE, stated and paid for in the same spirit:
@@ -287,6 +221,12 @@ export function verifyModel(model, opts = {}) {
     //   total 150 -> 195K measured 183.5K. Exactly the order block plus the old 143.1K reading of
     //                     the file on disk. Headroom 6%, the same margin as the blocks above.
     //
+    // SUB-BUCKET CUT, and the budget comes DOWN with it — a removal that does not move the ceiling
+    // has not really been paid back:
+    //   sub     72K -> 0   the layer is gone: no `sub` block, no per-bucket mplay/cooler, and the
+    //                      cell is now the finest unit this model resolves.
+    //   total  195 -> 125K measured 118.9K. Headroom 5%, the same margin as every block above.
+    //
     // V2-PLAN §2.5 quotes its ceiling as "220 KB pretty-printed". Measured, the emitted file is
     // 143.1 KB as written and 242.2 KB under JSON.stringify(m, null, 1). The plan compares that
     // ceiling against "model.json is 105 KB today", which is the MINIFIED v1 file (v1
@@ -294,11 +234,10 @@ export function verifyModel(model, opts = {}) {
     // v-points, still pretty-prints to 221.0 KB. So the literal reading is not satisfiable by the
     // plan's own remedy, and the ceiling is read on the basis it was written against: the file as
     // emitted. See docs/V2-PLAN.md §2.5, updated with these measurements.
-    const BUD = { cells: 65 * 1024, sub: 72 * 1024, meta: 13 * 1024, order: 43 * 1024, total: 195 * 1024 };
-    const ok = sizes.cells <= BUD.cells && sizes.sub <= BUD.sub && sizes.meta <= BUD.meta
+    const BUD = { cells: 65 * 1024, meta: 13 * 1024, order: 43 * 1024, total: 125 * 1024 };
+    const ok = sizes.cells <= BUD.cells && sizes.meta <= BUD.meta
       && sizes.order <= BUD.order && sizes.total <= BUD.total;
     G('D6', ok, `cells ${(sizes.cells / 1024).toFixed(1)}K/${BUD.cells / 1024}K · ` +
-      `sub ${(sizes.sub / 1024).toFixed(1)}K/${BUD.sub / 1024}K · ` +
       `meta+tables ${(sizes.meta / 1024).toFixed(1)}K/${BUD.meta / 1024}K · ` +
       `order ${(sizes.order / 1024).toFixed(1)}K/${BUD.order / 1024}K · ` +
       `total ${(sizes.total / 1024).toFixed(1)}K/${BUD.total / 1024}K ` +
@@ -986,8 +925,7 @@ export function verifyModel(model, opts = {}) {
     // WHAT THIS GATE DELIBERATELY DOES NOT ASSERT. V2-PLAN §2.1 asks for a five-step pair ladder,
     // TT > JJ > QQ > KK > AA. That ordering is not expressible in this taxonomy: `rowOf` splits
     // pairs at J (big = rank >= 11), so JJ, QQ and KK share the big-pair rows while TT sits with
-    // the small pairs, and the sub-bucket key's `highCardQuality` counts cards of rank T-or-better,
-    // so it does not separate them either. Separating the pair ranks is new rows, not a new
+    // the small pairs. Separating the pair ranks is new rows, not a new
     // measurement. Nor is the ladder assertable per ROW: measured, the row means are not ordered
     // inside a band (`AA_SMALLPAIR` 0.3453 sits above `BIGPAIR_CONN` 0.3216, and `DBLPAIR_MIXED`
     // 0.3942 above every AA row). What is measured, and is asserted here, is the three-step BAND
@@ -1010,10 +948,10 @@ export function verifyModel(model, opts = {}) {
     //                         Pinned as rank bounds rather than as magic numbers so the gate keeps
     //                         meaning if the whole table shifts; 3 ranks of slack, i.e. three cells
     //                         would have to overtake the anchor before it fires.
-    //   envelope   cells [0.15, 0.65], sub-buckets [0.15, 0.85] — measured 0.257-0.501 and
-    //                         0.256-0.752. This is a definition guard, not a noise guard: flipping
-    //                         chops into losses, or dropping the "set or better" condition, moves
-    //                         every number out of these bands at once. [0, 1] is asserted flat.
+    //   envelope   cells [0.15, 0.65] — measured 0.257-0.501. This is a definition guard, not a
+    //                         noise guard: flipping chops into losses, or dropping the "set or
+    //                         better" condition, moves every number out of this band at once.
+    //                         [0, 1] is asserted flat.
     //   bar        <= 0.002   `constants.coolerBarMeasured` (0.3953) against the combo-weighted
     //                         mean rebuilt from the shipped 3-dp cells (0.39536, error 0.00006) —
     //                         a rounding tolerance, catching a constant that goes stale.
@@ -1030,7 +968,7 @@ export function verifyModel(model, opts = {}) {
       const tolSSA = fast ? 0.04 : 0.01;
       const stepMin = fast ? 0.015 : 0.03;
       const rankMax = fast ? 16 : 8;
-      const ENV = { cell: [0.15, 0.65], sub: [0.15, 0.85] };
+      const ENV = { cell: [0.15, 0.65] };
 
       // band ladder, combo-weighted
       const acc = {};
@@ -1045,17 +983,6 @@ export function verifyModel(model, opts = {}) {
         if (c.cooler > cMax) cMax = c.cooler;
         if (!(c.cooler >= 0 && c.cooler <= 1)) out01++;
         if (c.cooler < ENV.cell[0] || c.cooler > ENV.cell[1]) envBad++;
-      }
-      let sMin = Infinity, sMax = -Infinity, nSub = 0;
-      for (const k of Object.keys(model.sub || {})) {
-        for (const s of model.sub[k]) {
-          if (s.cooler === undefined) continue;
-          nSub++;
-          if (s.cooler < sMin) sMin = s.cooler;
-          if (s.cooler > sMax) sMax = s.cooler;
-          if (!(s.cooler >= 0 && s.cooler <= 1)) out01++;
-          if (s.cooler < ENV.sub[0] || s.cooler > ENV.sub[1]) envBad++;
-        }
       }
       const mean = (b) => (acc[b] ? acc[b][0] / acc[b][1] : NaN);
       const aa = mean('AA'), bp = mean('BIGPAIR'), sp = mean('SMALLPAIR');
@@ -1089,8 +1016,8 @@ export function verifyModel(model, opts = {}) {
         `both columns, ${strictRows}/${rowsBoth} strictly (thinnest margin ${thinnest.toFixed(3)}, ` +
         `about 1 SE — the tolerance is why this is not a coin flip); DBLPAIR_SMALL|RB rank ${rankTop} ` +
         `and AA_BIGPAIR|DS rank ${rankBot} from the bottom, of ${live.length} cells, both within ` +
-        `${rankMax}; range ${cMin.toFixed(3)}-${cMax.toFixed(3)} cells / ${sMin.toFixed(3)}-` +
-        `${sMax.toFixed(3)} over ${nSub} sub-buckets, ${out01} outside [0,1], ${envBad} outside the ` +
+        `${rankMax}; range ${cMin.toFixed(3)}-${cMax.toFixed(3)} over ${live.length} cells, ` +
+        `${out01} outside [0,1], ${envBad} outside the ` +
         `measured envelope; coolerBarMeasured rebuilds to ${barErr.toFixed(5)} of 0.002` +
         (badSSA.length ? ` — SSA/SS reversals: ${badSSA.slice(0, 3).join('; ')}` : '') +
         (ladder ? '' : ' — BAND LADDER BROKEN'));
@@ -2023,7 +1950,7 @@ export function verifyModel(model, opts = {}) {
   }
 
   const ok = gates.every((g) => g.pass);
-  return { ok, gates, sizes, subCount };
+  return { ok, gates, sizes };
 }
 
 // ---------------------------------------------------------------------------

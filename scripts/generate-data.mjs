@@ -4,7 +4,7 @@
 //   node scripts/generate-data.mjs [--fast] [--workers=4] [--out=data/model.json]
 //
 // Stages
-//   S0 enumerate    classify all 270,725 hands; cells, sub-buckets, features, examples, geometry
+//   S0 enumerate    classify all 270,725 hands; cells, features, examples, geometry
 //   S0b classes     collapse the deck into suit-isomorphism classes (the villain ordering's domain)
 //   S1 villain prep enumerate the four face-up 3-bet component ranges
 //   S1b villain ord eq1 per class over shared deals -> the frozen top-v% pools (V2-PLAN §2.3),
@@ -12,9 +12,8 @@
 //   S2 cell equity  per non-empty cell: multi-N trials (one deal -> equity vs N = 1..7) + cooler
 //   S2L lattice     the same, against VPIP-filtered villains at five lattice points
 //   S3 vs-3-bet     per cell x component: heads-up trials vs a rejection-sampled villain
-//   S4 sub-buckets  the depth layer, same kernel as S2 (its own mplay and cooler, V2-PLAN §2.4)
 //   S5 derive+emit  rho, nu, mplay, cooler, lattice deltas, adjMean, waveD, benchmarks, assembly
-//   S6 verify       46 gates: D1-D8, V1-V6, benchmarks, I1-I22 + I24/I25 (the v2 measurement
+//   S6 verify       44 gates: D1-D8 (no D3), V1-V6, benchmarks, I1-I22 (no I17) + I24/I25 (the v2 measurement
 //                   shapes) + I23/I27/I28 (the depth axis, §3.1) + I26/I29/I30/I31 (the straddle
 //                   and the rake, §3.2/§3.3), size budgets and the §2.5 payload ceiling; stamps
 //                   MODEL.gates
@@ -37,7 +36,7 @@ import { createHash } from 'node:crypto';
 
 import {
   enumerateAll, spanExamples, unpackHand, ROW_ORDER, COL_ORDER, ROW_META, COL_META,
-  BAND_ORDER, BAND_META, subLabel,
+  BAND_ORDER, BAND_META,
 } from './lib/taxonomy.mjs';
 import { handStr, parseHand } from './lib/eval5.mjs';
 import { buildComponentRanges, COMPONENTS } from './lib/villains.mjs';
@@ -71,8 +70,8 @@ const OUT = resolve(ROOT, arg('out', 'data/model.json'));
 const SEED = 'rundown-v1';   // build label, not an input — see the header note on stream seeding
 
 const TRIALS = FAST
-  ? { cell: 10000, vs3bet: 4000, sub: 4000, latt: 10000, eq1Deals: 6000 }
-  : { cell: 100000, vs3bet: 40000, sub: 40000, latt: 100000, eq1Deals: 60000 };
+  ? { cell: 10000, vs3bet: 4000, latt: 10000, eq1Deals: 6000 }
+  : { cell: 100000, vs3bet: 40000, latt: 100000, eq1Deals: 60000 };
 
 const t0 = Date.now();
 const stamp = () => ((Date.now() - t0) / 1000).toFixed(1).padStart(6) + 's';
@@ -87,8 +86,7 @@ if (E.total !== 270725) throw new Error(`enumeration produced ${E.total}, expect
 const NC = E.cellKeys.length;
 const nonEmpty = [];
 for (let i = 0; i < NC; i++) if (E.combos[i] > 0) nonEmpty.push(i);
-log(`S0 done — ${NC} cells (${nonEmpty.length} non-empty, ${NC - nonEmpty.length} structurally empty), ` +
-    `${E.subList.length} sub-buckets`);
+log(`S0 done — ${NC} cells (${nonEmpty.length} non-empty, ${NC - nonEmpty.length} structurally empty)`);
 
 // ---------------------------------------------------------------------------
 // S0b — suit-isomorphism classes (the domain the villain ordering is measured on)
@@ -168,12 +166,12 @@ log(`S1b order — ${cls.n} classes packed at ${ORDER_BITS} bits into ${ORDER_PA
     `chars (${(ORDER_PACKED.length / 1024).toFixed(1)} KB), hash ${ORDER_HASH}`);
 
 // ---------------------------------------------------------------------------
-// worker pool (shared by S2/S2L/S3/S4)
+// worker pool (shared by S2/S2L/S3)
 // ---------------------------------------------------------------------------
 const pool = await startPool({
   workers: WORKERS,
-  pools: { cell: E.byCell, sub: E.bySub },
-  starts: { cell: E.cellStart, sub: E.subStart },
+  pools: { cell: E.byCell },
+  starts: { cell: E.cellStart },
   ranges,
   filtered: LAT.ranges,
 });
@@ -232,17 +230,6 @@ const s3 = await runJobs(pool, s3Jobs, progress('S3'));
 log(`S3 done in ${((Date.now() - s3t) / 1000).toFixed(1)}s ` +
     `(${Math.round((s3Jobs.length * TRIALS.vs3bet) / ((Date.now() - s3t) / 1000)).toLocaleString()} HU trials/s)`);
 
-// ---------------------------------------------------------------------------
-// S4 — sub-buckets
-// ---------------------------------------------------------------------------
-log(`S4 sub-buckets — ${E.subList.length} buckets x ${TRIALS.sub} multi-trials ...`);
-const s4Jobs = E.subList.map((s, id) => ({
-  id, pool: 'sub', unit: id, kind: 'multi', stage: 'sub', key: `${E.cellKeys[s.cell]}#${s.key}`, trials: TRIALS.sub,
-}));
-const s4t = Date.now();
-const s4 = await runJobs(pool, s4Jobs, progress('S4'));
-log(`S4 done in ${((Date.now() - s4t) / 1000).toFixed(1)}s`);
-
 await stopPool(pool);
 
 // ---------------------------------------------------------------------------
@@ -299,11 +286,9 @@ const NOTABLE = {
 };
 
 /**
- * M_play from combo-weighted feature means; each boolean factor is raised to its share of the unit.
- * The row-level factors (trips, ace-blocked) are properties of the 29-row cascade, so a sub-bucket
- * inherits them from its cell's row. Because every factor is a power of a share, and a cell's share
- * is the combo-weighted mean of its sub-buckets' shares, the cell's M_play is exactly the
- * combo-weighted GEOMETRIC mean of its sub-buckets' — which is what gate I17 now asserts.
+ * M_play from combo-weighted feature means; each boolean factor is raised to its share of the cell.
+ * The row-level factors (trips, ace-blocked) are properties of the 29-row cascade, so they are read
+ * off the cell's row rather than from any per-hand feature.
  */
 function mplayOf(row, share) {
   const M = CONSTANTS.mplay;
@@ -396,38 +381,6 @@ const coolerBarMeasured = coolBarNum / nuBarDen;
 log(`S5 pool mean nu (combo-weighted, measured) = ${nuBarMeasured.toFixed(4)} · model constant nuBar = ${CONSTANTS.nuBar}`);
 log(`S5 pool mean cooler (combo-weighted, measured) = ${coolerBarMeasured.toFixed(4)}`);
 
-// --- sub-buckets. Each carries its OWN combo-weighted mplay and its own cooler rather than
-// borrowing its cell's, so a sub-bucket verdict is not diluted by its row-mates (V2-PLAN §2.4).
-const sub = {};
-E.subList.forEach((s, i) => {
-  const ck = E.cellKeys[s.cell];
-  const eq = s4[i].eq;
-  const rho = eq.map((e, k) => (e * (k + 2)) / 100);
-  const nuSlope = (rho[4] - rho[0]) / 4;
-  const nu = Math.min(1, Math.max(0, (nuSlope + CONSTANTS.nuNorm[0]) / CONSTANTS.nuNorm[1]));
-  const rec = E.subs[s.cell].get(s.key);
-  const sf = E.subFeat;
-  const mplay = mplayOf(ck.split('|')[0], {
-    dangMean: sf.danglers[i] / s.combos,
-    nut: sf.nut[i] / s.combos,
-    mono: sf.mono[i] / s.combos,
-    tri: sf.tri[i] / s.combos,
-    hi9: sf.hi9[i] / s.combos,
-    quad: sf.quads[i] / s.combos,
-  });
-  (sub[ck] ||= []).push({
-    key: s.key,
-    label: subLabel(s.key),
-    combos: s.combos,
-    eq: eq.map(r1),
-    nu: r2(nu),
-    mplay: r3(mplay),
-    cooler: r3(coolerOf(s4[i])),
-    ex: rec.ex.map((pk) => handStr(unpackHand(pk).sort((a, b) => b - a))),
-  });
-});
-for (const k of Object.keys(sub)) sub[k].sort((a, b) => b.combos - a.combos);
-
 // --- benchmarks (measured here, asserted by verify)
 log('S5 benchmarks ...');
 const BT = FAST ? 12000 : 60000;
@@ -491,13 +444,12 @@ const MODEL = {
     generated: new Date().toISOString().slice(0, 10),
     seed: SEED,
     trials: {
-      cell: TRIALS.cell, vs3bet: TRIALS.vs3bet, sub: TRIALS.sub,
+      cell: TRIALS.cell, vs3bet: TRIALS.vs3bet,
       latt: TRIALS.latt, eq1Deals: TRIALS.eq1Deals,
     },
     se: {
       cell: r2(50 / Math.sqrt(TRIALS.cell)),
       vs3bet: r2(50 / Math.sqrt(TRIALS.vs3bet)),
-      sub: r2(50 / Math.sqrt(TRIALS.sub)),
       latt: r2(50 / Math.sqrt(TRIALS.latt)),
     },
     comboTotal: TOTAL,
@@ -525,7 +477,6 @@ const MODEL = {
     return { key, label: BAND_META[key].label, rows, combos: n, share: r4(n / TOTAL) };
   }),
   cells,
-  sub,
   // The frozen villain ordering, so the page can cut a pool at a v this generator never measured
   // (V2-PLAN §4). Format and index space: scripts/lib/order-pack.mjs.
   order: {

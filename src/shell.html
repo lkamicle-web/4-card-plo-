@@ -109,16 +109,25 @@ svg{display:block}
 .tabs button[aria-selected=true]{color:var(--text-primary)}
 .tabs button[aria-selected=true]::after{background:var(--accent)}
 .spacer{flex:1 1 auto}
-.handinput{position:relative}
-.handinput input{width:160px;height:32px;padding:0 var(--sp-4);background:var(--surface-1);
+/* THE hand finder. One box for both questions — see the markup below and runHandSearch. The
+   message under it carries three states, and the left rule is the only thing that changes:
+   neutral for a hint, accent for a hit, red for a query that cannot resolve. */
+.handinput{position:relative;display:flex;align-items:center;gap:var(--sp-3)}
+.handinput label{color:var(--text-tertiary);font:600 9px/11px var(--font-ui);letter-spacing:.07em;flex:0 0 auto}
+.handinput input{width:184px;height:32px;padding:0 var(--sp-4);background:var(--surface-1);
   border:1px solid var(--border-default);border-radius:var(--r-md);font:500 13px/16px var(--font-mono);
   color:var(--text-primary);letter-spacing:.02em}
-.handinput input::placeholder{color:var(--text-disabled)}
+.handinput input::placeholder{color:var(--text-disabled);letter-spacing:0}
 .handinput input:hover{border-color:var(--border-strong)}
-.handinput.err input{border-color:var(--pos-bad);box-shadow:0 0 0 1px var(--pos-bad)}
-.handinput .msg{position:absolute;top:36px;right:0;width:260px;padding:var(--sp-3) var(--sp-4);background:var(--surface-2);
-  border:1px solid var(--border-default);border-left:3px solid var(--pos-bad);border-radius:var(--r-md);
+.handinput.bad input{border-color:var(--pos-bad);box-shadow:0 0 0 1px var(--pos-bad)}
+.handinput.hit input{border-color:var(--accent)}
+.handinput #handqx{width:26px;height:26px;flex:0 0 auto;visibility:hidden}
+.handinput.has #handqx{visibility:visible}
+.handinput .msg{position:absolute;top:36px;right:0;width:284px;padding:var(--sp-3) var(--sp-4);background:var(--surface-2);
+  border:1px solid var(--border-default);border-left:3px solid var(--border-strong);border-radius:var(--r-md);
   box-shadow:var(--e2);font:400 12px/16px var(--font-ui);color:var(--text-secondary);z-index:50}
+.handinput.hit .msg{border-left-color:var(--accent)}
+.handinput.bad .msg{border-left-color:var(--pos-bad);color:var(--pos-bad)}
 .viewsw{display:flex;background:var(--surface-1);border:1px solid var(--border-subtle);border-radius:var(--r-md);padding:2px}
 .viewsw button{height:28px;padding:0 var(--sp-4);border-radius:var(--r-sm);color:var(--text-tertiary);font:600 12px/14px var(--font-ui)}
 .viewsw button[aria-pressed=true]{background:var(--surface-3);color:var(--text-primary)}
@@ -201,39 +210,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .tglchip[aria-pressed=true] .dot{background:var(--accent);border-color:var(--accent)}
 .ctlnote{margin-top:var(--sp-3);font:400 11px/16px var(--font-ui);color:var(--text-tertiary)}
 .ctlnote b{color:var(--text-secondary);font-weight:600}
-/* --- V2-PLAN §5: expand-in-place sub-buckets --- */
-.subpanel{margin:2px 0 5px 17px;border:1px solid var(--border-default);border-left:2px solid var(--accent-dim);
-  border-radius:var(--r-md);background:var(--surface-1);overflow:hidden}
-.subpanel .sph{display:flex;align-items:center;gap:var(--sp-3);padding:5px var(--sp-4);background:var(--surface-2);
-  border-bottom:1px solid var(--border-subtle);flex-wrap:wrap}
-.subpanel .sph .ttl{font:600 11px/14px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)}
-.subpanel .sph .asif{font:600 10px/13px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;
-  color:var(--pos-warn);border:1px dashed var(--pos-warn);border-radius:var(--r-sm);padding:0 4px}
-.subpanel .sph .sp{flex:1 1 auto}
-.subpanel .sph button{color:var(--text-tertiary);font:600 11px/14px var(--font-ui)}
-.subpanel .sph button:hover{color:var(--text-primary)}
-/* the table is 8 columns of nowrap numbers; it scrolls inside its own box rather than being
-   clipped by the panel or pushing the page sideways */
-.subscroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
-.subtable{width:100%;border-collapse:collapse;font:400 11px/15px var(--font-ui)}
-.subtable th{font:600 9px/12px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);
-  text-align:right;padding:4px var(--sp-3);border-bottom:1px solid var(--border-subtle);white-space:nowrap}
-.subtable th.l{text-align:left}
-.subtable td{padding:4px var(--sp-3);text-align:right;color:var(--text-secondary);
-  font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
-.subtable td.l{text-align:left;font-family:var(--font-ui);color:var(--text-primary);
-  max-width:230px;overflow:hidden;text-overflow:ellipsis}
-.subtable tr[data-sub]{outline:none}
-.subtable tr[data-sub]:hover{background:var(--surface-2)}
-.subtable tr[data-sub].cur{background:var(--surface-3);box-shadow:inset 2px 0 0 var(--accent)}
-.subtable .tp{display:inline-block;min-width:52px;text-align:center;border-radius:var(--r-sm);
-  padding:1px 4px;font:600 10px/13px var(--font-ui);letter-spacing:.04em}
-.subtable .mg{font-size:10px;color:var(--text-tertiary)}
-.subtable .up{color:var(--pos-good)}
-.subtable .dn{color:var(--pos-bad)}
-.subfoot{padding:5px var(--sp-4);border-top:1px solid var(--border-subtle);color:var(--text-tertiary);
-  font:400 11px/16px var(--font-ui)}
-.cell[aria-expanded=true]{box-shadow:inset 0 0 0 2px var(--accent)}
 /* ribbon */
 .ribbon{position:relative;height:14px;display:flex;border-radius:var(--r-sm);overflow:hidden;background:var(--surface-2);cursor:crosshair}
 .ribbon.lg{height:34px;border-radius:var(--r-md)}
@@ -344,23 +320,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .compnu{flex:0 0 auto;font:500 12px/16px var(--font-mono);color:var(--text-secondary);font-variant-numeric:tabular-nums}
 .subtitle{display:none}
 .chgut{padding-bottom:var(--sp-3);font:500 10px/13px var(--font-mono);color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* V2-PLAN §5.1 hand search — one row above the column heads, so the answer it scrolls to is
-   always visible underneath it. */
-.hsearch{display:flex;align-items:center;gap:var(--sp-3);min-height:32px;padding:var(--sp-2) var(--sp-5);
-  flex:0 0 auto;background:var(--surface-1);border-bottom:1px solid var(--border-subtle);flex-wrap:wrap}
-.hsearch label{color:var(--text-tertiary);font:600 9px/11px var(--font-ui);letter-spacing:.07em;flex:0 0 auto}
-.hsearch input{width:120px;height:26px;padding:0 var(--sp-3);background:var(--surface-2);
-  border:1px solid var(--border-default);border-radius:var(--r-sm);font:500 12px/15px var(--font-mono);
-  color:var(--text-primary);letter-spacing:.06em;text-transform:uppercase;flex:0 0 auto}
-.hsearch input::placeholder{color:var(--text-disabled);text-transform:none;letter-spacing:0}
-.hsearch input:hover{border-color:var(--border-strong)}
-.hsearch.bad input{border-color:var(--pos-bad)}
-.hsearch.hit input{border-color:var(--accent)}
-.hsearch .hsmsg{flex:1 1 120px;min-width:0;font:400 11px/15px var(--font-ui);color:var(--text-tertiary);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hsearch.bad .hsmsg{color:var(--pos-bad)}
-.hsearch #hsearchx{width:26px;height:26px;flex:0 0 auto;visibility:hidden}
-.hsearch.has #hsearchx{visibility:visible}
 /* the search hit. An outline, not a box-shadow: aria-selected already owns the inset ring, and a
    cell can be both the selection and the hit at once. */
 .cell.sfind{outline:2px solid var(--accent);outline-offset:-2px;z-index:3}
@@ -545,12 +504,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .tbl th:first-child,.tbl td:first-child{text-align:left}
 .tbl td{text-align:right;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--border-subtle);color:var(--text-secondary)}
 .tbl tr:last-child td{border-bottom:none}
-.sublist{display:flex;flex-direction:column;gap:var(--sp-2)}
-.subrow{display:flex;align-items:center;gap:var(--sp-3);height:26px;padding:0 var(--sp-3);background:var(--surface-2);
-  border-radius:var(--r-sm);font:400 11px/14px var(--font-ui);color:var(--text-secondary)}
-.subrow .nm{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.subrow .n{font-family:var(--font-mono);color:var(--text-tertiary);font-variant-numeric:tabular-nums}
-.subrow .tc{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
 /* hand panel */
 .handpanel{background:var(--surface-2);border:1px solid var(--border-default);border-radius:var(--r-lg);
   padding:var(--sp-5);margin-bottom:var(--sp-5)}
@@ -685,7 +638,8 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
   .tabs,.tabs button{height:40px}
   .seg button{min-width:44px;height:32px}
   .seg .thumb{height:32px}
-  .handinput input{width:140px}
+  .handinput label{display:none}
+  .handinput input{width:152px}
 }
 @media (max-width:1439px){
   #app{max-width:none}
@@ -732,10 +686,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
   .btn-icon{width:44px}
   .legend .chip{height:44px}
   .gridwrap{padding:var(--sp-3) var(--sp-4) 90px}
-  /* AC-21: everything tappable is >= 44px at 390 */
-  .hsearch{padding:var(--sp-3) var(--sp-4)}
-  .hsearch input{height:44px;font-size:16px}   /* 16px: iOS zooms a smaller field on focus */
-  .hsearch #hsearchx{width:44px;height:44px}
   :root{--gut:92px;--cell-h:44px}
   .row,.colhead{grid-template-columns:var(--gut) repeat(5,minmax(0,1fr))}
   .mosaic .row,.mosaic .colhead{grid-template-columns:var(--gut) 56fr 93fr 262fr 48fr 71fr}
@@ -757,10 +707,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
   .bandrail button{width:10px;height:10px;border-radius:50%;background:var(--surface-3);border:1px solid var(--border-default)}
   .bandrail button[aria-current=true]{background:var(--accent)}
   #drill{inset:0;border-radius:0}
-  /* the sub-bucket panel keeps every column, but the redundant one goes: `1 in` is combos again */
-  .subpanel{margin-left:13px}
-  .subtable .oneincol{display:none}
-  .subtable td.l{max-width:150px}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;
@@ -786,14 +732,20 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
     <nav class="tabs" id="facingtabs" role="tablist" aria-label="Facing action"></nav>
     <div class="spacer"></div>
     <div class="handinput" id="handinput">
-      <!-- NOT the §5.1 rank-pattern search (#hsearch, over the grid): this one takes four SPECIFIC
-           cards and opens the inspector on that hand. Both labels say which is which. -->
-      <input id="handq" type="text" spellcheck="false" autocomplete="off" placeholder="AsKh9s8d" aria-label="Hand lookup — four specific cards, with suits" maxlength="24">
+      <!-- THE finder — one box, both questions, one grammar (TAXONOMY.parseHandQuery). Four
+           SPECIFIC cards name a hand and open the inspector on it; four RANKS plus an optional
+           suit code name a class and move the grid to it. The grid used to carry a second box for
+           the second half of that; it does not any more, and there is nothing left to confuse. -->
+      <label for="handq">FIND HAND</label>
+      <input id="handq" type="text" spellcheck="false" autocomplete="off" maxlength="24"
+        placeholder="AsKh9s8d or 9655DS" aria-describedby="handmsg"
+        aria-label="Find a hand — four specific cards with suits, or four ranks plus an optional suit code">
+      <button class="btn btn-icon" id="handqx" aria-label="Clear the hand finder" title="Clear (Esc)">&#10005;</button>
       <div class="msg" id="handmsg" hidden></div>
     </div>
     <div class="viewsw" id="viewsw" role="group" aria-label="View"></div>
     <button class="btn btn-accent" id="drillbtn" title="Drill (D)">DRILL</button>
-    <button class="btn btn-icon" id="pickbtn" aria-label="Enter a hand" title="Enter a hand">
+    <button class="btn btn-icon" id="pickbtn" aria-label="Find a hand" title="Find a hand">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.2" y="3.2" width="7" height="9.6" rx="1.4"/><path d="M6.6 2.4h5.6a1.4 1.4 0 0 1 1.4 1.4v7.4"/></svg></button>
     <button class="btn btn-icon" id="guidebtn" aria-label="How to read this" title="How to read this (G)">?</button>
     <button class="btn btn-icon" id="setbtn" aria-label="Settings" title="Settings">
@@ -933,16 +885,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
            the page is showing shipped measurements, which is its default state: a badge that is
            always on says nothing. -->
       <div class="simbar" id="simbar" hidden></div>
-      <!-- V2-PLAN §5.1 hand search. Hidden unless the injected taxonomy carries parseHandQuery,
-           the same feature-detect shape §3 and §5 use. -->
-      <div class="hsearch" id="hsearchbar" hidden>
-        <label for="hsearch">FIND HAND</label>
-        <input id="hsearch" type="text" spellcheck="false" autocomplete="off" maxlength="12"
-          placeholder="9655DS" aria-label="Find a hand class: four ranks, then an optional suit code"
-          aria-describedby="hsearchmsg">
-        <span class="hsmsg" id="hsearchmsg">four ranks, any order &mdash; add R, SS, SSA, DS or F</span>
-        <button class="btn btn-icon" id="hsearchx" aria-label="Clear hand search" title="Clear the search (Esc)">&#10005;</button>
-      </div>
       <div class="colhead" id="colhead"></div>
       <div class="gridwrap" id="gridwrap">
         <div id="grid" role="grid" aria-label="Hand class matrix" aria-rowcount="29" aria-colcount="5"></div>
@@ -1172,27 +1114,23 @@ function hooks() {
    written by another local page. Validation here buys three things and not a fourth:
      SHAPE       every equity array is a real Array of NMAX finite numbers;
      PLAUSIBILITY every value is an equity, i.e. inside [0, 100];
-     CONSISTENCY the sub-bucket block, if present, names a cell this model ships, carries EVERY
-                 bucket that cell ships and nothing else, and at EVERY field size its combo-weighted
-                 mean reconstructs the cell equity in the same payload — the partition identity the
-                 sub layer exists on top of, at all NMAX indices rather than at one of them.
-     NOT AUTHENTICITY. There is no secret here, so a payload fabricated to be well-formed AND
-                 self-consistent is indistinguishable from a real one. The claim this file may make
-                 is "well-formed, plausible and internally consistent", never "trustworthy".
+     NOT AUTHENTICITY. There is no secret here, so a payload fabricated to be well-formed is
+                 indistinguishable from a real one. The claim this file may make is "well-formed
+                 and plausible", never "trustworthy".
 
-   TWO EARLIER VERSIONS OF THIS CHECK WERE DEFEATED, and how says everything about how to read it.
-   The first walked `cells` and never looked at `subs` at all: four sub arrays rewritten to 99.9 in
-   the shared store are perfectly well-formed, and the page painted RAISE +224.9 on all four under a
-   chip that said "measured (900)". The second added the partition identity but evaluated it at
-   index 0 ONLY — while the panel paints `eq @ N` for the CURRENT field size, an interpolation of
-   indices 2-3, and scores its verdicts off the same rows. So leaving `eq[0]` exactly as measured
-   and rewriting `eq[1..6]` to 99.9 passed, and painted 99.9% on every row under the same chip
-   (worker-f P11B). That same version accepted a SUBSET of a cell's buckets and compared its mean
-   against the whole cell — not the identity at all, and enough to paint one fabricated bucket
-   (P11D). Both are closed here: every index, and the whole partition or nothing.
+   WHY THE SHAPE CHECK IS EVERY INDEX AND NOT ONE. An earlier version of this check evaluated its
+   arrays at index 0 only — while the page paints `eq @ N` for the CURRENT field size, an
+   interpolation of indices 2-3, and scores its verdicts off the same rows. Leaving `eq[0]` exactly
+   as measured and rewriting `eq[1..6]` to 99.9 passed it, and painted 99.9% under a chip that said
+   "measured (900)" (worker-f P11B). Every index, or the check does not cover what the page shows.
 
-   ONE implementation, exported, because the page keeps a second book of these — and two validators
-   written twice is exactly how `subs` came to have no validation at all while `cells` had some. */
+   The sub-bucket block this function used to reconstruct is gone with the layer, and with it the
+   combo-weighted partition identity that was the strongest thing on offer here. The cell arrays
+   were always checked on shape and plausibility alone; that is now the whole of it, and the chip
+   the page paints must not claim more.
+
+   ONE implementation, exported, because the page keeps a second book of these — and a validator
+   written twice is how the two books drifted apart the first time. */
 function validEqArray(e) {
   if (!Array.isArray(e) || e.length !== NMAX) return false;
   for (var k = 0; k < NMAX; k++) {
@@ -1203,84 +1141,15 @@ function validEqArray(e) {
 }
 function validMeasurement(m) {
   if (!m || !m.cells || typeof m.cells !== 'object') return false;
-  var keys = Object.keys(m.cells), i, n;
+  var keys = Object.keys(m.cells), i;
   if (!keys.length) return false;
   for (i = 0; i < keys.length; i++) if (!validEqArray(m.cells[keys[i]])) return false;
-
-  /* A stage-1-only run carries no sub block, and that is the ONLY shape in which both may be
-     absent — `subsOf` without `subs`, or `subs` without `subsOf`, is a payload we never write. */
-  if (m.subsOf == null && m.subs == null) return true;
-  if (typeof m.subsOf !== 'string' || !m.subsOf) return false;
-  if (!m.subs || typeof m.subs !== 'object') return false;
-  var ck = Object.keys(m.subs);
-  if (ck.length !== 1 || ck[0] !== m.subsOf) return false;
-  var block = m.subs[m.subsOf];
-  if (!block || typeof block !== 'object') return false;
-  var shipped = (MODEL.sub && MODEL.sub[m.subsOf]) || null;
-  if (!shipped || !shipped.length) return false;
-  var cellEq = m.cells[m.subsOf];
-  if (!cellEq) return false;
-  /* THE WHOLE PARTITION OR NOTHING. A subset's mean is not an estimate of the cell equity, so a
-     payload holding four of a cell's five buckets could put anything it liked in the fifth's place
-     and still "reconstruct" — which is how a single fabricated bucket got through the previous
-     version. Requiring the exact shipped count, and then reading every shipped key out of the
-     block below, admits no extra keys either: same count, all present, therefore equal sets.
-     Three things that argument leans on, none of them assumed: the shipped keys are distinct, every
-     bucket carries a non-zero combo count (a zero-weight bucket's row would be free to say
-     anything), and the set the ENGINE writes is the set the model ships — because `buildSubPool`
-     derives it from the cell's HANDS via TAX.subKeyOf, not from MODEL.sub. All three are pinned by
-     `requiring the whole partition is safe` in test/sim-engine.test.mjs, so a regeneration that
-     broke any of them would fail there rather than discard every honest measurement in silence. */
-  if (Object.keys(block).length !== shipped.length) return false;
-  /* The tolerance below is a multiple of the payload's own standard error, so a payload that lies
-     about its trial count would be choosing its own tolerance. The cache binds `trials` to the
-     settings that were requested (see `valid`), and this is the floor under that: no trial count,
-     no identity check, no entry. */
+  /* The cache binds `trials` to the settings that were requested (see `valid`); a payload with no
+     trial count cannot be told apart from one that never ran, so it does not get in. */
   if (!(m.trials > 0)) return false;
-
-  /* TOLERANCE — measured 2026-08-30, not assumed. Both sides are Monte Carlo at `m.trials` per
-     unit: the cell's own estimate and the combo-weighted mean of its buckets' estimates, drawn from
-     independent seeds over a partition of the same hands, so the identity is exact in expectation
-     and the gap is pure sampling noise. Per-trial equity is bounded in [0,100], so its sd is at
-     most 50 and the gap's own se is at most 50*sqrt(2)/sqrt(trials) — i.e. 8 sigma here is never
-     less than 5.6 sigma of the real thing, whatever the cell.
-     The measurement behind that (worker-g, 2026-08-30: 8 passes, each of them all 123 cells x 7
-     indices = 861 honest gaps, through the real engine on the real artifact, at v 25/62/90 and
-     q 0.60/0.85 — 6,888 gaps in total, of which none would have been discarded):
-        900 trials/cell   worst gap 6.56 pt   tolerance 13.33   2.0x margin
-        25,000            worst gap 1.10 pt   tolerance  2.53   2.3x margin
-        100,000           worst gap 0.70 pt   tolerance  1.27   1.8x margin
-     The margin is flat across the rungs, which is the point: both the gap and the tolerance scale
-     as 1/sqrt(trials), so pinning the multiplier pins it at every trial count the page can reach.
-     1.8x is the thinnest of the eight and it is a MAXIMUM over 861 Gaussian-ish gaps, whose tail is
-     doubly exponential — the worst gap sits at about 3.2 of the bounding sigma and the tolerance at
-     5.7, so the next point of margin costs far more than it looks. The worst index is not index 0
-     (that was an artefact of a 4-cell sample); it moves, which is why every index is checked.
-     The 1 pt floor is inert below 160,000 trials/cell and MAX_TRIALS is 100,000; it is there so a
-     future ceiling cannot shrink the tolerance to nothing.
-     A false discard costs one re-measurement. A false accept costs the page its honesty. The
-     asymmetry is deliberate and it points this way. */
-  var se = 50 / Math.sqrt(m.trials);
-  var tol = Math.max(1, 8 * se);
-
-  var sums = new Array(NMAX), wsum = 0;
-  for (n = 0; n < NMAX; n++) sums[n] = 0;
-  for (i = 0; i < shipped.length; i++) {
-    var key = shipped[i].key;
-    if (!Object.prototype.hasOwnProperty.call(block, key)) return false;
-    var arr = block[key];
-    if (!validEqArray(arr)) return false;
-    var c = shipped[i].combos || 0;
-    wsum += c;
-    for (n = 0; n < NMAX; n++) sums[n] += c * arr[n];
-  }
-  if (!wsum) return false;
-  /* EVERY index, because the one the old check guarded is the one the panel does not show. */
-  for (n = 0; n < NMAX; n++) {
-    if (!(Math.abs(sums[n] / wsum - cellEq[n]) <= tol)) return false;
-  }
   return true;
 }
+
 
 /* -------------------------------------------------------------------- cache */
 /* V2-PLAN §4 wants results cached "keyed by settings-hash + model hash, so revisiting a custom
@@ -1476,32 +1345,6 @@ function buildPools() {
     total: n, ms: nowMs() - t0
   };
   return POOLS;
-}
-
-/* The stage-2 pool: the sub-buckets of ONE cell, built on demand. Sub-bucket order is discovery
-   order within the cell, which is this module's own business — results come back keyed by subKey,
-   so nothing downstream depends on the numbering. */
-function buildSubPool(cellKey) {
-  var P = buildPools(), ci = P.idx[cellKey];
-  if (ci == null) return null;
-  var lo = P.start[ci], hi = P.start[ci + 1];
-  if (!(hi > lo)) return null;
-  var keys = [], idx = {}, of = new Int32Array(hi - lo), cnt = [];
-  var h = [0, 0, 0, 0], j;
-  for (j = lo; j < hi; j++) {
-    var pk = P.byCell[j];
-    h[0] = pk & 63; h[1] = (pk >>> 6) & 63; h[2] = (pk >>> 12) & 63; h[3] = (pk >>> 18) & 63;
-    var sk = TAX.subKeyOf(h);
-    var si = idx[sk];
-    if (si === undefined) { si = keys.length; idx[sk] = si; keys.push(sk); cnt.push(0); }
-    of[j - lo] = si; cnt[si]++;
-  }
-  var start = new Int32Array(keys.length + 1), i;
-  for (i = 0; i < keys.length; i++) start[i + 1] = start[i] + cnt[i];
-  var cursor = start.slice(0, keys.length);
-  var pool = new Uint32Array(hi - lo);
-  for (j = lo; j < hi; j++) pool[cursor[of[j - lo]]++] = P.byCell[j];
-  return { keys: keys, pool: pool, start: start, combos: cnt };
 }
 
 /* ------------------------------------------------------------------ workers */
@@ -1848,7 +1691,6 @@ function normalize(opts) {
   trials = Math.min(MAX_TRIALS, Math.max(1, trials));
   return {
     v: v, q: q, trials: trials,
-    subsOf: o.subsOf || null,
     noCache: !!(o.noCache || h.noCache),
     force: o.force || null, workers: o.workers || null
   };
@@ -1892,9 +1734,9 @@ function run(opts) {
   var emitted = { last: 0 };
 
   var state = {
-    phase: 'start', stage: 0, stages: o.subsOf ? 2 : 1,
+    phase: 'start', stage: 0, stages: 1,
     stageKey: null, unit: 0, units: 0,
-    trialsDone: 0, trialsTotal: 0, paused: false, cachedStage1: false
+    trialsDone: 0, trialsTotal: 0, paused: false
   };
 
   function emit(force) {
@@ -1908,14 +1750,12 @@ function run(opts) {
       id: id, phase: state.phase,
       stage: state.stage, stages: state.stages,
       stageKey: state.stageKey,
-      stageLabel: state.stageKey === 'sub' ? 'sub-bucket equity vs filtered villains'
-        : state.stageKey === 'cell' ? 'cell equity vs filtered villains' : null,
+      stageLabel: state.stageKey === 'cell' ? 'cell equity vs filtered villains' : null,
       unit: state.unit, units: state.units,
       trialsDone: state.trialsDone, trialsTotal: state.trialsTotal,
       rate: rate,
       etaSec: rate > 0 ? Math.max(0, (state.trialsTotal - state.trialsDone) / rate) : null,
       se: seOf(o.trials), trialsPerCell: o.trials,
-      cachedStage1: !!state.cachedStage1,
       degraded: !!(ENGINE && ENGINE.degraded), paused: state.paused,
       workers: ENGINE ? ENGINE.workers.length : 0,
       elapsedMs: el, settingsHash: hash
@@ -2535,7 +2375,8 @@ var S = {
    no reload, goes in no permalink, and moves no number. `ownedExpand` is the one piece of
    bookkeeping the feature needs — Esc must undo the expansion the SEARCH opened without touching
    one the user opened themselves. */
-var SRCH = { active: false, level: null, row: null, cellKey: null, subKey: null, ownedExpand: false, canon: '' };
+var SRCH = { active: false, level: null, row: null, cellKey: null, subKey: null,
+  ownedExpand: false, ownedHand: false, canon: '' };
 /* The four axes `policy.envOf` reads, in one place. Spread into every state bag handed to the
    policy — a solve that does not carry them silently scores at 100bb / rake 0 / no straddle. */
 function envKey() { return S.d + '|' + S.rake + '|' + S.rakeCap + '|' + (S.straddle ? 1 : 0); }
@@ -4894,12 +4735,14 @@ function openGuide() {
     '<p style="margin-top:10px">Learn the vocabulary as you go: the small <b>i</b> on every row and column explains that hand class with ' +
     'live examples, and every <b>?</b> defines the number next to it. Click a cell for its full arithmetic, or hit ' +
     '<b>DRILL</b> to be quizzed.</p>' +
-    '<p style="margin-top:10px"><b>Two boxes, two questions.</b> The <b>top bar</b> takes four <i>specific cards</i> ' +
-    '(<span style="font-family:var(--font-mono)">AsKh9s8d</span> or <span style="font-family:var(--font-mono)">AKT9ds</span>) ' +
-    'and opens the inspector on that one hand.' +
-    (HAS_SEARCH ? ' <b>FIND HAND</b>, above the grid, takes a <i>rank pattern</i> in any order plus an optional suit code ' +
-      '(<span style="font-family:var(--font-mono)">9655DS</span>) and moves the grid to it — <b>/</b> focuses it, ' +
-      '<b>Esc</b> clears it.' : '') + '</p></div>',
+    '<p style="margin-top:10px"><b>One box, two questions.</b> <b>FIND HAND</b> in the top bar takes four ' +
+    '<i>specific cards</i> (<span style="font-family:var(--font-mono)">AsKh9s8d</span>) and opens the inspector on ' +
+    'that one hand' +
+    (HAS_SEARCH ? ', <i>or</i> a <i>rank pattern</i> in any order plus an optional suit code ' +
+      '(<span style="font-family:var(--font-mono)">9655DS</span>) and moves the grid to that whole class. It tells ' +
+      'the two apart on the second character, so there is no mode to pick — <b>/</b> focuses it, <b>↓</b> steps into ' +
+      'the grid, <b>Esc</b> clears it.'
+      : ' — or four ranks and a suit code (<span style="font-family:var(--font-mono)">AKT9ds</span>).') + '</p></div>',
     [['Replay the 30-second tour', function () { closeModal(); runTour(); }],
      ['Keyboard shortcuts', function () { closeModal(); showShortcuts(); }]]);
 }
@@ -6069,7 +5912,7 @@ function wireGlobalKeys() {
       case 'g': case 'G': openGuide(); break;
       case 'c': case 'C': toggleCompare(S.sel); break;
       case 't': case 'T': setView(S.view === 'table' ? 'matrix' : 'table'); break;
-      case '/': if (!HAS_SEARCH) return; focusHandSearch(); break;
+      case '/': focusHandSearch(); break;
       case '?': showShortcuts(); break;
       case 'Escape':
         /* Esc chain, outermost first: modal → popover → drawer → hand search → sub-bucket panel
@@ -6098,30 +5941,16 @@ function showShortcuts() {
     ['<b>← → ↑ ↓</b> move in the matrix (void cells are skipped)',
       '<b>Enter</b> select · <b>Esc</b> clear filters / close',
       '<b>Enter</b> also expands the cell into its sub-buckets · <b>↓</b> descends into them · <b>Esc</b> collapses',
-      '<b>/</b> find a hand — four ranks in any order (<b>9655</b>) plus an optional suit code: '
-      + '<b>R</b>/<b>RB</b>, <b>SS</b>, <b>SSA</b>, <b>DS</b>, or <b>F</b> (suit-wasted, narrowed to its monotone bucket). '
-      + 'Ranks alone light the whole rank row; ranks + a code open that cell’s bucket. <b>Esc</b> clears it',
+      '<b>/</b> find a hand — <b>FIND HAND</b> in the top bar takes either grammar. Four specific cards '
+      + '(<b>AsKh9s8d</b>) open the inspector on that hand; four ranks in any order (<b>9655</b>) plus an optional '
+      + 'suit code — <b>R</b>/<b>RB</b>, <b>SS</b>, <b>SSA</b>, <b>DS</b>, or <b>F</b> (suit-wasted, narrowed to its '
+      + 'monotone bucket) — move the grid. Ranks alone light the whole rank row; ranks + a code open that cell’s '
+      + 'bucket. <b>↓</b> steps into the grid, <b>Esc</b> clears it',
       '<b>PgUp / PgDn</b> jump band · <b>Home / End</b> row ends',
       '<b>[ ]</b> position · <b>1–4</b> facing action',
       '<b>− =</b> VPIP ∓1 (Shift ∓5) · Shift+←/→ on any slider snaps to its ticks or detents',
       '<b>P</b> pin the ρ reference · <b>C</b> compare · <b>T</b> table view · <b>D</b> drill · <b>G</b> guide'].map(function (s) { return '<li>' + s + '</li>'; }).join('') +
     '</ul></div>', [['Replay the thesis', function () { closeModal(); runTour(); }]]);
-}
-/* --------------------------------------------------------- hand lookup */
-function wireHandInput() {
-  var inp = $('#handq'), msg = $('#handmsg'), wrap = $('#handinput');
-  inp.addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter') return;
-    var p = parseHand(inp.value);
-    if (p.err) {
-      wrap.classList.add('err'); msg.hidden = false; msg.textContent = p.err;
-      announce('invalid hand: ' + p.err);
-      return;
-    }
-    wrap.classList.remove('err'); msg.hidden = true;
-    loadHand(p.cards.map(cardName).join(''));
-  });
-  inp.addEventListener('input', function () { wrap.classList.remove('err'); msg.hidden = true; });
 }
 /* =========================================== V2-PLAN §5.1 — HAND SEARCH
    Four ranks in any order, plus an optional suit code, resolved as deep as the input determines:
@@ -6134,13 +5963,25 @@ function wireHandInput() {
    The grammar and the whole ladder live in TAXONOMY.parseHandQuery, next to the classifier they
    answer about and pinned by test/handsearch.test.mjs against the full 270,725-hand enumeration.
    Everything below is presentation: scroll, highlight, expand, announce. */
-function searchBar() { return $('#hsearchbar'); }
+function searchBar() { return $('#handinput'); }
+/* The empty-box hint names BOTH grammars, because the box takes both — and names only the one it
+   has when the injected taxonomy is a v1 one and the class half does not exist. */
+function finderHint() {
+  return HAS_SEARCH
+    ? 'four cards — AsKh9s8d — or four ranks in any order plus an optional suit code: R, SS, SSA, DS, F'
+    : 'four specific cards — AsKh9s8d — or four ranks and a suit code — AKT9ds';
+}
+/* One message line under the box, three states, and the left rule is what carries the state:
+   neutral for a hint, accent for a hit, red for a query that cannot resolve. Empty text hides it,
+   which is what makes "no query, no chrome" the resting state. */
 function searchSay(text, kind) {
   var bar = searchBar(); if (!bar) return;
-  $('#hsearchmsg').textContent = text;
+  var msg = $('#handmsg');
+  msg.textContent = text || '';
+  msg.hidden = !text;
   bar.classList.toggle('bad', kind === 'bad');
   bar.classList.toggle('hit', kind === 'hit');
-  bar.classList.toggle('has', !!($('#hsearch') && $('#hsearch').value));
+  bar.classList.toggle('has', !!($('#handq') && $('#handq').value));
 }
 /* the grid's roving tabindex, moved without the arrow-key walk gridMove owns */
 function focusCell(rec) {
@@ -6170,13 +6011,17 @@ function subIndexOf(cellKey, subKey) {
 /* Clears the search AND the expansion the search opened — never one the user opened. Idempotent,
    because it is reachable from the Esc chain, the ✕, a fresh query and the sub-row's own Esc. */
 function clearHandSearch(opts) {
-  var was = SRCH.active, key = SRCH.cellKey;
+  var was = SRCH.active, key = SRCH.cellKey, hadHand = SRCH.ownedHand;
   var inPanel = !!(subPanel && document.activeElement && subPanel.contains(document.activeElement));
   if (SRCH.ownedExpand && S.expand.cell) dispatchExpand({ type: 'close' });
-  SRCH = { active: false, level: null, row: null, cellKey: null, subKey: null, ownedExpand: false, canon: '' };
-  var inp = $('#hsearch');
+  SRCH = { active: false, level: null, row: null, cellKey: null, subKey: null,
+    ownedExpand: false, ownedHand: false, canon: '' };
+  /* symmetric with ownedExpand: the hand panel the FINDER opened goes with the finder. One the
+     user opened from a link, the picker or the inversion story is not the finder's to close. */
+  if (hadHand) { S.hand = null; renderInspector(); }
+  var inp = $('#handq');
   if (inp && (!opts || !opts.keepText)) inp.value = '';
-  searchSay('four ranks, any order — add R, SS, SSA, DS or F', null);
+  searchSay('', null);
   if (was) {
     render(); paintSearchRows();
     if (inPanel && CK[key]) focusCell(CK[key]);
@@ -6198,7 +6043,7 @@ function runHandSearch(text, opts) {
   }
   clearHandSearch({ keepText: true, quiet: true });
   SRCH = { active: true, level: p.level, row: p.row, cellKey: p.cellKey, subKey: p.subKey,
-    ownedExpand: false, canon: p.canon + (p.suffix || '') };
+    ownedExpand: false, ownedHand: false, canon: p.canon + (p.suffix || '') };
   var rowLabel = (CK[p.row + '|RB'] || {}).row;
   rowLabel = rowLabel ? rowLabel.label : p.row;
   var rec = p.cellKey ? CK[p.cellKey] : null;
@@ -6224,6 +6069,24 @@ function runHandSearch(text, opts) {
           'topology, and the cell is empty for every rank string — it is drawn void on the grid.'
         : head + '. No hand with those ranks is ' + colLabel(p.col) + ', so the rank row is ' +
           'highlighted instead; the cell itself is live and holds other rank strings.');
+    }
+    return p;
+  }
+
+  /* Four SPECIFIC cards. The class question and the hand question have one answer here, so both
+     surfaces give it: the cell is outlined on the grid, and the inspector opens on the hand itself
+     — the only surface that prices THIS hand instead of the class average around it. Focus stays
+     in the box, because what the user came for is now in the drawer, not under the cursor. */
+  if (p.level === 'hand') {
+    if (!rec || !rec.live) { searchSay(head + ' — not in this dataset', 'bad'); if (!opts.silent) announce('no match'); return p; }
+    SRCH.ownedHand = true;
+    loadHand(p.cards.map(cardName).join(''));      /* selects the cell, renders, opens the drawer */
+    paintSearchRows(); scrollTo(rec);
+    var evH = lastEv || evalNow(), tierH = tierLabel(evH.tier[rec.i]);
+    searchSay(head + ' × ' + colLabel(p.col) + ' — ' + tierH, 'hit');
+    if (!opts.silent) {
+      announce(p.canon + ', ' + rowLabel + ' by ' + colLabel(p.col) + ', ' + tierH + '. The inspector is open on ' +
+        'this hand, priced against its class; the cell is outlined on the grid. Escape clears it.');
     }
     return p;
   }
@@ -6276,22 +6139,36 @@ function runHandSearch(text, opts) {
 }
 function colLabel(key) { for (var i = 0; i < COLS.length; i++) if (COLS[i].key === key) return COLS[i].label; return key; }
 function focusHandSearch() {
-  if (!HAS_SEARCH) return;
   if (S.view !== 'matrix') setView('matrix');
-  var inp = $('#hsearch'); if (!inp) return;
+  var inp = $('#handq'); if (!inp) return;
   inp.focus(); inp.select();
-  announce('hand search. Four ranks in any order, then an optional suit code: R, SS, SSA, DS or F.');
+  if (!inp.value) searchSay(finderHint(), null);
+  announce(HAS_SEARCH
+    ? 'find hand. Four specific cards — A spades, K hearts, 9 spades, 8 diamonds — or four ranks in any order, then an optional suit code: R, SS, SSA, DS or F.'
+    : 'hand lookup. Four specific cards, with suits.');
 }
 function wireHandSearch() {
-  var bar = searchBar(); if (!bar) return;
-  bar.hidden = !HAS_SEARCH;
-  if (!HAS_SEARCH) return;
-  var inp = $('#hsearch');
+  var inp = $('#handq'); if (!inp) return;
+  /* A v1-injected page carries no parseHandQuery (§5.1's feature-detect, HAS_SEARCH). The box is
+     then exactly the lookup it has always been — four specific cards into the inspector — and the
+     class half of the grammar is not offered rather than offered and broken. */
+  if (!HAS_SEARCH) {
+    inp.placeholder = 'AsKh9s8d';
+    inp.setAttribute('aria-label', 'Hand lookup — four specific cards, with suits');
+  }
   inp.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { runHandSearch(inp.value); e.preventDefault(); return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (HAS_SEARCH) { runHandSearch(inp.value); return; }
+      var p = parseHand(inp.value);
+      if (p.err) { searchSay(p.err, 'bad'); announce('invalid hand: ' + p.err); return; }
+      searchSay('', null);
+      loadHand(p.cards.map(cardName).join(''));
+      return;
+    }
     /* §5.1: Esc clears the search and everything it put on screen, from inside the field too */
     if (e.key === 'Escape') { clearHandSearch(); inp.blur(); e.preventDefault(); e.stopPropagation(); return; }
-    /* hand the keyboard to the grid at whatever the search is pointing at */
+    /* hand the keyboard to the grid at whatever the finder is pointing at */
     if (e.key === 'ArrowDown' && SRCH.active) {
       var target = SRCH.level === 'row' ? firstLiveIn(SRCH.row) : CK[SRCH.cellKey];
       if (target && target.live) { focusCell(target); announce(target.row.label + ' by ' + target.col.label); e.preventDefault(); }
@@ -6301,12 +6178,24 @@ function wireHandSearch() {
      under the user's hands, which is the opposite of what a search box is for. */
   inp.addEventListener('input', function () {
     var v = inp.value;
-    if (!v) { clearHandSearch({ keepText: true, quiet: true }); return; }
+    if (!v) {
+      if (HAS_SEARCH) clearHandSearch({ keepText: true, quiet: true });
+      searchSay(finderHint(), null);
+      return;
+    }
+    if (!HAS_SEARCH) { searchSay('', null); return; }
     var p = window.TAXONOMY.parseHandQuery(v);
-    if (p.status === 'ok' || p.status === 'void') searchSay('press Enter — ' + p.canon + (p.suffix ? ' ' + p.col : ' rank row'), null);
-    else { clearHandSearch({ keepText: true, quiet: true }); searchSay(p.message, p.status === 'invalid' ? 'bad' : null); }
+    if (p.status === 'ok' || p.status === 'void') {
+      searchSay('press Enter — ' + (p.level === 'hand' ? p.canon
+        : p.canon + (p.suffix ? ' ' + p.col : ' rank row')), null);
+    } else { clearHandSearch({ keepText: true, quiet: true }); searchSay(p.message, p.status === 'invalid' ? 'bad' : null); }
   });
-  $('#hsearchx').onclick = function () { clearHandSearch(); inp.focus(); };
+  inp.addEventListener('focus', function () { if (!$('#handmsg').textContent) searchSay(finderHint(), null); });
+  inp.addEventListener('blur', function () { if (!inp.value) searchSay('', null); });
+  $('#handqx').onclick = function () {
+    if (HAS_SEARCH) clearHandSearch(); else { inp.value = ''; searchSay('', null); }
+    inp.focus();
+  };
 }
 /* ------------------------------------------------------------ settings */
 function wireChrome() {
@@ -7259,7 +7148,7 @@ function runTour() {
     vp: S.vp, q: S.q,
     /* the box, or the canonicalised query when the search was driven programmatically and the box
        was never typed into — `SRCH.canon` is itself a legal query, so it round-trips either way */
-    search: (HAS_SEARCH && SRCH.active) ? ((($('#hsearch') || {}).value) || SRCH.canon || null) : null };
+    search: (HAS_SEARCH && SRCH.active) ? ((($('#handq') || {}).value) || SRCH.canon || null) : null };
   /* Two orientation steps first: "dangler", "double-suited" and a width percentage mean nothing
      until the axes, colours and slider are named. v:null leaves the slider alone until step 3. */
   /* live, not transcribed: the closing step's four numbers are the same painted width and nut
@@ -7388,11 +7277,13 @@ function runTour() {
       } }
   ] : []).concat(HAS_SEARCH ? [
     { pos: 'CO', node: 'rfi', v: 55, refocus: true,
-      act: function () { runHandSearch('TT32SS'); },
-      cap: 'Two boxes, two questions. The top bar (<code>AsKh9s8d</code>) looks up one <b>specific hand</b> and opens the ' +
-        'inspector on it. <b>FIND HAND</b> over the grid (<code>TT32SS</code>) takes a <b>rank pattern</b> in any order ' +
-        'plus an optional suit code — R, SS, SSA, DS or F — scrolls to the cell and opens the bucket when the shape pins ' +
-        'one, which is how it just landed on the row above. <b>/</b> focuses it; <b>Esc</b> clears it and whatever it opened.' }
+      /* the box shows the query it is describing: the step is about the box, not just its answer */
+      act: function () { var b = $('#handq'); if (b) b.value = 'TT32SS'; runHandSearch('TT32SS'); },
+      cap: 'One box, two questions. <b>FIND HAND</b> in the top bar takes four <b>specific cards</b> ' +
+        '(<code>AsKh9s8d</code>) and opens the inspector on that hand, <i>or</i> a <b>rank pattern</b> in any order ' +
+        'plus an optional suit code — R, SS, SSA, DS or F (<code>TT32SS</code>, just run) — which scrolls to the cell ' +
+        'and opens the bucket when the shape pins one, as it did on the row above. The two are told apart on the ' +
+        'second character, so there is no mode to pick. <b>/</b> focuses it; <b>Esc</b> clears it and whatever it opened.' }
   ] : []).concat([
     { pos: 'UTG', node: 'rfi', v: null,
       act: HAS_ENV ? function () { envTo(DEPTH.ref, RAKE.preset); } : null,
@@ -7424,7 +7315,7 @@ function runTour() {
     /* after invalidate(), because re-running the query paints its own highlight and may re-open the
        expansion it owns — both of which a repaint would otherwise wipe */
     if (restore && saved.search) {
-      var inp = $('#hsearch');
+      var inp = $('#handq');
       if (inp) inp.value = saved.search;
       runHandSearch(saved.search, { silent: true });
     }
@@ -7526,7 +7417,7 @@ function sizeSheet() {
 /* ===================================================== MOBILE HAND PICKER */
 function openPicker() {
   var chosen = [], step = 'rank', pendingRank = -1;
-  openModal('Enter a hand', '<div id="pickbody"></div>', null);
+  openModal('Find a hand', '<div id="pickbody"></div>', null);
   var host = $('#pickbody');
   function paint() {
     host.innerHTML = '';
@@ -7535,11 +7426,22 @@ function openPicker() {
     line.innerHTML = chosen.length ? handHTML(chosen) : '<span class="t-sm dim">pick four cards — rank, then suit</span>';
     host.appendChild(line);
     var inp = el('input');
-    inp.type = 'text'; inp.placeholder = 'or type AsKh9s8d / AKT9ds';
+    inp.type = 'text'; inp.placeholder = HAS_SEARCH ? 'or type AsKh9s8d or 9655DS' : 'or type AsKh9s8d / AKT9ds';
     inp.setAttribute('aria-label', 'Type a hand');
     inp.style.cssText = 'width:100%;height:44px;background:var(--surface-1);border:1px solid var(--border-default);border-radius:6px;padding:0 12px;font:500 15px var(--font-mono);color:var(--text-primary);margin-bottom:12px';
+    /* On a phone the top bar's box is off-screen (.topbar .handinput is display:none at 767), so
+       this field is the finder there — same grammar, same resolver, nothing narrower. */
     inp.onkeydown = function (e) {
       if (e.key !== 'Enter') return;
+      if (HAS_SEARCH) {
+        var q = window.TAXONOMY.parseHandQuery(inp.value);
+        if (q.status !== 'ok' && q.status !== 'void') { toast(q.message); return; }
+        closeModal();
+        if (S.view !== 'matrix') setView('matrix');
+        var box = $('#handq'); if (box) box.value = inp.value;
+        runHandSearch(inp.value);
+        return;
+      }
       var pr = parseHand(inp.value);
       if (pr.err) { toast(pr.err); return; }
       closeModal(); loadHand(pr.cards.map(cardName).join(''));
@@ -7594,7 +7496,7 @@ function init() {
   document.body.classList.toggle('reduce', reduceMotion);
   if (sess('rundown.honesty') === 'hidden') $('#honestystrip').hidden = true;
   buildTopbar(); buildLegend(); buildComp(); buildColHead(); buildGrid(); buildInspector();
-  wireSlider(); wireTableCtl(); wireVP(); wireGrid(); wireGlobalKeys(); wireHandInput(); wireHandSearch(); wireChrome(); wireHelpButtons();
+  wireSlider(); wireTableCtl(); wireVP(); wireGrid(); wireGlobalKeys(); wireHandSearch(); wireChrome(); wireHelpButtons();
   wireRibbon($('#railribbon'));
   setCols(S.cols);
   $('#modelmeta').textContent = 'model ' + MODEL.meta.version + ' · ' + MODEL.meta.generated + ' · ' +

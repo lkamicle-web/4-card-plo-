@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseHandQuery, suitsForRanks, SEARCH_SUFFIXES, RANK_CHARS, rankCharValue, rankValueChar,
   rowOf, colOf, subKeyOf, rankValues, COL_ORDER, ROW_ORDER,
+  SUIT_CHARS, cardChars, suitSub,
 } from '../scripts/lib/taxonomy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -297,4 +298,116 @@ test('suitsForRanks is exhaustive and deterministic', () => {
   assert.equal(suitsForRanks([14, 14, 14, 14], { col: 'DS' }), null);
   assert.equal(suitsForRanks([14, 14, 13, 13], { col: 'FLAW' }), null);
   assert.equal(RANK_CHARS.length, 13);
+});
+
+// ---------------------------------------------------------------------------
+// The CARD grammar — the second half of the universal finder. Same parser, same result shape;
+// the only new thing is that the classifier is asked directly instead of being reconstructed
+// from a suit code, so the answer is the bucket the hand really lands in.
+// ---------------------------------------------------------------------------
+const cardsOf = (str) => {
+  const out = [];
+  for (let i = 0; i < str.length; i += 2) out.push(RANK_CHARS.indexOf(str[i].toUpperCase()) * 4 + SUIT_CHARS.indexOf(str[i + 1].toLowerCase()));
+  return out;
+};
+
+test('four specific cards resolve to the hand rung, re-derived from the classifier', () => {
+  for (const q of ['AsKh9s8d', 'AsKsQsJs', '9s9h6s5h', 'Ad2d3c4h', 'TsTh3s2h', 'AcAdAhKs']) {
+    const r = P(q);
+    const cards = cardsOf(q).sort((a, b) => b - a);
+    assert.equal(r.status, 'ok', q);
+    assert.equal(r.level, 'hand', q);
+    assert.deepEqual(r.cards, cards, q);
+    assert.equal(r.canon, cards.map(cardChars).join(''), q);
+    assert.equal(r.row, rowOf(cards), q);
+    assert.equal(r.col, colOf(cards), q);
+    assert.equal(r.cellKey, rowOf(cards) + '|' + colOf(cards), q);
+    assert.equal(r.subKey, subKeyOf(cards), q);
+    assert.deepEqual(r.ranks, rankValues(cards), q);
+    assert.equal(r.suffix, null, q);
+    // and it names a live cell carrying that bucket
+    assert.ok((MODEL.cells[r.cellKey].combos || 0) > 0, q + ' -> ' + r.cellKey);
+    assert.ok((MODEL.sub[r.cellKey] || []).some((x) => x.key === r.subKey), q + ' -> ' + r.subKey);
+  }
+});
+
+test('card order, case and separators are all irrelevant', () => {
+  const want = P('AsKh9s8d');
+  for (const v of ['askh9s8d', 'ASKH9S8D', '8dAs9sKh', 'As Kh 9s 8d', 'as,kh-9s.8d', '9s/8d/As/Kh']) {
+    const g = P(v);
+    assert.equal(g.status, 'ok', v);
+    assert.deepEqual({ ...g, input: null, query: null }, { ...want, input: null, query: null }, v);
+  }
+  // canon is itself a legal query, so the box round-trips whatever it prints
+  assert.deepEqual(P(want.canon), { ...want, input: want.canon, query: want.canon.toUpperCase() });
+});
+
+test('partial and broken card inputs are told apart from class queries', () => {
+  const st = (q) => P(q).status;
+  // a legal prefix of a card query — keep typing
+  for (const q of ['As', 'AsK', 'AsKh', 'AsKh9', 'AsKh9s', 'AsKh9s8']) assert.equal(st(q), 'incomplete', q);
+  // and it never claims a cell on the way
+  for (const q of ['As', 'AsKh', 'AsKh9s8']) {
+    const r = P(q);
+    assert.equal(r.level, null, q);
+    assert.equal(r.cellKey, null, q);
+    assert.ok(r.message.length > 0, q + ' must say why');
+  }
+  assert.equal(st('AsKx'), 'invalid');          // x is not a suit
+  assert.equal(st('AsK7h9s8d'), 'invalid');     // K7 is not a card
+  assert.equal(st('AsAs9h8d'), 'invalid');      // the same card twice
+  assert.equal(st('AsKh9s8dAc'), 'invalid');    // five cards
+  assert.match(P('AsAs9h8d').message, /appears twice/);
+  assert.match(P('AsKh9s8dAc').message, /exactly four/);
+});
+
+test('the two grammars are told apart on one character and never collide', () => {
+  // disjoint alphabets: that is what makes the single-character decision safe
+  for (const ch of RANK_CHARS) assert.equal(SUIT_CHARS.indexOf(ch.toLowerCase()), -1, ch);
+  for (const ch of SUIT_CHARS) assert.equal(RANK_CHARS.indexOf(ch.toUpperCase()), -1, ch);
+  // every legal class query still parses as a class query, over the whole rank space
+  for (const rs of rankMultisets()) {
+    for (const suf of ['', ...SUFFIXES]) {
+      const r = P(canonOf(rs) + suf);
+      assert.notEqual(r.level, 'hand', canonOf(rs) + suf + ' was read as a card query');
+    }
+  }
+  // and the pre-existing verdicts on the ambiguous-looking strings are unchanged
+  assert.equal(P('9DS').status, 'invalid');
+  assert.equal(P('DS').status, 'invalid');
+  assert.equal(P('9655D').status, 'incomplete');
+});
+
+test('the hand rung agrees with the class rung wherever the class rung can reach', () => {
+  // For the four unambiguous columns a suit code names exactly one sub-bucket, so a hand and the
+  // class query for its ranks + column must land on the same cell AND the same bucket.
+  const BY_COL = { DS: 'DS', SS: 'SS', SSA: 'SSA', RB: 'RB' };
+  let agreed = 0, flawed = 0;
+  const h = [0, 0, 0, 0];
+  for (let a = 0; a < 52; a += 3) {
+    h[0] = a;
+    for (let b = a + 1; b < 52; b += 7) {
+      h[1] = b;
+      for (let c = b + 1; c < 52; c += 11) {
+        h[2] = c;
+        for (let d = c + 1; d < 52; d += 13) {
+          h[3] = d;
+          const hand = P(h.slice().sort((x, y) => y - x).map(cardChars).join(''));
+          assert.equal(hand.status, 'ok');
+          const col = colOf(h);
+          const cls = P(canonOf(rankValues(h)) + (BY_COL[col] || 'F'));
+          assert.equal(cls.cellKey, hand.cellKey, hand.canon + ' cell');
+          if (BY_COL[col]) { assert.equal(cls.subKey, hand.subKey, hand.canon + ' bucket'); agreed++; }
+          else {
+            // FLAW is the documented exception: colOf folds ms3 and ms4 into one column, so the
+            // class query can only ask for ms4 (or fall back to the cell). The hand knows better.
+            if (suitSub(h) === 'ms4') assert.equal(cls.subKey, hand.subKey, hand.canon + ' monotone bucket');
+            else assert.notEqual(cls.subKey, hand.subKey, hand.canon + ' three-flush is not the ms4 bucket');
+            flawed++;
+          }
+        }
+      }
+    }
+  }
+  assert.ok(agreed > 100 && flawed > 0, `agreed ${agreed} flawed ${flawed}`);
 });

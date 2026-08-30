@@ -3,7 +3,6 @@
 // Stages:
 //   'cells' : hero drawn fresh from the cell every trial; one deal (board + 7 villains) yields
 //             equity vs N = 1..7 by comparing against villain prefixes.
-//   'sub'   : identical, on the sub-bucket hand lists.
 //   'vs3bet': heads-up, villain rejection-sampled from one face-up component range.
 //   'eq1'   : the frozen villain ordering — equity vs one random opponent for every
 //             suit-isomorphism class of the deck (see villain-range.mjs).

@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- GENERATED FILE — do not edit. Built by scripts/build.mjs from:
-       src/shell.html   sha256 306a745c1a04f05d
+       src/shell.html   sha256 e79bc89cad94ad8d
        data/model.json   1.0.0 · 6b8b36aaf8b0e9c4
        scripts/lib/policy.mjs + scripts/lib/taxonomy.mjs (inlined)
      Comments and dead whitespace are stripped from the JavaScript;
@@ -117,16 +117,25 @@ svg{display:block}
 .tabs button[aria-selected=true]{color:var(--text-primary)}
 .tabs button[aria-selected=true]::after{background:var(--accent)}
 .spacer{flex:1 1 auto}
-.handinput{position:relative}
-.handinput input{width:160px;height:32px;padding:0 var(--sp-4);background:var(--surface-1);
+/* THE hand finder. One box for both questions — see the markup below and runHandSearch. The
+   message under it carries three states, and the left rule is the only thing that changes:
+   neutral for a hint, accent for a hit, red for a query that cannot resolve. */
+.handinput{position:relative;display:flex;align-items:center;gap:var(--sp-3)}
+.handinput label{color:var(--text-tertiary);font:600 9px/11px var(--font-ui);letter-spacing:.07em;flex:0 0 auto}
+.handinput input{width:184px;height:32px;padding:0 var(--sp-4);background:var(--surface-1);
   border:1px solid var(--border-default);border-radius:var(--r-md);font:500 13px/16px var(--font-mono);
   color:var(--text-primary);letter-spacing:.02em}
-.handinput input::placeholder{color:var(--text-disabled)}
+.handinput input::placeholder{color:var(--text-disabled);letter-spacing:0}
 .handinput input:hover{border-color:var(--border-strong)}
-.handinput.err input{border-color:var(--pos-bad);box-shadow:0 0 0 1px var(--pos-bad)}
-.handinput .msg{position:absolute;top:36px;right:0;width:260px;padding:var(--sp-3) var(--sp-4);background:var(--surface-2);
-  border:1px solid var(--border-default);border-left:3px solid var(--pos-bad);border-radius:var(--r-md);
+.handinput.bad input{border-color:var(--pos-bad);box-shadow:0 0 0 1px var(--pos-bad)}
+.handinput.hit input{border-color:var(--accent)}
+.handinput #handqx{width:26px;height:26px;flex:0 0 auto;visibility:hidden}
+.handinput.has #handqx{visibility:visible}
+.handinput .msg{position:absolute;top:36px;right:0;width:284px;padding:var(--sp-3) var(--sp-4);background:var(--surface-2);
+  border:1px solid var(--border-default);border-left:3px solid var(--border-strong);border-radius:var(--r-md);
   box-shadow:var(--e2);font:400 12px/16px var(--font-ui);color:var(--text-secondary);z-index:50}
+.handinput.hit .msg{border-left-color:var(--accent)}
+.handinput.bad .msg{border-left-color:var(--pos-bad);color:var(--pos-bad)}
 .viewsw{display:flex;background:var(--surface-1);border:1px solid var(--border-subtle);border-radius:var(--r-md);padding:2px}
 .viewsw button{height:28px;padding:0 var(--sp-4);border-radius:var(--r-sm);color:var(--text-tertiary);font:600 12px/14px var(--font-ui)}
 .viewsw button[aria-pressed=true]{background:var(--surface-3);color:var(--text-primary)}
@@ -352,23 +361,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .compnu{flex:0 0 auto;font:500 12px/16px var(--font-mono);color:var(--text-secondary);font-variant-numeric:tabular-nums}
 .subtitle{display:none}
 .chgut{padding-bottom:var(--sp-3);font:500 10px/13px var(--font-mono);color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* V2-PLAN §5.1 hand search — one row above the column heads, so the answer it scrolls to is
-   always visible underneath it. */
-.hsearch{display:flex;align-items:center;gap:var(--sp-3);min-height:32px;padding:var(--sp-2) var(--sp-5);
-  flex:0 0 auto;background:var(--surface-1);border-bottom:1px solid var(--border-subtle);flex-wrap:wrap}
-.hsearch label{color:var(--text-tertiary);font:600 9px/11px var(--font-ui);letter-spacing:.07em;flex:0 0 auto}
-.hsearch input{width:120px;height:26px;padding:0 var(--sp-3);background:var(--surface-2);
-  border:1px solid var(--border-default);border-radius:var(--r-sm);font:500 12px/15px var(--font-mono);
-  color:var(--text-primary);letter-spacing:.06em;text-transform:uppercase;flex:0 0 auto}
-.hsearch input::placeholder{color:var(--text-disabled);text-transform:none;letter-spacing:0}
-.hsearch input:hover{border-color:var(--border-strong)}
-.hsearch.bad input{border-color:var(--pos-bad)}
-.hsearch.hit input{border-color:var(--accent)}
-.hsearch .hsmsg{flex:1 1 120px;min-width:0;font:400 11px/15px var(--font-ui);color:var(--text-tertiary);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hsearch.bad .hsmsg{color:var(--pos-bad)}
-.hsearch #hsearchx{width:26px;height:26px;flex:0 0 auto;visibility:hidden}
-.hsearch.has #hsearchx{visibility:visible}
 /* the search hit. An outline, not a box-shadow: aria-selected already owns the inset ring, and a
    cell can be both the selection and the hit at once. */
 .cell.sfind{outline:2px solid var(--accent);outline-offset:-2px;z-index:3}
@@ -693,7 +685,8 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
   .tabs,.tabs button{height:40px}
   .seg button{min-width:44px;height:32px}
   .seg .thumb{height:32px}
-  .handinput input{width:140px}
+  .handinput label{display:none}
+  .handinput input{width:152px}
 }
 @media (max-width:1439px){
   #app{max-width:none}
@@ -740,10 +733,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
   .btn-icon{width:44px}
   .legend .chip{height:44px}
   .gridwrap{padding:var(--sp-3) var(--sp-4) 90px}
-  /* AC-21: everything tappable is >= 44px at 390 */
-  .hsearch{padding:var(--sp-3) var(--sp-4)}
-  .hsearch input{height:44px;font-size:16px}   /* 16px: iOS zooms a smaller field on focus */
-  .hsearch #hsearchx{width:44px;height:44px}
   :root{--gut:92px;--cell-h:44px}
   .row,.colhead{grid-template-columns:var(--gut) repeat(5,minmax(0,1fr))}
   .mosaic .row,.mosaic .colhead{grid-template-columns:var(--gut) 56fr 93fr 262fr 48fr 71fr}
@@ -794,14 +783,20 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
     <nav class="tabs" id="facingtabs" role="tablist" aria-label="Facing action"></nav>
     <div class="spacer"></div>
     <div class="handinput" id="handinput">
-      <!-- NOT the §5.1 rank-pattern search (#hsearch, over the grid): this one takes four SPECIFIC
-           cards and opens the inspector on that hand. Both labels say which is which. -->
-      <input id="handq" type="text" spellcheck="false" autocomplete="off" placeholder="AsKh9s8d" aria-label="Hand lookup — four specific cards, with suits" maxlength="24">
+      <!-- THE finder — one box, both questions, one grammar (TAXONOMY.parseHandQuery). Four
+           SPECIFIC cards name a hand and open the inspector on it; four RANKS plus an optional
+           suit code name a class and move the grid to it. The grid used to carry a second box for
+           the second half of that; it does not any more, and there is nothing left to confuse. -->
+      <label for="handq">FIND HAND</label>
+      <input id="handq" type="text" spellcheck="false" autocomplete="off" maxlength="24"
+        placeholder="AsKh9s8d or 9655DS" aria-describedby="handmsg"
+        aria-label="Find a hand — four specific cards with suits, or four ranks plus an optional suit code">
+      <button class="btn btn-icon" id="handqx" aria-label="Clear the hand finder" title="Clear (Esc)">&#10005;</button>
       <div class="msg" id="handmsg" hidden></div>
     </div>
     <div class="viewsw" id="viewsw" role="group" aria-label="View"></div>
     <button class="btn btn-accent" id="drillbtn" title="Drill (D)">DRILL</button>
-    <button class="btn btn-icon" id="pickbtn" aria-label="Enter a hand" title="Enter a hand">
+    <button class="btn btn-icon" id="pickbtn" aria-label="Find a hand" title="Find a hand">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.2" y="3.2" width="7" height="9.6" rx="1.4"/><path d="M6.6 2.4h5.6a1.4 1.4 0 0 1 1.4 1.4v7.4"/></svg></button>
     <button class="btn btn-icon" id="guidebtn" aria-label="How to read this" title="How to read this (G)">?</button>
     <button class="btn btn-icon" id="setbtn" aria-label="Settings" title="Settings">
@@ -941,16 +936,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
            the page is showing shipped measurements, which is its default state: a badge that is
            always on says nothing. -->
       <div class="simbar" id="simbar" hidden></div>
-      <!-- V2-PLAN §5.1 hand search. Hidden unless the injected taxonomy carries parseHandQuery,
-           the same feature-detect shape §3 and §5 use. -->
-      <div class="hsearch" id="hsearchbar" hidden>
-        <label for="hsearch">FIND HAND</label>
-        <input id="hsearch" type="text" spellcheck="false" autocomplete="off" maxlength="12"
-          placeholder="9655DS" aria-label="Find a hand class: four ranks, then an optional suit code"
-          aria-describedby="hsearchmsg">
-        <span class="hsmsg" id="hsearchmsg">four ranks, any order &mdash; add R, SS, SSA, DS or F</span>
-        <button class="btn btn-icon" id="hsearchx" aria-label="Clear hand search" title="Clear the search (Esc)">&#10005;</button>
-      </div>
       <div class="colhead" id="colhead"></div>
       <div class="gridwrap" id="gridwrap">
         <div id="grid" role="grid" aria-label="Hand class matrix" aria-rowcount="29" aria-colcount="5"></div>
@@ -1265,6 +1250,9 @@ FLAW:{col:'FLAW',sub:'ms4'},
 const RANK_CHARS='23456789TJQKA';
 function rankCharValue(ch){const i=RANK_CHARS.indexOf(ch);return i<0?0:i+2;}
 function rankValueChar(v){return RANK_CHARS[v-2]||'?';}
+const SUIT_CHARS='shdc';
+function suitCharIndex(ch){return SUIT_CHARS.indexOf(String(ch).toLowerCase());}
+function cardChars(card){return RANK_CHARS[card>>2]+SUIT_CHARS[card&3];}
 function suitsForRanks(ranks,want){
 const r0=[ranks[0]-2,ranks[1]-2,ranks[2]-2,ranks[3]-2];
 const cards=[0,0,0,0];
@@ -1280,6 +1268,43 @@ return cards.slice().sort((x,y)=>y-x);
 }
 return null;
 }
+function parseCards(s,out){
+const cards=[];
+let i=0;
+while(i<s.length&&cards.length<4){
+const rv=rankCharValue(s[i]);
+if(!rv){
+out.status='invalid';
+out.message='"'+s[i]+'" is not a rank — a card is a rank then a suit (As Kh 9s 8d)';
+return out;
+}
+if(i+1===s.length){out.message='suit of the '+s[i]+' — s, h, d or c';return out;}
+const su=suitCharIndex(s[i+1]);
+if(su<0){
+out.status='invalid';
+out.message='"'+s[i+1]+'" is not a suit — use s, h, d or c';
+return out;
+}
+const card=(rv-2)*4+su;
+if(cards.indexOf(card)>=0){out.status='invalid';out.message=cardChars(card)+' appears twice';return out;}
+cards.push(card);
+i+=2;
+}
+if(cards.length<4){
+out.message=(4-cards.length)+(cards.length===3?' more card':' more cards');
+return out;
+}
+if(i<s.length){out.status='invalid';out.message='more than four cards — a PLO hand holds exactly four';return out;}
+cards.sort((a,b)=>b-a);
+out.status='ok';out.level='hand';out.cards=cards;
+out.ranks=rankValues(cards);
+out.canon=cards.map(cardChars).join('');
+out.row=rowOf(cards);out.col=colOf(cards);
+out.cellKey=out.row+'|'+out.col;
+out.subKey=subKeyOf(cards);out.wantSub=suitSub(cards);
+out.message='one specific hand — the cell and the bucket it actually lands in';
+return out;
+}
 function parseHandQuery(q){
 const input=q==null?'':String(q);
 const s=input.replace(/[\s,\-_./]/g,'').toUpperCase();
@@ -1288,7 +1313,8 @@ input,query:s,status:'incomplete',level:null,
 ranks:null,canon:'',suffix:null,wantSub:null,
 row:null,col:null,cellKey:null,subKey:null,cards:null,message:'',
 };
-if(!s){out.message='four ranks — 9655, or 9655DS';return out;}
+if(!s){out.message='four cards — AsKh9s8d — or four ranks — 9655, 9655DS';return out;}
+if(rankCharValue(s[0])&&suitCharIndex(s[1])>=0)return parseCards(s,out);
 const ranks=[];
 let i=0;
 while(i<s.length&&ranks.length<4&&RANK_CHARS.indexOf(s[i])>=0){ranks.push(rankCharValue(s[i]));i++;}
@@ -1342,7 +1368,7 @@ out.status='void';
 out.message='no legal hand has those ranks — that cell is structurally empty';
 return out;
 }
-return { ROW_ORDER, COL_ORDER, ROW_META, BAND_ORDER, BAND_META, COL_META, colOf, nutSuited, suitPattern, rankValues, gapOf4, topInGapOrientation, gapVec, best3Span, isDoubleConnector, danglerCount, domDistinct, adjRaw, rowOf, cellKeyOf, pairStructure, suitSub, connectivity, highCardQuality, subKeyOf, subLabel, SEARCH_SUFFIXES, RANK_CHARS, rankCharValue, rankValueChar, suitsForRanks, parseHandQuery };
+return { ROW_ORDER, COL_ORDER, ROW_META, BAND_ORDER, BAND_META, COL_META, colOf, nutSuited, suitPattern, rankValues, gapOf4, topInGapOrientation, gapVec, best3Span, isDoubleConnector, danglerCount, domDistinct, adjRaw, rowOf, cellKeyOf, pairStructure, suitSub, connectivity, highCardQuality, subKeyOf, subLabel, SEARCH_SUFFIXES, RANK_CHARS, rankCharValue, rankValueChar, SUIT_CHARS, suitCharIndex, cardChars, suitsForRanks, parseHandQuery };
 })();
 /* @end:taxonomy */
 </script>
@@ -3353,7 +3379,8 @@ cbPatterns:false,monoSuits:false,rain:8,reduce:false,itab:'summary',preview:null
 expand:(window.POLICY&&window.POLICY.EXPAND_INIT)||{cell:null,cursor:-1,count:0},
 vp:false,q:QDEF==null?0.85:QDEF
 };
-var SRCH={active:false,level:null,row:null,cellKey:null,subKey:null,ownedExpand:false,canon:''};
+var SRCH={active:false,level:null,row:null,cellKey:null,subKey:null,
+ownedExpand:false,ownedHand:false,canon:''};
 function envKey(){return S.d+'|'+S.rake+'|'+S.rakeCap+'|'+(S.straddle?1:0);}
 function stateOf(o){
 var s={pos:S.pos,node:S.node,v:S.v/100,limpers:S.L,raiserPos:S.raiser||defaultRaiser(),
@@ -5441,12 +5468,14 @@ openModal('How to read this','<div class="prose">'+
 '<p style="margin-top:10px">Learn the vocabulary as you go: the small <b>i</b> on every row and column explains that hand class with '+
 'live examples, and every <b>?</b> defines the number next to it. Click a cell for its full arithmetic, or hit '+
 '<b>DRILL</b> to be quizzed.</p>'+
-'<p style="margin-top:10px"><b>Two boxes, two questions.</b> The <b>top bar</b> takes four <i>specific cards</i> '+
-'(<span style="font-family:var(--font-mono)">AsKh9s8d</span> or <span style="font-family:var(--font-mono)">AKT9ds</span>) '+
-'and opens the inspector on that one hand.'+
-(HAS_SEARCH?' <b>FIND HAND</b>, above the grid, takes a <i>rank pattern</i> in any order plus an optional suit code '+
-'(<span style="font-family:var(--font-mono)">9655DS</span>) and moves the grid to it — <b>/</b> focuses it, '+
-'<b>Esc</b> clears it.':'')+'</p></div>',
+'<p style="margin-top:10px"><b>One box, two questions.</b> <b>FIND HAND</b> in the top bar takes four '+
+'<i>specific cards</i> (<span style="font-family:var(--font-mono)">AsKh9s8d</span>) and opens the inspector on '+
+'that one hand'+
+(HAS_SEARCH?', <i>or</i> a <i>rank pattern</i> in any order plus an optional suit code '+
+'(<span style="font-family:var(--font-mono)">9655DS</span>) and moves the grid to that whole class. It tells '+
+'the two apart on the second character, so there is no mode to pick — <b>/</b> focuses it, <b>↓</b> steps into '+
+'the grid, <b>Esc</b> clears it.'
+:' — or four ranks and a suit code (<span style="font-family:var(--font-mono)">AKT9ds</span>).')+'</p></div>',
 [['Replay the 30-second tour',function(){closeModal();runTour();}],
 ['Keyboard shortcuts',function(){closeModal();showShortcuts();}]]);
 }
@@ -6501,7 +6530,7 @@ case'd':case'D':openDrill();break;
 case'g':case'G':openGuide();break;
 case'c':case'C':toggleCompare(S.sel);break;
 case't':case'T':setView(S.view==='table'?'matrix':'table');break;
-case'/':if(!HAS_SEARCH)return;focusHandSearch();break;
+case'/':focusHandSearch();break;
 case'?':showShortcuts();break;
 case'Escape':
 if($('#modal')){closeModal();break;}
@@ -6523,37 +6552,31 @@ openModal('Keyboard','<div class="prose"><ul>'+
 ['<b>← → ↑ ↓</b> move in the matrix (void cells are skipped)',
 '<b>Enter</b> select · <b>Esc</b> clear filters / close',
 '<b>Enter</b> also expands the cell into its sub-buckets · <b>↓</b> descends into them · <b>Esc</b> collapses',
-'<b>/</b> find a hand — four ranks in any order (<b>9655</b>) plus an optional suit code: '
-+'<b>R</b>/<b>RB</b>, <b>SS</b>, <b>SSA</b>, <b>DS</b>, or <b>F</b> (suit-wasted, narrowed to its monotone bucket). '
-+'Ranks alone light the whole rank row; ranks + a code open that cell’s bucket. <b>Esc</b> clears it',
+'<b>/</b> find a hand — <b>FIND HAND</b> in the top bar takes either grammar. Four specific cards '
++'(<b>AsKh9s8d</b>) open the inspector on that hand; four ranks in any order (<b>9655</b>) plus an optional '
++'suit code — <b>R</b>/<b>RB</b>, <b>SS</b>, <b>SSA</b>, <b>DS</b>, or <b>F</b> (suit-wasted, narrowed to its '
++'monotone bucket) — move the grid. Ranks alone light the whole rank row; ranks + a code open that cell’s '
++'bucket. <b>↓</b> steps into the grid, <b>Esc</b> clears it',
 '<b>PgUp / PgDn</b> jump band · <b>Home / End</b> row ends',
 '<b>[ ]</b> position · <b>1–4</b> facing action',
 '<b>− =</b> VPIP ∓1 (Shift ∓5) · Shift+←/→ on any slider snaps to its ticks or detents',
 '<b>P</b> pin the ρ reference · <b>C</b> compare · <b>T</b> table view · <b>D</b> drill · <b>G</b> guide'].map(function(s){return'<li>'+s+'</li>';}).join('')+
 '</ul></div>',[['Replay the thesis',function(){closeModal();runTour();}]]);
 }
-function wireHandInput(){
-var inp=$('#handq'),msg=$('#handmsg'),wrap=$('#handinput');
-inp.addEventListener('keydown',function(e){
-if(e.key!=='Enter')return;
-var p=parseHand(inp.value);
-if(p.err){
-wrap.classList.add('err');msg.hidden=false;msg.textContent=p.err;
-announce('invalid hand: '+p.err);
-return;
+function searchBar(){return $('#handinput');}
+function finderHint(){
+return HAS_SEARCH
+?'four cards — AsKh9s8d — or four ranks in any order plus an optional suit code: R, SS, SSA, DS, F'
+:'four specific cards — AsKh9s8d — or four ranks and a suit code — AKT9ds';
 }
-wrap.classList.remove('err');msg.hidden=true;
-loadHand(p.cards.map(cardName).join(''));
-});
-inp.addEventListener('input',function(){wrap.classList.remove('err');msg.hidden=true;});
-}
-function searchBar(){return $('#hsearchbar');}
 function searchSay(text,kind){
 var bar=searchBar();if(!bar)return;
-$('#hsearchmsg').textContent=text;
+var msg=$('#handmsg');
+msg.textContent=text||'';
+msg.hidden=!text;
 bar.classList.toggle('bad',kind==='bad');
 bar.classList.toggle('hit',kind==='hit');
-bar.classList.toggle('has',!!($('#hsearch')&&$('#hsearch').value));
+bar.classList.toggle('has',!!($('#handq')&&$('#handq').value));
 }
 function focusCell(rec){
 for(var z=0;z<NCELL;z++)if(cellNodes[z]&&cellNodes[z].tabIndex===0)cellNodes[z].tabIndex=-1;
@@ -6579,13 +6602,15 @@ for(var i=0;i<subs.length;i++)if(subs[i].key===subKey)return i;
 return-1;
 }
 function clearHandSearch(opts){
-var was=SRCH.active,key=SRCH.cellKey;
+var was=SRCH.active,key=SRCH.cellKey,hadHand=SRCH.ownedHand;
 var inPanel=!!(subPanel&&document.activeElement&&subPanel.contains(document.activeElement));
 if(SRCH.ownedExpand&&S.expand.cell)dispatchExpand({type:'close'});
-SRCH={active:false,level:null,row:null,cellKey:null,subKey:null,ownedExpand:false,canon:''};
-var inp=$('#hsearch');
+SRCH={active:false,level:null,row:null,cellKey:null,subKey:null,
+ownedExpand:false,ownedHand:false,canon:''};
+if(hadHand){S.hand=null;renderInspector();}
+var inp=$('#handq');
 if(inp&&(!opts||!opts.keepText))inp.value='';
-searchSay('four ranks, any order — add R, SS, SSA, DS or F',null);
+searchSay('',null);
 if(was){
 render();paintSearchRows();
 if(inPanel&&CK[key])focusCell(CK[key]);
@@ -6605,7 +6630,7 @@ return p;
 }
 clearHandSearch({keepText:true,quiet:true});
 SRCH={active:true,level:p.level,row:p.row,cellKey:p.cellKey,subKey:p.subKey,
-ownedExpand:false,canon:p.canon+(p.suffix||'')};
+ownedExpand:false,ownedHand:false,canon:p.canon+(p.suffix||'')};
 var rowLabel=(CK[p.row+'|RB']||{}).row;
 rowLabel=rowLabel?rowLabel.label:p.row;
 var rec=p.cellKey?CK[p.cellKey]:null;
@@ -6623,6 +6648,19 @@ announce(empty
 'topology, and the cell is empty for every rank string — it is drawn void on the grid.'
 :head+'. No hand with those ranks is '+colLabel(p.col)+', so the rank row is '+
 'highlighted instead; the cell itself is live and holds other rank strings.');
+}
+return p;
+}
+if(p.level==='hand'){
+if(!rec||!rec.live){searchSay(head+' — not in this dataset','bad');if(!opts.silent)announce('no match');return p;}
+SRCH.ownedHand=true;
+loadHand(p.cards.map(cardName).join(''));
+paintSearchRows();scrollTo(rec);
+var evH=lastEv||evalNow(),tierH=tierLabel(evH.tier[rec.i]);
+searchSay(head+' × '+colLabel(p.col)+' — '+tierH,'hit');
+if(!opts.silent){
+announce(p.canon+', '+rowLabel+' by '+colLabel(p.col)+', '+tierH+'. The inspector is open on '+
+'this hand, priced against its class; the cell is outlined on the grid. Escape clears it.');
 }
 return p;
 }
@@ -6668,19 +6706,30 @@ return p;
 }
 function colLabel(key){for(var i=0;i<COLS.length;i++)if(COLS[i].key===key)return COLS[i].label;return key;}
 function focusHandSearch(){
-if(!HAS_SEARCH)return;
 if(S.view!=='matrix')setView('matrix');
-var inp=$('#hsearch');if(!inp)return;
+var inp=$('#handq');if(!inp)return;
 inp.focus();inp.select();
-announce('hand search. Four ranks in any order, then an optional suit code: R, SS, SSA, DS or F.');
+if(!inp.value)searchSay(finderHint(),null);
+announce(HAS_SEARCH
+?'find hand. Four specific cards — A spades, K hearts, 9 spades, 8 diamonds — or four ranks in any order, then an optional suit code: R, SS, SSA, DS or F.'
+:'hand lookup. Four specific cards, with suits.');
 }
 function wireHandSearch(){
-var bar=searchBar();if(!bar)return;
-bar.hidden=!HAS_SEARCH;
-if(!HAS_SEARCH)return;
-var inp=$('#hsearch');
+var inp=$('#handq');if(!inp)return;
+if(!HAS_SEARCH){
+inp.placeholder='AsKh9s8d';
+inp.setAttribute('aria-label','Hand lookup — four specific cards, with suits');
+}
 inp.addEventListener('keydown',function(e){
-if(e.key==='Enter'){runHandSearch(inp.value);e.preventDefault();return;}
+if(e.key==='Enter'){
+e.preventDefault();
+if(HAS_SEARCH){runHandSearch(inp.value);return;}
+var p=parseHand(inp.value);
+if(p.err){searchSay(p.err,'bad');announce('invalid hand: '+p.err);return;}
+searchSay('',null);
+loadHand(p.cards.map(cardName).join(''));
+return;
+}
 if(e.key==='Escape'){clearHandSearch();inp.blur();e.preventDefault();e.stopPropagation();return;}
 if(e.key==='ArrowDown'&&SRCH.active){
 var target=SRCH.level==='row'?firstLiveIn(SRCH.row):CK[SRCH.cellKey];
@@ -6689,12 +6738,24 @@ if(target&&target.live){focusCell(target);announce(target.row.label+' by '+targe
 });
 inp.addEventListener('input',function(){
 var v=inp.value;
-if(!v){clearHandSearch({keepText:true,quiet:true});return;}
+if(!v){
+if(HAS_SEARCH)clearHandSearch({keepText:true,quiet:true});
+searchSay(finderHint(),null);
+return;
+}
+if(!HAS_SEARCH){searchSay('',null);return;}
 var p=window.TAXONOMY.parseHandQuery(v);
-if(p.status==='ok'||p.status==='void')searchSay('press Enter — '+p.canon+(p.suffix?' '+p.col:' rank row'),null);
-else{clearHandSearch({keepText:true,quiet:true});searchSay(p.message,p.status==='invalid'?'bad':null);}
+if(p.status==='ok'||p.status==='void'){
+searchSay('press Enter — '+(p.level==='hand'?p.canon
+:p.canon+(p.suffix?' '+p.col:' rank row')),null);
+}else{clearHandSearch({keepText:true,quiet:true});searchSay(p.message,p.status==='invalid'?'bad':null);}
 });
-$('#hsearchx').onclick=function(){clearHandSearch();inp.focus();};
+inp.addEventListener('focus',function(){if(!$('#handmsg').textContent)searchSay(finderHint(),null);});
+inp.addEventListener('blur',function(){if(!inp.value)searchSay('',null);});
+$('#handqx').onclick=function(){
+if(HAS_SEARCH)clearHandSearch();else{inp.value='';searchSay('',null);}
+inp.focus();
+};
 }
 function wireChrome(){
 $('#honestyx').onclick=function(){$('#honestystrip').hidden=true;sess('rundown.honesty','hidden');};
@@ -7596,7 +7657,7 @@ tourRunning=true;
 var step=0,saved={pos:S.pos,node:S.node,v:S.v,sel:S.sel,
 d:S.d,rake:S.rake,rakeCap:S.rakeCap,straddle:S.straddle,expand:S.expand,
 vp:S.vp,q:S.q,
-search:(HAS_SEARCH&&SRCH.active)?((($('#hsearch')||{}).value)||SRCH.canon||null):null};
+search:(HAS_SEARCH&&SRCH.active)?((($('#handq')||{}).value)||SRCH.canon||null):null};
 var tU25=evaluate(0.25,'UTG','rfi',2,'CO',S.mix),tU90=evaluate(0.90,'UTG','rfi',2,'CO',S.mix);
 var TTC='SMPAIR_JUNK|SS',TTS='1p|ss|conn|broadway';
 var DEEP=(DEPTH.detents&&DEPTH.detents[DEPTH.detents.length-1])||200;
@@ -7709,11 +7770,12 @@ return'The same cell, deeper. '+ttSay()+' The <b>cell never moved and the bucket
 }}
 ]:[]).concat(HAS_SEARCH?[
 {pos:'CO',node:'rfi',v:55,refocus:true,
-act:function(){runHandSearch('TT32SS');},
-cap:'Two boxes, two questions. The top bar (<code>AsKh9s8d</code>) looks up one <b>specific hand</b> and opens the '+
-'inspector on it. <b>FIND HAND</b> over the grid (<code>TT32SS</code>) takes a <b>rank pattern</b> in any order '+
-'plus an optional suit code — R, SS, SSA, DS or F — scrolls to the cell and opens the bucket when the shape pins '+
-'one, which is how it just landed on the row above. <b>/</b> focuses it; <b>Esc</b> clears it and whatever it opened.'}
+act:function(){var b=$('#handq');if(b)b.value='TT32SS';runHandSearch('TT32SS');},
+cap:'One box, two questions. <b>FIND HAND</b> in the top bar takes four <b>specific cards</b> '+
+'(<code>AsKh9s8d</code>) and opens the inspector on that hand, <i>or</i> a <b>rank pattern</b> in any order '+
+'plus an optional suit code — R, SS, SSA, DS or F (<code>TT32SS</code>, just run) — which scrolls to the cell '+
+'and opens the bucket when the shape pins one, as it did on the row above. The two are told apart on the '+
+'second character, so there is no mode to pick. <b>/</b> focuses it; <b>Esc</b> clears it and whatever it opened.'}
 ]:[]).concat([
 {pos:'UTG',node:'rfi',v:null,
 act:HAS_ENV?function(){envTo(DEPTH.ref,RAKE.preset);}:null,
@@ -7736,7 +7798,7 @@ $('#vpip').value=S.v;
 if(HAS_SUBS)renderExpansion();
 invalidate();
 if(restore&&saved.search){
-var inp=$('#hsearch');
+var inp=$('#handq');
 if(inp)inp.value=saved.search;
 runHandSearch(saved.search,{silent:true});
 }
@@ -7825,7 +7887,7 @@ document.documentElement.style.setProperty('--sheet-top',Math.round(host.getBoun
 }
 function openPicker(){
 var chosen=[],step='rank',pendingRank=-1;
-openModal('Enter a hand','<div id="pickbody"></div>',null);
+openModal('Find a hand','<div id="pickbody"></div>',null);
 var host=$('#pickbody');
 function paint(){
 host.innerHTML='';
@@ -7834,11 +7896,20 @@ line.style.cssText='display:flex;align-items:center;gap:6px;min-height:34px;marg
 line.innerHTML=chosen.length?handHTML(chosen):'<span class="t-sm dim">pick four cards — rank, then suit</span>';
 host.appendChild(line);
 var inp=el('input');
-inp.type='text';inp.placeholder='or type AsKh9s8d / AKT9ds';
+inp.type='text';inp.placeholder=HAS_SEARCH?'or type AsKh9s8d or 9655DS':'or type AsKh9s8d / AKT9ds';
 inp.setAttribute('aria-label','Type a hand');
 inp.style.cssText='width:100%;height:44px;background:var(--surface-1);border:1px solid var(--border-default);border-radius:6px;padding:0 12px;font:500 15px var(--font-mono);color:var(--text-primary);margin-bottom:12px';
 inp.onkeydown=function(e){
 if(e.key!=='Enter')return;
+if(HAS_SEARCH){
+var q=window.TAXONOMY.parseHandQuery(inp.value);
+if(q.status!=='ok'&&q.status!=='void'){toast(q.message);return;}
+closeModal();
+if(S.view!=='matrix')setView('matrix');
+var box=$('#handq');if(box)box.value=inp.value;
+runHandSearch(inp.value);
+return;
+}
 var pr=parseHand(inp.value);
 if(pr.err){toast(pr.err);return;}
 closeModal();loadHand(pr.cards.map(cardName).join(''));
@@ -7891,7 +7962,7 @@ readHash();
 document.body.classList.toggle('reduce',reduceMotion);
 if(sess('rundown.honesty')==='hidden')$('#honestystrip').hidden=true;
 buildTopbar();buildLegend();buildComp();buildColHead();buildGrid();buildInspector();
-wireSlider();wireTableCtl();wireVP();wireGrid();wireGlobalKeys();wireHandInput();wireHandSearch();wireChrome();wireHelpButtons();
+wireSlider();wireTableCtl();wireVP();wireGrid();wireGlobalKeys();wireHandSearch();wireChrome();wireHelpButtons();
 wireRibbon($('#railribbon'));
 setCols(S.cols);
 $('#modelmeta').textContent='model '+MODEL.meta.version+' · '+MODEL.meta.generated+' · '+

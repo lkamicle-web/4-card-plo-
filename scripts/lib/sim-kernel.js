@@ -86,7 +86,7 @@ var PLO_JOB = (function () {
   }
 
   /**
-   * Measure one whole unit — a cell, or a sub-bucket — over `job.trials` trials.
+   * Measure one whole cell over `job.trials` trials.
    * @returns {{eq:Float64Array, fallbacks:number, trials:number, slices:number}}
    */
   function runUnit(pool, starts, range, job) {

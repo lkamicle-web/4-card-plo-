@@ -289,95 +289,25 @@ export function rowOf(cards) {
 export function cellKeyOf(cards) { return rowOf(cards) + '|' + colOf(cards); }
 
 // ---------------------------------------------------------------------------
-// SUB-BUCKET depth layer:  pairStructure | suitPattern | connectivity | highCardQuality
-// Dual-keyed onto the 145 cells from the same enumeration pass.
-// ---------------------------------------------------------------------------
-// Key = pairStructure | suitPattern | connectivity | highCardQuality.
-//
-// Granularity note (documented correction, see docs/METHODOLOGY.md): the source brief measured 344
-// non-empty buckets with this 4-field key applied GLOBALLY. Here the key is dual-keyed onto the 145
-// cells, so the pair/connectivity axes are largely already carried by the 29 rows and the suit axis
-// by the 5 columns. Retaining the brief's finest granularity inside a cell yields 600+ mostly
-// redundant buckets; the axes are therefore coarsened to the brief's own stated tunable target of
-// 300-400 buckets. Result: 346 non-empty (cell, sub-key) buckets, mean 2.81 per cell.
-
-export function pairStructure(rs) {
-  const counts = Object.values(multiplicities(rs)).sort((a, b) => b - a);
-  if (counts[0] === 4) return 'quads';
-  if (counts[0] === 3) return 'trips';
-  if (counts[0] === 2 && counts[1] === 2) return '2p';
-  if (counts[0] === 2) return '1p';
-  return 'np';
-}
-
-const SUIT_SUB = { 22: 'ds', 211: 'ss', 1111: 'rb', 31: 'ms3', 4: 'ms4' };
-export function suitSub(cards) { return SUIT_SUB[suitPattern(cards)]; }
-
-/** wheel-aware span of the distinct ranks -> 'conn' (a real 4- or 3-card structure) or 'disc' */
-export function connectivity(rs) {
-  const distinct = [...new Set(rs)];
-  if (distinct.length < 3) return 'disc';
-  const variants = distinct.includes(14)
-    ? [distinct, distinct.map((r) => (r === 14 ? 1 : r))]
-    : [distinct];
-  let span = 99;
-  for (const v of variants) {
-    const s = v.slice().sort((a, b) => b - a);
-    span = Math.min(span, s[0] - s[s.length - 1]);
-  }
-  if (span <= 8) return 'conn';
-  return best3Span(rs) <= 3 ? 'conn' : 'disc';
-}
-
-export function highCardQuality(rs) {
-  const hi = rs.filter((r) => r >= 10).length;
-  if (hi >= 2) return 'broadway';
-  if (hi === 1) return 'onehi';
-  return rs[0] >= 8 ? 'mid' : 'low';
-}
-
-export function subKeyOf(cards) {
-  const rs = rankValues(cards);
-  return `${pairStructure(rs)}|${suitSub(cards)}|${connectivity(rs)}|${highCardQuality(rs)}`;
-}
-
-/** Human label for a sub-bucket key. */
-export function subLabel(key) {
-  const [ps, su, cn, hq] = key.split('|');
-  const psL = { np: 'no pair', '1p': 'one pair', '2p': 'two pair', trips: 'trips', quads: 'quads' }[ps];
-  const suL = { ds: 'double-suited', ss: 'single-suited', rb: 'rainbow', ms3: 'three-flush', ms4: 'monotone' }[su];
-  const cnL = { conn: 'connected', disc: 'disconnected' }[cn];
-  const hqL = { broadway: 'broadway', onehi: 'one high card', mid: 'middling', low: 'low' }[hq];
-  return `${psL}, ${cnL}, ${hqL}, ${suL}`;
-}
-
-// ---------------------------------------------------------------------------
 // HAND SEARCH — V2-PLAN §5.1.  A pure parser, above the browser cut on purpose:
-// it needs rowOf / colOf / subKeyOf and the page needs it, so it is inlined with them.
+// it needs rowOf / colOf and the page needs it, so it is inlined with them.
 // ---------------------------------------------------------------------------
 // Grammar:   <4 ranks, any order> <optional suit code>
 //   ranks    2..9 T J Q K A, case-insensitive, separators ignored
-//   suffix   R | RB -> RB · SS -> SS · SSA -> SSA · DS -> DS · F | FLAW -> FLAW, narrowed to ms4
+//   suffix   R | RB -> RB · SS -> SS · SSA -> SSA · DS -> DS · F | FLAW -> FLAW
 //
-// The suffix table is read off COL_ORDER, and its `sub` field is the `suitSub` value that column
-// implies. Four of the five columns imply exactly one suit pattern, so a suffix pins a sub-bucket
-// as a side effect: `subKeyOf` is pairStructure|suitSub|connectivity|highCardQuality and the other
-// three fields are rank-only, already fixed by the rank string.
-//
-// FLAW is the exception and the reason `F` exists. `colOf` folds BOTH the three-flush ('31') and
-// the monotone ('4') pattern into the one "suit-wasted" column, so rank+FLAW is ambiguous at the
-// cell level; `suitSub` separates them as ms3 / ms4. `F` therefore means "the FLAW cell, narrowed
-// to its monotone bucket" — and where no monotone hand carries those ranks (any pair needs two
-// suits, so a paired hand can never be four of one suit) it falls back to the FLAW cell itself.
-// That fallback is the whole reason the ladder has three rungs and not two.
+// The suffix table is read off COL_ORDER, and a suffix names a COLUMN outright — ranks plus a suit
+// code is a cell, and the cell is the finest thing this model resolves. `F` covers both the
+// three-flush and the monotone pattern because `colOf` folds both into the one suit-wasted column;
+// the search does not try to separate them, and neither does anything downstream of it.
 export const SEARCH_SUFFIXES = {
-  R: { col: 'RB', sub: 'rb' },
-  RB: { col: 'RB', sub: 'rb' },
-  SS: { col: 'SS', sub: 'ss' },
-  SSA: { col: 'SSA', sub: 'ss' },
-  DS: { col: 'DS', sub: 'ds' },
-  F: { col: 'FLAW', sub: 'ms4' },
-  FLAW: { col: 'FLAW', sub: 'ms4' },
+  R: { col: 'RB' },
+  RB: { col: 'RB' },
+  SS: { col: 'SS' },
+  SSA: { col: 'SSA' },
+  DS: { col: 'DS' },
+  F: { col: 'FLAW' },
+  FLAW: { col: 'FLAW' },
 };
 
 export const RANK_CHARS = '23456789TJQKA';
@@ -386,11 +316,22 @@ export function rankCharValue(ch) { const i = RANK_CHARS.indexOf(ch); return i <
 /** 10 -> 'T', 14 -> 'A' */
 export function rankValueChar(v) { return RANK_CHARS[v - 2] || '?'; }
 
+/* The card alphabet, and the encoding every function above already uses:
+ *     card = RANK_CHARS.indexOf(rank) * 4 + SUIT_CHARS.indexOf(suit)
+ * The two alphabets are DISJOINT — no suit letter is a rank, no rank is a suit letter — which is
+ * the whole reason one parser can take both query grammars without backtracking. See
+ * parseHandQuery: the second character decides, once, and is never revisited. */
+export const SUIT_CHARS = 'shdc';
+/** 's' -> 0, 'C' -> 3, anything else -> -1 */
+export function suitCharIndex(ch) { return SUIT_CHARS.indexOf(String(ch).toLowerCase()); }
+/** 51 -> 'Ac' */
+export function cardChars(card) { return RANK_CHARS[card >> 2] + SUIT_CHARS[card & 3]; }
+
 /**
  * The first legal 4-card hand with these rank VALUES whose suit topology matches `want`
- * ({col} and/or {sub}; `{}` matches anything). Exhaustive over the 256 suit assignments and
- * decided by the shipped `colOf`/`suitSub`, so "no such hand" is a proof, not a guess — which is
- * what lets the parser distinguish an empty cell from an unrealizable sub-bucket.
+ * (`{col}`, or `{}` to match anything). Exhaustive over the 256 suit assignments and decided by
+ * the shipped `colOf`, so "no such hand" is a proof, not a guess — which is what lets the parser
+ * report a structurally empty cell as empty instead of guessing at it.
  * @returns {number[]|null} card indices, descending, or null
  */
 export function suitsForRanks(ranks, want) {
@@ -403,22 +344,74 @@ export function suitsForRanks(ranks, want) {
     for (let i = 0; i < 4 && !dup; i++) for (let j = i + 1; j < 4; j++) if (cards[i] === cards[j]) { dup = true; break; }
     if (dup) continue;
     if (want.col && colOf(cards) !== want.col) continue;
-    if (want.sub && suitSub(cards) !== want.sub) continue;
     return cards.slice().sort((x, y) => y - x);
   }
   return null;
 }
 
 /**
+ * The card grammar's half of parseHandQuery: four SPECIFIC cards, rank+suit each, in any order.
+ * The cell comes back from the classifier itself rather than being synthesised from a suit code,
+ * so `AsKsQs Js` lands in FLAW because `colOf` puts it there — no suffix, no inference.
+ * `out` is parseHandQuery's shared result skeleton.
+ */
+function parseCards(s, out) {
+  const cards = [];
+  let i = 0;
+  while (i < s.length && cards.length < 4) {
+    const rv = rankCharValue(s[i]);
+    if (!rv) {
+      out.status = 'invalid';
+      out.message = '"' + s[i] + '" is not a rank — a card is a rank then a suit (As Kh 9s 8d)';
+      return out;
+    }
+    if (i + 1 === s.length) { out.message = 'suit of the ' + s[i] + ' — s, h, d or c'; return out; }
+    const su = suitCharIndex(s[i + 1]);
+    if (su < 0) {
+      out.status = 'invalid';
+      out.message = '"' + s[i + 1] + '" is not a suit — use s, h, d or c';
+      return out;
+    }
+    const card = (rv - 2) * 4 + su;
+    if (cards.indexOf(card) >= 0) { out.status = 'invalid'; out.message = cardChars(card) + ' appears twice'; return out; }
+    cards.push(card);
+    i += 2;
+  }
+  if (cards.length < 4) {
+    out.message = (4 - cards.length) + (cards.length === 3 ? ' more card' : ' more cards');
+    return out;
+  }
+  if (i < s.length) { out.status = 'invalid'; out.message = 'more than four cards — a PLO hand holds exactly four'; return out; }
+
+  cards.sort((a, b) => b - a);
+  out.status = 'ok'; out.level = 'hand'; out.cards = cards;
+  out.ranks = rankValues(cards);
+  out.canon = cards.map(cardChars).join('');
+  out.row = rowOf(cards); out.col = colOf(cards);
+  out.cellKey = out.row + '|' + out.col;
+  out.message = 'one specific hand — the cell it actually lands in';
+  return out;
+}
+
+/**
  * Parse a §5.1 hand-search query and resolve it as deep as the input determines.
  *
+ * ONE box, TWO grammars — this is the universal finder:
+ *   cards   four specific cards, rank+suit each, any order      AsKh9s8d
+ *   class   four ranks, any order, plus an optional suit code   9655 · 9655DS
+ * They are told apart on the SECOND CHARACTER and never backtracked: the rank and suit alphabets
+ * are disjoint, so a rank followed by a suit letter can only be the card grammar, and a class
+ * query's second character is always another rank. Every other field below is shared, so the
+ * caller reads one `level` and does not care which grammar produced it.
+ *
  * status  'ok'          resolved; read `level`
- *         'incomplete'  a legal prefix — keep typing (''/'96'/'9655S')
- *         'invalid'     cannot become a legal query ('9655X', '965DS', 'AAAAA')
+ *         'incomplete'  a legal prefix — keep typing (''/'96'/'9655S'/'AsK')
+ *         'invalid'     cannot become a legal query ('9655X', '965DS', 'AAAAA', 'AsAs9h8d')
  *         'void'        well-formed, but NO legal hand has those ranks in that column
  * level   'row'   ranks only — the rank row, identical in all five suit columns
- *         'cell'  ranks + F where no monotone hand exists: the FLAW cell, unnarrowed
- *         'sub'   ranks + suffix: one (cell, sub-bucket)
+ *         'cell'  ranks + a suit code: one cell
+ *         'hand'  four specific cards: the cell they actually land in, read off the classifier
+ *                 instead of synthesised from a suit code
  *
  * Pure: no model, no DOM, no clock. Every field is derived from the taxonomy above.
  */
@@ -427,10 +420,13 @@ export function parseHandQuery(q) {
   const s = input.replace(/[\s,\-_./]/g, '').toUpperCase();
   const out = {
     input, query: s, status: 'incomplete', level: null,
-    ranks: null, canon: '', suffix: null, wantSub: null,
-    row: null, col: null, cellKey: null, subKey: null, cards: null, message: '',
+    ranks: null, canon: '', suffix: null,
+    row: null, col: null, cellKey: null, cards: null, message: '',
   };
-  if (!s) { out.message = 'four ranks — 9655, or 9655DS'; return out; }
+  if (!s) { out.message = 'four cards — AsKh9s8d — or four ranks — 9655, 9655DS'; return out; }
+
+  /* one character of lookahead, no backtracking: see the note on SUIT_CHARS */
+  if (rankCharValue(s[0]) && suitCharIndex(s[1]) >= 0) return parseCards(s, out);
 
   const ranks = [];
   let i = 0;
@@ -471,19 +467,13 @@ export function parseHandQuery(q) {
       : '"' + rest + '" is not a suit code — use R/RB, SS, SSA, DS or F';
     return out;
   }
-  out.suffix = rest; out.col = suf.col; out.wantSub = suf.sub;
+  out.suffix = rest; out.col = suf.col;
   out.cellKey = out.row + '|' + suf.col;
 
-  let cards = suitsForRanks(ranks, suf);
-  if (cards) {
-    out.status = 'ok'; out.level = 'sub'; out.cards = cards; out.subKey = subKeyOf(cards);
-    out.message = 'one sub-bucket — the suit code fixes the only sub-key field the ranks do not';
-    return out;
-  }
-  cards = suitsForRanks(ranks, { col: suf.col });
+  const cards = suitsForRanks(ranks, suf);
   if (cards) {
     out.status = 'ok'; out.level = 'cell'; out.cards = cards;
-    out.message = 'no monotone hand holds a pair, so this is the suit-wasted cell itself, unnarrowed';
+    out.message = 'one cell — the suit code names the column, the ranks name the row';
     return out;
   }
   out.status = 'void';
@@ -500,7 +490,7 @@ export function parseHandQuery(q) {
  * Enumerate all 270,725 hands once, producing everything downstream needs.
  * @returns {{
  *   cellIndex: Int16Array, hands: Uint32Array, cellStart: Int32Array,
- *   cellKeys: string[], combos: Int32Array, feat: object, subs: Map
+ *   cellKeys: string[], combos: Int32Array, feat: object
  * }}
  */
 export function enumerateAll() {
@@ -526,14 +516,6 @@ export function enumerateAll() {
   // per-cell examples indexed by adjRaw value, so 6 can be picked to SPAN the cell
   const exByAdj = Array.from({ length: NC }, () => new Map());
 
-  // sub-bucket map: cellIdx -> Map(subKey -> {combos, ex:[], si})
-  const subs = Array.from({ length: NC }, () => new Map());
-  const subList = [];                    // [{ cell, key, combos }] in discovery order
-  const subOf = new Int32Array(TOTAL);
-  // the same M_play feature accumulators as the cell layer, per sub-bucket, so a sub-bucket can
-  // carry its OWN combo-weighted M_play instead of borrowing its cell's (V2-PLAN §2.4). Grown as
-  // buckets are discovered; the cell-level arrays above are sized up front because NC is known.
-  const sDang = [], sNut = [], sMono = [], sTri = [], sHi9 = [], sQuads = [];
 
   const h = [0, 0, 0, 0];
   let n = 0;
@@ -578,26 +560,6 @@ export function enumerateAll() {
           else bucket.tail[bucket.n % 4] = pk;
           bucket.n++;
 
-          const sk = subKeyOf(h);
-          const sm = subs[ci];
-          let rec = sm.get(sk);
-          if (!rec) {
-            rec = { combos: 0, ex: [], si: subList.length };
-            sm.set(sk, rec);
-            subList.push({ cell: ci, key: sk, combos: 0 });
-            sDang.push(0); sNut.push(0); sMono.push(0); sTri.push(0); sHi9.push(0); sQuads.push(0);
-          }
-          rec.combos++;
-          subList[rec.si].combos++;
-          subOf[n - 1] = rec.si;
-          if (rec.ex.length < 2) rec.ex.push(pk);
-          const si = rec.si;
-          sDang[si] += dg;
-          if (ns) sNut[si]++;
-          if (pat === '4') sMono[si]++;
-          if (pat === '31') sTri[si]++;
-          if (rs[0] <= 9) sHi9[si]++;
-          if (Object.values(mm).some((x) => x === 4)) sQuads[si]++;
         }
       }
     }
@@ -610,25 +572,11 @@ export function enumerateAll() {
   const byCell = new Uint32Array(TOTAL);
   for (let i = 0; i < TOTAL; i++) byCell[cursor[cellOf[i]]++] = packed[i];
 
-  // same grouping for sub-buckets
-  const NS = subList.length;
-  const subStart = new Int32Array(NS + 1);
-  for (let i = 0; i < NS; i++) subStart[i + 1] = subStart[i] + subList[i].combos;
-  const subCursor = subStart.slice(0, NS);
-  const bySub = new Uint32Array(TOTAL);
-  for (let i = 0; i < TOTAL; i++) bySub[subCursor[subOf[i]]++] = packed[i];
-
   return {
-    total: n, cellKeys, cellIdx, combos, byCell, cellStart, subs,
-    subList, bySub, subStart,
+    total: n, cellKeys, cellIdx, combos, byCell, cellStart,
     feat: {
       danglers: accDang, nut: accNut, dom: accDom, adj: accAdj,
       mono: accMono, tri: accTri, hi9: accHi9, quads: accQuads,
-    },
-    subFeat: {
-      danglers: Float64Array.from(sDang), nut: Float64Array.from(sNut),
-      mono: Float64Array.from(sMono), tri: Float64Array.from(sTri),
-      hi9: Float64Array.from(sHi9), quads: Float64Array.from(sQuads),
     },
     exByAdj,
   };
