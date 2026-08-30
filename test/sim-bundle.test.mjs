@@ -59,7 +59,7 @@ test('taxonomy.mjs is NOT in the bundle', () => {
   /* Deliberate, and worth a gate: `rowOf` pulls in 22 KB the worker has no use for, because the
      hero pools it needs are built on the main thread and travel in the boot payload. */
   const src = RAW.worker;
-  for (const bad of ['ROW_ORDER', 'function rowOf', 'BROADWAY_RUN', 'subKeyOf', 'parseHandQuery']) {
+  for (const bad of ['ROW_ORDER', 'function rowOf', 'BROADWAY_RUN', 'parseHandQuery']) {
     assert.ok(!src.includes(bad), `the worker bundle must not contain "${bad}"`);
   }
   assert.ok(!Object.prototype.hasOwnProperty.call(ENGINE, 'taxonomy'));
@@ -111,7 +111,7 @@ test('the seed key covers stage, cell and settings hash — and nothing else', (
   const base = { stage: 'cell', key: 'AA_BIGPAIR|DS', hash: 'abc12345' };
   const s = (o, slice) => ENGINE.job.seedOf('hero', { ...base, ...o }, slice || 0);
   assert.equal(s({}), s({}), 'pure');
-  assert.notEqual(s({}), s({ stage: 'sub' }));
+  assert.notEqual(s({}), s({ stage: 'latt' }));
   assert.notEqual(s({}), s({ key: 'TRASH|RB' }));
   assert.notEqual(s({}), s({ hash: 'abc12346' }));
   assert.notEqual(s({}), s({}, 1), 'each slice gets its own stream');
@@ -173,19 +173,9 @@ test('the entry twin answers the whole protocol', () => {
   assert.equal(res.results[0].eq.length, 7);
   assert.ok(res.results[0].eq[0] > 0 && res.results[0].eq[0] < 100);
 
-  /* a lazily-added stage-2 pool */
-  const subStarts = Int32Array.from([0, 100, 240]);
-  const subPool = P.byCell.slice(0, 240);
-  const pool = w.send({ cmd: 'pool', name: 'sub', pool: subPool, starts: subStarts });
-  assert.equal(pool.pool, 'sub');
-  assert.equal(pool.units, 2);
-  const sub = w.send({
-    cmd: 'jobs',
-    jobs: [{ id: 0, kind: 'latt', pool: 'sub', unit: 1, key: 'c#s', stage: 'sub', hash: 'h', v: 55, q: 0.85, trials: 200 }],
-  });
-  assert.equal(sub.results[0].trials, 200);
-
-  /* one bad unit is reported per job, not thrown */
+  /* one bad unit is reported per job, not thrown. 'cell' is now the only pool the worker is ever
+     given — the lazily-added second pool went with the sub-bucket layer — so this also pins that
+     an unknown pool name is refused rather than silently falling back to the cell pool. */
   const bad = w.send({
     cmd: 'jobs',
     jobs: [{ id: 0, kind: 'latt', pool: 'nope', unit: 0, key: 'x', stage: 'cell', hash: 'h', v: 55, q: 0.85, trials: 10 }],

@@ -146,7 +146,7 @@ test('rho is consistent with eq wherever the accessor builds one', () => {
 test('seOfTrials is the shipped basis, and V2-PLAN §4\'s 0.35 is not', () => {
   assert.equal(+P.seOfTrials(100000).toFixed(2), MODEL.meta.se.cell);
   assert.equal(+P.seOfTrials(25000).toFixed(3), 0.316);
-  assert.equal(+P.seOfTrials(40000).toFixed(2), MODEL.meta.se.sub);
+  assert.equal(+P.seOfTrials(40000).toFixed(2), MODEL.meta.se.vs3bet);
   assert.equal(P.seOfTrials(0), Infinity);
   /* the plan quotes +/-0.35 at 25k against "the shipped +/-0.16". Both cannot come from one
      formula; 0.16 is 50/sqrt(100000), and this is the one that keeps them on the same basis. */

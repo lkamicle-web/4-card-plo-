@@ -182,29 +182,38 @@ cause — for example, an ace-topped suited pair routes an `AA_BIGPAIR` hand to 
 ace once the wheel files as `RUN0_LOW`. They render as void cells and are skipped by keyboard navigation
 with an announcement.
 
-### 2.4 The sub-bucket depth layer
+### 2.4 The sub-bucket depth layer — REMOVED
 
-A second, finer key (`pairStructure | suitPattern | connectivity | highCardQuality`) is assigned
-to every hand in the *same* enumeration pass, so every canonical class carries both keys.
-Invariant **I17** asserts `Σ combos(sub-buckets of a cell) === combos(cell)` for all 145 cells
-and `Σ cells === 270,725`. This build emits **341 non-empty sub-buckets** across the 123
-non-empty cells (mean 2.77 per cell). The axes were coarsened to land in the 300–400 range the
-source brief asks for: dual-keyed *per cell*, the brief's own finer four-field key produces over
-600 buckets, and its quoted figure of 344 is a global count of that key, not a per-cell one.
-The data ships day one; the expand-in-place UI that consumes it is a post-v1 feature.
+Earlier builds carried a second, finer key
+(`pairStructure | suitPattern | connectivity | highCardQuality`) assigned to every hand in the
+*same* enumeration pass, giving **341 non-empty sub-buckets** across the 123 non-empty cells
+(mean 2.77). Each carried its own `mplay` and `cooler`, and an expand-in-place UI priced each one
+*as-if standalone* against the cuts the grid was already painting.
 
-Each sub-bucket carries its **own** `mplay` and its own `cooler`, computed from its own hands'
-features rather than borrowed from its cell (V2-PLAN §2.4). This matters because a cell's `mplay`
-is a combo-weighted mean over hands that are not alike: `DBL_CONNECTOR × SS` holds three-flush and
-single-suited hands together, and its buckets' `mplay` values differ by more than the rounding a
-shipped verdict is quoted to. Because every `mplay` factor is raised to a combo *share*, and a
-cell's share is the combo-weighted mean of its sub-buckets' shares, the cell value is exactly the
-combo-weighted **geometric** mean of its buckets' — invariant **I17** asserts that reconstruction
-(worst observed 0.00066 against a 0.002 rounding tolerance). `cooler` is a conditional rate whose
-exact reconstruction weight is combos × P(set or better), which the file does not carry, so I17
-asserts the weaker claim that holds for *any* weighting: the cell's rate lies inside its buckets'
-range, within measurement error (worst observed 0.0130 of 0.04, at a cell holding one bucket where
-the bracket collapses to a straight re-measurement).
+**It has been cut.** The layer was the largest single block in `model.json` (69.5 KB of 187 KB),
+and it bought a rung of resolution that could not be acted on: the buckets were deliberately never
+re-cut into the percentile sort — inserting them would have moved every other cell's tier — so a
+bucket verdict was always a hypothetical about a grid that was not being painted, and the panel had
+to say so in as many words on every row. At the vs-3-bet node it could not say anything at all,
+because that node cuts on `eqVs3bet`, which is measured per cell against a face-up mix and which
+the sub layer never carried. **The cell is now the finest unit this model resolves**, and the
+things that used to be said about buckets are said about cells or not at all.
+
+What went with it: the `sub` block in `model.json`; the S4 generator stage; `subKeyOf`, `subLabel`,
+`suitSub` and the three rank-only key fields in the classifier; `subVerdicts`, `asIfStandalone`,
+`freqAtScore` and `expandReducer` in the policy; the expand panel, its keyboard navigation and its
+URL parameter; the Simulate engine's stage 2 and the partial-run path that existed to serve it; and
+gates **D3** and **I17**, which asserted the dual-key partition and the geometric-mean
+reconstruction of a cell's `mplay` from its buckets'. Gate **D1** still pins
+`Σ cells === 270,725`, which is what is left of the partition claim. The payload fell to
+**118 KB**; gate D6's ceiling came down with it, because a removal that does not move the ceiling
+has not really been paid back.
+
+One consequence is recorded rather than glossed: the Simulate engine's cached-payload validator
+used the buckets' combo-weighted mean to reconstruct the cell equity, and that partition identity
+was the strongest check it had. There is no honest replacement for it at the cell layer — there is
+nothing left to reconstruct a cell *from* — so what remains is shape and plausibility at every
+index. See §12.4.
 
 ---
 
@@ -284,15 +293,13 @@ evaluator has already scored, and **no new randomness at all**, which is what ma
   straight flush. Two pair does not count; the question is about hands you cannot fold.
 - *Loses* is strictly worse than the best of **three** opponents — a four-handed pot, the modal
   loose-lobby showdown and close to the model's own typical `N_eff`. A chop is not a loss.
-- Emitted per cell and per sub-bucket to 3 dp. The reference field size, the category floor and the
+- Emitted per cell to 3 dp. The reference field size, the category floor and the
   chop rule all ship as named constants in `constants.cooler`.
 
 This is the measured content of "tens and jacks are the low end of top set", and it is what a
 stack-depth axis has to be anchored on: at 100bb a cooler costs a bet, at 250bb it costs a stack.
 Measured range across the 123 non-empty cells: **0.257** (`AA_BROADWAY × DS`) to **0.501**
-(`TRIPS_SMALL × RB`), combo-weighted pool mean **0.3953**. Across the 341 sub-buckets: 0.256 to
-0.752 (`TRIPS_SMALL × RB`, the quads bucket — four of a rank in your hand and the fourth is dead,
-so the set you make is the one everybody else can make too).
+(`TRIPS_SMALL × RB`), combo-weighted pool mean **0.3953**.
 
 Two orderings the data confirms:
 
@@ -302,8 +309,7 @@ Two orderings the data confirms:
 | `cooler(SSA) < cooler(SS)` in the same row — your flushes are the nut ones | holds in **18 of 18** rows that have both, by 0.003 to 0.073 |
 
 One thing the ladder claim cannot be stated more finely than that: the 29-row cascade splits pairs
-at J (`rowOf`: `big = p >= 11`), and the sub-bucket key's `highCardQuality` counts cards of rank T
-or better, so **TT, JJ, QQ and KK are not separable in either key**. The plan's TT > JJ > QQ > KK
+at J (`rowOf`: `big = p >= 11`), so **TT, JJ, QQ and KK are not separable**. The plan's TT > JJ > QQ > KK
 ladder is measurable here only as the three-step small → big → AA ladder above. Separating the
 pair ranks would mean new rows, not a new measurement.
 
@@ -1015,8 +1021,8 @@ grading.
 
 **Every surface that shows this carries the word `estimate`**, and its tooltip says why: *ranked
 by an interpolation, not a measurement; the ranking is reliable, the magnitudes are approximate.*
-No Monte Carlo runs for this number: the browser's one Monte Carlo (§9.12) re-measures cell and
-sub-bucket equity against a filtered field, and does not touch the within-cell adjustment.
+No Monte Carlo runs for this number: the browser's one Monte Carlo (§9.12) re-measures cell equity
+against a filtered field, and does not touch the within-cell adjustment.
 
 ---
 
@@ -1061,7 +1067,7 @@ So the new measurements never interleave into an old stream:
 | the villain lattice | `villain\|latt\|<v>`, reseeded per trial so that rejection sampling — whose draw count depends on hero's cards — cannot make one cell's stream drift out of step with another's. Hero is drawn from the *cell* stage's stream, so the shipped delta is a paired comparison, hand for hand. |
 
 Verified, not assumed: the regenerated file reproduces the committed v1 model's `eq[1..5]` on all
-123 cells and all 341 sub-buckets, and its `nu`, `mplay` and `eqVs3bet`, with **zero** differences.
+123 cells, and its `nu`, `mplay` and `eqVs3bet`, with **zero** differences.
 `test/v2-measure.test.mjs` keeps a frozen copy of the v1 kernel and holds the current one against
 it, so a future edit that perturbs a v1 stream fails with a pointed message rather than as 170,478
 moved tiers.
@@ -1070,14 +1076,13 @@ moved tiers.
 
 | Stage | Work | Trials | Standard error |
 |---|---|---|---|
-| S0 enumerate | classify all 270,725 hands; per-cell and per-sub-bucket lists, features, combo matrices; empty-cell causes; mosaic geometry | exact | — |
+| S0 enumerate | classify all 270,725 hands; per-cell lists, features, combo matrices; empty-cell causes; mosaic geometry | exact | — |
 | S0b classes | collapse the deck into 16,432 suit-isomorphism classes | exact | — |
 | S1 villain prep | enumerate the four 3-bet component ranges into packed arrays | exact | — |
 | S1b villain ordering | 60,000 shared deals over the 16,432 class representatives → eq1, then the five filtered pools | ~658M showdowns | ±0.30 pt/class |
 | S2 cell equity | 100,000 multiway trials per non-empty cell (hero fresh from cell, 7 villains + board, prefix comparison) + the cooler counters | ~12.3M | ±0.16 pt/cell |
 | S2L villain lattice | 100,000 trials per cell per lattice point, villains from the filtered pool | ~61.5M | ±0.16 pt, paired on hero |
 | S3 vs 3-bet | 40,000 heads-up trials per cell per component, villain rejection-sampled by range index against a 52-bit used-mask | ~19.7M | ±0.25 pt |
-| S4 sub-buckets | 40,000 multiway trials per sub-bucket | ~13.6M | ±0.25 pt |
 | S5 derive + emit | ρ, ν, wave delays, `mplay`, `cooler`, lattice deltas, `adjMean`, rounding, hashing | — | — |
 | S6 verify | all gates, benchmark re-measurement, cross-engine check | ~1.2M | — |
 
@@ -1220,10 +1225,11 @@ The phase-3 row moved three times after the measurement pass, and none of those 
 2B **+52 B** for I26/I29/I30/I31 together with **+251 B for `constants.depth`, `constants.rake` and
 `constants.straddle`**, which `stampConstants` put into the file without a regeneration (§5.1)
 — 146,551 in total. V2-PLAN §2.5's table records the original pre-gate reading, 146,171 B. The
-measured payload — cells, sub-buckets, lattice — is unchanged throughout.
+measured payload — cells, lattice — is unchanged throughout.
 
-**Phase 4's addition is payload, and it is the largest single item in the file after the sub-bucket
-layer: +40.4 KB for `model.order`,** the frozen eq1 ordering of the 16,432 suit-isomorphism classes,
+**Phase 4's addition is payload, and with the sub-bucket layer cut it is now the largest single
+item in the file after the cells: +40.4 KB for `model.order`,** the frozen eq1 ordering of the
+16,432 suit-isomorphism classes,
 15-bit packed into 30,810 bytes and base64'd to 41,080 characters, plus `meta.orderHash` and gate
 D8's key. §9.12 is why it has to ship at all — the Simulate button re-cuts the villain pool at a
 VPIP the generator never measured, and it must cut *the same ordering* the shipped lattice was
@@ -1517,12 +1523,12 @@ sides in the browser — driving depth/rake/cap/straddle after a measurement lea
 cache entry and the badge untouched. Numbers are canonicalised, so 55, 55.0 and 55.0000000001 are
 one entry.
 
-**Two stages, and when the second is skipped.** Stage 1 is the 123 cells. Stage 2 is the sub-buckets
-of the expanded cell (§2.4), and it runs **only when the expand UI is open on a custom setting**.
-With nothing expanded there is no stage 2, and the bar says so rather than drawing a second segment
-that silently never fills: *"Stage 2 (sub-bucket equity) skipped — no cell is expanded, so there is
-nothing to split."* The keys stage 2 measures are exactly the shipped `MODEL.sub[cell][*].key`
-values, asserted in a unit test and in the browser.
+**One stage.** A run measures the 123 live cells and nothing else. It used to be two — stage 2 was
+the sub-buckets of the expanded cell — with a bar that drew a second segment, a sentence explaining
+when that segment was skipped, and a partial-run path that reused a cached stage 1 while running
+only stage 2. All of it went with the layer (§2.4). A run now measures every live cell or it does
+not run, which is why a cache hit at the settings hash is a complete answer by construction and the
+`subsOf` scope input no longer exists to be kept out of the key.
 
 **Where it runs.** The engine is one flat classic script assembled at build time out of
 `eval5.mjs`, `villain-range.mjs`, `order-pack.mjs` and the marked portable slices of `villains.mjs`
@@ -1565,14 +1571,23 @@ validated against a tag, the model hash, the settings hash, the field size, **th
 payload itself declares** (a payload whose `v`, `q` or `trials` disagree with what was asked for is
 dropped — the trial count is what sets the tolerance below, and a validator must not let the thing
 it is judging pick its own yardstick) and the shape of every equity array, and anything that fails
-is discarded rather than shown. A sub-bucket block is held to more than shape: it must name a cell
+is discarded rather than shown.
+
+**What this validation stopped buying when the sub layer went, stated plainly.** A payload used to
+carry a sub-bucket block, and that block was held to far more than shape: it had to name a cell
 this model ships, carry **every** bucket that cell ships and no others, and its combo-weighted mean
-must reconstruct that cell's equity **at every field size N**, not at one of them — the partition
-identity the sub layer exists on top of. The tolerance is `max(1 pt, 8σ)` of the payload's own trial
-count, pinned against measurement rather than assumed: 8 passes of all 123 cells × 7 indices —
-6,888 honest gaps at 900, 25,000 and 100,000 trials/cell and at v 25/62/90 — left the worst honest
-gap a factor of 1.8 inside the tolerance at the tightest rung and 2.7 at the widest, and the margin
-is flat across the rungs because both the gap and the tolerance scale as 1/√trials. The page keeps a second, in-memory book of completed runs bounded on
+had to reconstruct that cell's equity **at every field size N**. That partition identity was the
+strongest check here, and it is gone with the thing it was an identity about — at the cell layer
+there is nothing left to reconstruct a cell *from*. What remains is shape and plausibility, applied
+at every index rather than at one: every equity array is `NMAX` finite numbers inside [0, 100], and
+a payload with no trial count is refused. The `max(1 pt, 8σ)` tolerance that the identity used, and
+the 6,888-gap measurement behind it, are gone with it too.
+
+The consequence is not hidden: a flat 99.9 across one cell is now **accepted**, where the partition
+check would have caught it. The claim the page may make about a cached measurement was always
+"well-formed, plausible and internally consistent, never trustworthy"; it is now "well-formed and
+plausible", and `test/sim-engine.test.mjs` asserts the fabrication that passes, so nobody can
+quietly upgrade the prose back. The page keeps a second, in-memory book of completed runs bounded on
 the same terms — ~1.5 MB **and** a 24-entry cap, evicted least-recently-*used* so a VPIP you keep
 returning to survives a walk along the slider — and runs the same validation on read as on write,
 because an entry can arrive there straight out of the shared store. Validation is not authentication
@@ -1760,19 +1775,22 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
 ### v2 list — shipped
 
 Every item on the v1 wish list is now in the page: Monte Carlo to N = 7 · a stack-depth axis (§5.1)
-· a rake model (§5.2) · VPIP-filtered villains instead of random ones (§3.3) · the expand-in-place
-sub-bucket UI that consumes the depth layer already in the data (§2.4) · the frame-budget harness,
-built for real as the Simulate button's main-thread fallback (§9.12). A straddle toggle (§5.3) was
-added along the way and was not on the list.
+· a rake model (§5.2) · VPIP-filtered villains instead of random ones (§3.3) · the frame-budget
+harness, built for real as the Simulate button's main-thread fallback (§9.12). A straddle toggle
+(§5.3) was added along the way and was not on the list.
+
+**One item shipped and was then cut: the expand-in-place sub-bucket UI.** It worked, and the layer
+under it was measured, but a bucket verdict was always a hypothetical about a grid that was not
+being painted — see §2.4 for what it cost and what went with it.
 
 **One item did not ship: a 3-bet sizing control.** Every threshold at the vs-3-bet node still
 assumes a pot-sized 3-bet — limitation 8 above stands unchanged, and the assumption is still named
 in the UI beside the number. The 3-bet *mix* is editable; the *sizing* is not.
 
 The honest v2.1 list is now short and mostly about coverage rather than model: Firefox and Safari
-have never run the worker path or the `localStorage` probe (limitation 15); the sub-bucket layer
-carries no `eqVs3bet`, so there is no bucket verdict at the vs-3-bet node; `q` is opinion with
-nothing calibrating it; and 5-card PLO and street-by-street postflop realization remain out of
+have never run the worker path or the `localStorage` probe (limitation 15); the cell is the finest
+unit the model resolves, so there is nothing finer than a cell to ask about (§2.4); `q` is opinion
+with nothing calibrating it; and 5-card PLO and street-by-street postflop realization remain out of
 scope by decision rather than by omission (V2-PLAN §0).
 
 ---
@@ -1808,14 +1826,14 @@ themselves (§5.1).
 | I14 | **The inversion exists.** In ρ it holds exactly for the named pair: `AA_DANGLER×RB` 1.250 > 1.130 at N = 1, and 1.164 < 1.476 at N = 5. In *score* the named pair does not invert at UTG — N_eff is already 1.78 at v = 0.25, past the crossing — so the gate asserts the cell's score rank instead: `AA_DANGLER×RB` falls from rank 45 to rank 72 across the slider, passed by 27 cells (e.g. `BROADWAY_RUN×RB`). The measured figures are stamped into `meta.inversion`. If this fails, the slider does nothing and the product has no reason to exist. |
 | I15 | vs 3-bet at the default mix, both statements unconditional at all six seats: `BROADWAY_RUN×RB` never continues (eqMix 32.2%, under the 36% floor); `RUN0_LOW×DS` always continues (eqMix 41.8%, ν 0.43 against the 0.42 out-of-position floor). Earlier drafts scoped the second to in-position seats and attributed the fold in the first to the domination gate; neither qualifier survives, and the gate asserts the plain statements the docs make. |
 | I16 | Continuity: between adjacent integer VPIP steps, at most 3% of total combos **or** at most 5 of 145 cells change tier. (The combo clause alone is below the taxonomy's own granularity — the largest single cell is 8.1% of all combos — so one cell flipping can exceed 3% without anything discontinuous happening.) Three deliberate discontinuities are excluded and named: raise/HJ @ 45, raise/CO @ 54, raise/BTN @ 70, where N_eff crosses 3.0 and the nut gate and the vs-Raise call floor switch on together. |
-| I17 | Dual-key partition: Σ sub-bucket combos = cell combos for all 145 cells; Σ cells = 270,725. Extended to the fields the sub layer carries in its own right (§2.4): the combo-weighted **geometric** mean of the buckets' `mplay` rebuilds the cell's exactly, to a 3-dp rounding tolerance of 0.002 (worst measured 0.00066, `DBL_CONNECTOR×SS`); and every cell's `cooler` lies inside its buckets' range, widened by 0.04 for the sampling error between a 100k-trial cell and its 40k-trial buckets (worst measured 0.0130 at `BIGPAIR_ACE×DS`, one of the 45 cells holding a single bucket, where the bracket collapses to a straight re-measurement). The `cooler` half is a bracket rather than a reconstruction because the exact weight is combos × P(set or better), which the file deliberately does not carry. |
+| ~~I17~~ | **Retired with the sub-bucket layer (§2.4).** It asserted the dual-key partition — Σ sub-bucket combos = cell combos for all 145 cells — and the geometric-mean reconstruction of a cell's `mplay` from its buckets'. There are no buckets to partition, and **D1** still pins Σ cells = 270,725. The number is not reused. |
 | I18 | Geometry: the quantized mosaic column widths sum to exactly 530 px and each is within 1 px of exact proportionality. |
 | I19 | **T2 is empty at v = 25** for every (position, node ∈ {RFI, vs-Limps, vs-Raise}) — the exploit-tier definition holds by construction. |
 | I20 | Cross-engine agreement: `eval5.mjs` and the independently written `equity-ref.mjs` agree within ±0.6 pt on ten benchmark hands. |
 | I21 | **The painted range widens as the table loosens.** `aggrCombos / 270,725` — not `targetWidth` — is wider at VPIP 90 than at VPIP 25 at all 15 (node, position) pairs: rfi UTG 14.1→16.6, HJ 16.5→21.4, CO 24.2→30.8, BTN 40.9→51.3, SB 28.3→36.4; limps HJ 16.9→27.0, CO 23.9→36.9, BTN 39.1→48.5, SB 27.9→44.8, BB 27.9→45.9; raise HJ 6.6→12.4, CO 6.1→11.2, BTN 6.1→12.4, SB 6.1→11.3, BB 6.2→10.0. Asserted as endpoints plus a bounded local dip, **not** pointwise: pointwise is unsatisfiable for the granularity reason I16 documents — one cell crossing the percentile cut is a visible step. The dip allowance is 4.0 points, half the largest single cell (8.1%); the worst measured drawdown is 3.2 points at rfi/BTN, v = 0.73. This gate exists because nothing tested the painted number before, which is how the range could collapse to half its width at the iso nodes without any gate firing. |
 
 | I22 | **v1 reproduction.** At the v1 operating point — 100 bb deep, rake 0, straddle off, random villains, two limpers, a CO raiser, the default 3-bet mix — the pipeline paints the tiers v1 painted, exactly: all 123 non-empty cells at all 1,386 (node, position, integer VPIP ∈ [25, 90]) settings, 170,478 tiers, compared character for character against `data/tiers-v1.fixture.txt` (27 KB, delta-encoded down the VPIP axis because adjacent steps differ by 0.78 cells on average — the same fact I16 asserts). Both halves of each decision are frozen, the action tier *and* the MIX overlay sitting on it, so a change that swaps a CALL for a MIX-over-CALL is caught rather than shrugged at. On failure the gate reports how many settings and how many cell tiers moved, and names the first four. The gate costs ~0.3 s of pure policy math and no Monte Carlo, which is what makes it affordable to keep forever. **Scoped to full-precision data:** on a `--fast` dataset the tier half is explicitly *not asserted* and says so in its own detail line, because 10k-trial equities are a different measurement — 7.4% of tiers move on noise alone, which is not the policy drift this gate exists to catch. What it still asserts on `--fast` data is the structural half: the cell set and the (node, position, VPIP) domain are unchanged. |
-| I24 | **The cooler rate has the shape it measured.** `cooler` is P(the hand loses the pot outright **given** it reached showdown with a set or better), at three opponents, chops not counted as losses (§3.2). Asserted: the three-step *band* ladder, combo-weighted — AA 0.3184 < big pairs 0.3563 < small pairs 0.4386, each step ≥ 0.03; `cooler(SSA) ≤ cooler(SS) + 0.01` in all 18 rows carrying both columns (18/18 hold strictly today, and the gate says so, but the three thinnest margins are 0.003–0.009 against a difference SE of ~0.004, so a strict gate would be a coin flip on `RUN1_BOTTOM` at the next regeneration); `DBLPAIR_SMALL×RB` (2233r) in the top 8 of 123 cells and `AA_BIGPAIR×DS` in the bottom 8 — measured ranks 5 and 4, pinned as rank bounds so the anchors survive a shift of the whole table; every value in [0, 1] and inside the measured envelope (cells 0.257–0.501, sub-buckets 0.256–0.752), which is a guard against a changed *definition* rather than against noise; and `constants.coolerBarMeasured` rebuilding from the shipped cells to 0.00006 of a 0.002 rounding tolerance. **What it does not assert, deliberately:** V2-PLAN §2.1's five-step pair ladder TT > JJ > QQ > KK > AA is not expressible in this taxonomy (`rowOf` splits pairs at J; the sub-bucket key counts T-or-better), and the ladder is not even monotone per *row* inside a band — `AA_SMALLPAIR` 0.3453 sits above `BIGPAIR_CONN` 0.3216. Separating the pair ranks is new rows, not a new measurement. |
+| I24 | **The cooler rate has the shape it measured.** `cooler` is P(the hand loses the pot outright **given** it reached showdown with a set or better), at three opponents, chops not counted as losses (§3.2). Asserted: the three-step *band* ladder, combo-weighted — AA 0.3184 < big pairs 0.3563 < small pairs 0.4386, each step ≥ 0.03; `cooler(SSA) ≤ cooler(SS) + 0.01` in all 18 rows carrying both columns (18/18 hold strictly today, and the gate says so, but the three thinnest margins are 0.003–0.009 against a difference SE of ~0.004, so a strict gate would be a coin flip on `RUN1_BOTTOM` at the next regeneration); `DBLPAIR_SMALL×RB` (2233r) in the top 8 of 123 cells and `AA_BIGPAIR×DS` in the bottom 8 — measured ranks 5 and 4, pinned as rank bounds so the anchors survive a shift of the whole table; every value in [0, 1] and inside the measured envelope (cells 0.257–0.501), which is a guard against a changed *definition* rather than against noise; and `constants.coolerBarMeasured` rebuilding from the shipped cells to 0.00006 of a 0.002 rounding tolerance. **What it does not assert, deliberately:** V2-PLAN §2.1's five-step pair ladder TT > JJ > QQ > KK > AA is not expressible in this taxonomy (`rowOf` splits pairs at J), and the ladder is not even monotone per *row* inside a band — `AA_SMALLPAIR` 0.3453 sits above `BIGPAIR_CONN` 0.3216. Separating the pair ranks is new rows, not a new measurement. |
 | I25 | **The villain-VPIP lattice has the shape it measured, not the shape that was predicted.** §2.3 wrote three expected shapes before the measurement; two survived and one did not, and the gate is written to the data (§3.3). Asserted: at v = 90 the filtered pool converges on the random baseline without equalling it — mean absolute delta 0.81 pt over 123 cells × 7 N and worst cell 3.6 pt, pinned at ≤ 1.2 and ≤ 5.0, so a "v = 90 ≈ random" tolerance under ~4 pt would have failed; mean absolute delta falling monotonically along the lattice (4.19 / 3.10 / 2.40 / 1.76 / 0.81 pt at v = 25 / 40 / 55 / 70 / 90); at v = 25 the six worst cells at N = 1, 3 and 5 all lying in rows {`BROADWAY_RUN`, `RUN0_HIGH`} with `BROADWAY_RUN×RB` ≤ −15 at N=1 and `RUN0_HIGH×DS` ≤ −8 at N=3 — *rank overlap*, not weakness; the six best all lying in {`RUN0_LOW`, `RUN1_TOPMID`, `RUN1_BOTTOM`}, every `RUN0_LOW` cell gaining at every N, and `RUN0_LOW×SSA` ≥ +5 at N=1 and N=3; and the combo-weighted mean delta negative at every lattice point, which is the positive form of the I4/I5 scope decision. **What it does not assert, deliberately:** §2.3's prediction that junk loses most. It is false — `TRASH×RB` *gains* multiway (+2.7 at N=3) — and the gate reports that measurement in its detail line instead of asserting the prediction. |
 | I23 | **The depth axis moves the grid in the direction it claims to** (§5.1), swept over d = 40 / 60 / 100 / 150 / 200 / 250 bb at all 105 (node, position, VPIP) settings. Asserted: **(a)** `AA_DANGLER×RB`, the AA72r class, never gains a tier as stacks deepen (0 violations, on this grid and on a 5 bb one) and gains one at 40 bb at ≥ 4 settings (measured 8, all at `raise/BTN` and `raise/SB`); **(b)** in **score rank**, not tier — a tier here is a percentile cut, not a property of a cell — `BROADWAY_RUN×DS` loses no rank as depth rises and `RUN0_HIGH×DS` / `×SS` finish better at 250 than at 40 at ≥ 60 of 75 settings (measured 75 and 70); **(c)** the low-rundown falsification, asserted positively so it cannot be quietly reverted: `RUN0_LOW×DS` ranks *worse* at 250 than at 40 at strictly more settings than it ranks better (measured 49 against 9), and μ-attributable demotions at 200 bb exist (92 over 7 cells) with **none of them a big pair**; **(d)** painted width drifts at most 4.0 points from its 100 bb value across the whole range (I21's allowance; measured 3.16) and never falls below 10 % (I12's floor; measured 12.6 %); **(e)** I7, I8, I9, I13 and I19 all still hold at 40 and 250 bb; **(f)** the positional bases keep their seat order at 40 / 100 / 250 and their spread widens with depth — this is the clause that catches `|β| ≥ 1`, where the exponent goes negative and the seats invert, which nothing else in the pipeline notices. **What it does not assert:** V2-PLAN §3.1's "big-pair rows with pair rank J/T demoted at 200 bb via the μ·cooler term". It is false for the J half and the reason is the same taxonomy split that broke §2.1's five-step cooler ladder — `rowOf` splits pairs at J, the big-pair band's `cooler` is 0.3563 which is *below* the bar, so μ promotes 21 of its 23 cells; its 46 measured demotions are all λ's. The gate reports those figures in its detail line instead. |
 | I27 | **I16's continuity, re-run at both ends of the depth slider.** Every VPIP step at 40 bb and at 250 bb changes at most 3 % of combos or at most 5 of 145 cells, and the three deliberate `N_eff = 3.0` discontinuities (raise/HJ @ 45, raise/CO @ 54, raise/BTN @ 70) are at the same VPIP at both depths. No widening was needed: the worst non-cliff step is 0 cells over the allowance at both ends. That last fact is the κ(N) / λ(d) separation as something testable — a field effect does not move when the stacks move. |

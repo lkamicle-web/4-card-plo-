@@ -19,9 +19,6 @@
  *   in  { cmd:'init', order:{packed,n,bits}, pool:Uint32Array, starts:Int32Array }
  *   out { ready:true, classes, universe, ms }   |   { error }
  *
- *   in  { cmd:'pool', name, pool:Uint32Array, starts:Int32Array }     lazy stage-2 pool
- *   out { pool:name, units }                    |   { error }
- *
  *   in  { cmd:'jobs', jobs:[ {id,kind,pool,unit,key,stage,hash,v,q,trials} ] }
  *   out { results:[ {id,eq:Float64Array,fallbacks,trials,slices,ms} | {id,error} ] }
  *       (the eq buffers are transferred)
@@ -105,16 +102,6 @@
       return;
     }
 
-    if (msg.cmd === 'pool') {
-      try {
-        if (!ST) throw new Error('pool before init');
-        if (!msg.pool || !msg.starts) throw new Error('pool "' + msg.name + '" is missing its arrays');
-        ST.pools[msg.name] = msg.pool;
-        ST.starts[msg.name] = msg.starts;
-        self.postMessage({ pool: msg.name, units: msg.starts.length - 1 });
-      } catch (e) { self.postMessage({ error: String((e && e.message) || e) }); }
-      return;
-    }
 
     if (msg.cmd === 'jobs') {
       out = []; xfer = [];

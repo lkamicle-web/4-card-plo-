@@ -92,19 +92,13 @@ test('I24: rank anchors — 2233r near the top, AA_BIGPAIR|DS near the bottom', 
 });
 
 test('I24: every cooler is a probability, inside the measured envelope', { skip: SKIP }, () => {
-  let cMin = Infinity, cMax = -Infinity, sMin = Infinity, sMax = -Infinity, nSub = 0;
+  let cMin = Infinity, cMax = -Infinity;
   for (const k of LIVE) {
     const c = M.cells[k].cooler;
     assert.ok(c >= 0 && c <= 1, `${k} cooler ${c}`);
     cMin = Math.min(cMin, c); cMax = Math.max(cMax, c);
   }
-  for (const k of Object.keys(M.sub)) for (const s of M.sub[k]) {
-    assert.ok(s.cooler >= 0 && s.cooler <= 1, `${k} # ${s.key} cooler ${s.cooler}`);
-    nSub++; sMin = Math.min(sMin, s.cooler); sMax = Math.max(sMax, s.cooler);
-  }
-  assert.equal(nSub, 341);
   assert.ok(cMin >= 0.15 && cMax <= 0.65, `cells ${cMin}-${cMax} inside [0.15, 0.65]`);
-  assert.ok(sMin >= 0.15 && sMax <= 0.85, `sub-buckets ${sMin}-${sMax} inside [0.15, 0.85]`);
 });
 
 test('I24: constants.coolerBarMeasured rebuilds from the shipped cells', { skip: SKIP }, () => {

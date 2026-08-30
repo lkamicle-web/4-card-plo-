@@ -1427,17 +1427,6 @@ function initWorker(w, P) {
   });
 }
 
-function sendPool(w, name, pool, starts) {
-  return new Promise(function (res, rej) {
-    w.onmessage = function (ev) {
-      var d = ev.data;
-      if (!d) return;
-      if (d.pool === name) res(d);
-      else if (d.error) rej(new Error(d.error));
-    };
-    w.postMessage({ cmd: 'pool', name: name, pool: pool, starts: starts });
-  });
-}
 
 /* ------------------------------------------------------------------- engine */
 /* One engine per page: workers if they boot, the main-thread kernels if they do not. Kept alive
@@ -1489,7 +1478,7 @@ function getEngine(opts) {
       if (force === 'worker') throw new Error('workers unavailable and the test hook forbade the fallback: ' + r.why);
       ENGINE = {
         kind: 'fallback', workers: [], degraded: true, why: r.why,
-        main: mainThreadEngine(), subPool: null
+        main: mainThreadEngine()
       };
     }
     ENGINE_PROMISE = null;
@@ -1574,13 +1563,10 @@ function runOnMainThread(eng, jobs, ctrl) {
       }
       return eng.main.range;
     }
-    function poolsFor(job) {
-      if (job.pool === 'cell') return { pool: POOLS.byCell, starts: POOLS.start };
-      return { pool: eng.subPool.pool, starts: eng.subPool.start };
-    }
+    function poolsFor() { return { pool: POOLS.byCell, starts: POOLS.start }; }
     function step() {
       var job = jobs[ji];
-      var pp = poolsFor(job);
+      var pp = poolsFor();
       if (acc === null) { acc = new Float64Array(NMAX); accN = 0; accFb = 0; }
       var r = JOB.runSlice(pp.pool, pp.starts, rangeFor(job), job, si);
       if (r === null) {
@@ -1765,31 +1751,22 @@ function run(opts) {
   var promise = Promise.resolve().then(function () {
     if (!AVAILABLE) throw new Error('the simulate engine is unavailable: ' + REASON);
 
-    /* THE CACHE KEY DOES NOT CARRY `subsOf`, AND MUST NOT. The settings hash answers one question —
-       "are these the same numbers?" — and the stage-1 cells at (model, order, v, q, trials) are the
-       same numbers whether or not a cell happened to be expanded. `subsOf` is a SCOPE input: it
-       says how much was measured, not what any measurement came out at. Folding it into the hash
-       would put a non-measurement input into a key whose entire contract is that it holds nothing
-       but measurement inputs — the same rule that keeps depth and rake out — and it would cost the
-       3.4-second stage-1 cache every time a user expands a cell, while multiplying entries by 123
-       against a 24-entry book.
-       So a hit is checked against the request instead. It SATISFIES the request when it carries at
-       least what was asked for; when it does not, it is still a perfectly good stage 1, and the
-       honest move is to keep it and run only the part that is missing. Adversarial verification
-       found the version of this code that did neither: a cached no-expand run answered every later
-       expand request with `subs: null` for ever, and the bar said "no trials run" without ever
-       admitting stage 2 had not happened. */
-    var partial = null;
+    /* THE CACHE KEY HOLDS MEASUREMENT INPUTS AND NOTHING ELSE. The settings hash answers one
+       question — "are these the same numbers?" — so (model, order, v, q, trials) is the whole of
+       it, and depth, rake and straddle stay out because they re-score rather than re-measure.
+       With the sub-bucket stage gone there is no longer a SCOPE input to keep out of it either:
+       a run measures every live cell or it does not run, so a hit at this hash is a complete
+       answer by construction, and the partial-hit path that carried the old two-stage run has
+       gone with it. */
     if (!o.noCache) {
       var hit = CACHE.get(cacheWant(o));
-      if (hit && (!o.subsOf || hit.subsOf === o.subsOf)) {
+      if (hit) {
         state.phase = 'cache';
         state.trialsTotal = hit.trialsTotal || 0;
         state.trialsDone = state.trialsTotal;
         emit(true);
         return finish(hit, 'hit');
       }
-      if (hit) partial = hit;
     }
 
     state.phase = 'prepare';
@@ -1802,14 +1779,10 @@ function run(opts) {
       for (k = 0; k < POOLS.keys.length; k++) {
         if (POOLS.start[k + 1] > POOLS.start[k]) live.push(k);
       }
-      var subPool = o.subsOf ? buildSubPool(o.subsOf) : null;
-      if (o.subsOf && !subPool) throw new Error('no such cell, or it is structurally empty: ' + o.subsOf);
-      var subUnits = subPool ? subPool.keys.length : 0;
-      state.trialsTotal = ((partial ? 0 : live.length) + subUnits) * o.trials;
-      state.cachedStage1 = !!partial;
+      state.trialsTotal = live.length * o.trials;
       emit(true);
 
-      var cells = partial ? partial.cells : {}, subs = null, fallbacks = 0;
+      var cells = {}, fallbacks = 0;
 
       function stage(idx, key, units, jobs, keyOf) {
         state.stage = idx; state.stageKey = key;
@@ -1839,38 +1812,9 @@ function run(opts) {
         };
       });
 
-      /* With a partial hit, stage 1 is already answered: skip straight to stage 2 with segment one
-         painted full (`paintSimBar` fills any segment below the current stage), so the bar shows
-         what actually happened rather than replaying a stage that did not run. */
-      var chain = partial
-        ? Promise.resolve((state.stage = 1, state.units = live.length, state.unit = live.length, emit(true)))
-        : stage(1, 'cell', cellJobs.length, cellJobs, function (job, arr) {
-          cells[job.key] = arr;
-        });
-
-      if (subPool) {
-        chain = chain.then(function () {
-          subs = {};
-          subs[o.subsOf] = {};
-          var sends = eng.kind === 'worker'
-            ? Promise.all(eng.workers.map(function (w) {
-                return sendPool(w, 'sub', subPool.pool, subPool.start);
-              }))
-            : Promise.resolve((eng.subPool = subPool));
-          return sends.then(function () {
-            if (eng.kind !== 'worker') eng.subPool = subPool;
-            var subJobs = subPool.keys.map(function (sk, i) {
-              return {
-                id: i, kind: 'latt', pool: 'sub', unit: i, key: o.subsOf + '#' + sk,
-                subKey: sk, stage: 'sub', hash: hash, v: o.v, q: o.q, trials: o.trials
-              };
-            });
-            return stage(2, 'sub', subJobs.length, subJobs, function (job, arr) {
-              subs[o.subsOf][job.subKey] = arr;
-            });
-          });
-        });
-      }
+      var chain = stage(1, 'cell', cellJobs.length, cellJobs, function (job, arr) {
+        cells[job.key] = arr;
+      });
 
       return chain.then(function () {
         var elapsed = nowMs() - t0;
@@ -1881,34 +1825,30 @@ function run(opts) {
           orderHash: (MODEL.meta && MODEL.meta.orderHash) || '',
           nMax: NMAX,
           v: o.v, q: o.q, trials: o.trials,
-          /* `trialsTotal` is how much measurement stands behind THE NUMBERS IN THIS PAYLOAD, so a
-             partial run carries the cached stage 1 forward; `trialsRun` is what this invocation
-             actually did, and it is what the rate and the announcement are computed from.
-             Conflating the two would report a partial run at several million trials per second.
-             The stage-1 half is DERIVED (cells measured x trials), not inherited from the cached
-             payload's own total: expanding cell X and then cell Y leaves the entry carrying only
-             Y's buckets, and inheriting would keep charging for X's stage 2 after its numbers are
-             gone — an over-count that then persists in storage. Deriving is exact, because a hit
-             at this hash was measured at this `trials` over this same cell set. */
-          trialsTotal: (partial ? live.length * o.trials : 0) + state.trialsDone,
+          /* `trialsTotal` is how much measurement stands behind the numbers in this payload and
+             `trialsRun` is what this invocation actually did. With one stage they are the same
+             number; both are kept because the readers downstream (the rate, the announcement, the
+             badge) ask different questions of them and a future second stage would separate them
+             again. */
+          trialsTotal: state.trialsDone,
           trialsRun: state.trialsDone,
-          cells: cells, subs: subs, subsOf: o.subsOf,
+          cells: cells,
           fallbacks: fallbacks,
           path: eng.degraded ? 'fallback' : 'worker',
           at: Date.now()
         };
         var where = o.noCache ? 'off' : CACHE.put(payload);
-        return finish(payload, where, elapsed, !!partial);
+        return finish(payload, where, elapsed);
       });
     });
   });
 
-  function finish(payload, where, elapsed, partial) {
+  function finish(payload, where, elapsed) {
     var el = elapsed == null ? nowMs() - t0 : elapsed;
     var ran = payload.trialsRun == null ? payload.trialsTotal : payload.trialsRun;
     var res = {
       ok: true, id: id,
-      source: where === 'hit' ? 'cache' : (partial ? 'partial' : 'measured'),
+      source: where === 'hit' ? 'cache' : 'measured',
       cache: where,
       settingsHash: payload.hash,
       modelHash: payload.model, orderHash: payload.orderHash,
@@ -1918,7 +1858,7 @@ function run(opts) {
       trialsRun: ran,
       nMax: payload.nMax,
       se: seOf(payload.trials),
-      cells: payload.cells, subs: payload.subs, subsOf: payload.subsOf,
+      cells: payload.cells,
       fallbacks: payload.fallbacks,
       path: payload.path,
       degraded: payload.path === 'fallback',
@@ -2083,9 +2023,9 @@ var DEPTH = C.depth || { min: 40, ref: 100, max: 250, detents: [40, 100, 200] };
 var RAKE = C.rake || { min: 0, max: 6, preset: 0, capBB: 3, potBB: 60 };
 var STRAD = C.straddle || { unit: 2 };
 var HAS_ENV = !!(C.depth && C.rake && C.straddle && window.POLICY && window.POLICY.envOf);
-/* V2-PLAN §5.1: the search parser lives in the injected taxonomy, next to the rowOf/colOf/subKeyOf
+/* V2-PLAN §5.1: the search parser lives in the injected taxonomy, next to the rowOf/colOf
    it resolves through. A pre-v2 injected block does not carry it, so the search bar stays hidden
-   and nothing else on the page changes — the same feature-detect posture as HAS_ENV / HAS_SUBS. */
+   and nothing else on the page changes — the same feature-detect posture as HAS_ENV / HAS_VP. */
 var HAS_SEARCH = !!(window.TAXONOMY && typeof window.TAXONOMY.parseHandQuery === 'function');
 /* V2-PLAN §2.3/§4 — the villain-VPIP lattice. Same feature-detect posture: a pre-v2 dataset ships
    no lattice, so the whole profile section stays hidden and nothing else on the page changes.
@@ -2223,22 +2163,13 @@ var SIMUI = (function () {
   /* One sentence, one definition, used by BOTH branches below — the cached one and the running
      one. It was on the running branch only, which is how a cache hit came to answer a Simulate
      press that had asked for stage 2 without ever admitting stage 2 had not run. */
-  function stage2Skip(p) {
-    return (p.stages || 1) < 2
-      ? '<br>Stage 2 (sub-bucket equity) skipped — no cell is expanded, so there is nothing to split.'
-      : '';
-  }
   /* The §4 bar's copy. Every number here comes off an engine progress event: the ± from the trial
      count actually scheduled, the ETA from the MEASURED trials/sec, never from a guess. */
   function progressCopy(p) {
     if (!p) return { head: 'Simulating', line: '' };
     if (p.phase === 'cache') {
-      /* The skip sentence belongs here for the same reason it belongs on the running branch: a user
-         who pressed Simulate with no cell expanded is owed the same account of what did NOT happen
-         whether the answer came from trials or from storage. Adversarial verification found this
-         branch saying only "no trials run" while the engine had quietly declined stage 2. */
       return { head: 'Cached', cached: true,
-        line: 'Cached result for these settings — no trials run.' + stage2Skip(p) };
+        line: 'Cached result for these settings — no trials run.' };
     }
     if (p.phase === 'prepare') {
       return { head: 'Preparing', line: 'Grouping every hand by taxonomy cell — one main-thread pass, once per page.' };
@@ -2246,15 +2177,11 @@ var SIMUI = (function () {
     var head = 'Stage ' + Math.max(1, p.stage || 1) + '/' + (p.stages || 1)
       + (p.stageLabel ? ' — ' + p.stageLabel : '');
     var parts = ['Simulating ' + group(p.trialsTotal || 0) + ' trials'];
-    if (p.units) parts.push((p.stageKey === 'sub' ? 'bucket ' : 'cell ') + p.unit + '/' + p.units);
+    if (p.units) parts.push('cell ' + p.unit + '/' + p.units);
     if (p.se != null && isFinite(p.se)) parts.push('±' + p.se.toFixed(2) + ' pt');
     if (p.paused) parts.push('paused — this tab is in the background');
     else if (p.etaSec != null && isFinite(p.etaSec)) parts.push('~' + (p.etaSec >= 1 ? Math.round(p.etaSec) : p.etaSec.toFixed(1)) + 's left');
-    var line = parts.join(' · ') + stage2Skip(p);
-    if (p.cachedStage1) {
-      line += '<br>Stage 1 (cell equity) came straight from this browser’s cache — the same settings '
-        + 'were already measured, so only the expanded cell’s buckets are being run.';
-    }
+    var line = parts.join(' · ');
     if (p.degraded) {
       /* NOT a bounded factor. This used to say "2–4× slower", and the browser harness measured 12×
          on one machine (15.0 s against 1.27 s at 8,000/cell). The ratio depends on the machine, the
@@ -2267,14 +2194,14 @@ var SIMUI = (function () {
   }
   /* THE BOOK — the page's in-memory record of what has been measured, bounded.
      Keyed by (v, q), which is 66 integer VPIPs x 101 hundredths of q = 6,666 reachable keys, each
-     holding 123 cells x 7 equities and possibly a sub-bucket block. Left unbounded, a long session
+     holding 123 cells x 7 equities. Left unbounded, a long session
      that walks the VPIP slider with the profile on grows it without limit — tens of megabytes of
      results nobody is looking at any more. That is the same failure the localStorage cache is
      capped and LRU-evicted against; the book had no such bound, and now has the same one.
 
-     Two bounds, because either alone can be defeated: a byte budget (results vary in size — a run
-     with stage 2 carries a sub-bucket block) and an entry count (a cheap ceiling that holds even if
-     the size estimate is wrong). Eviction is least-recently-USED, not least-recently-written: the
+     Two bounds, because either alone can be defeated: a byte budget and an entry count (a cheap
+     ceiling that holds even if the size estimate is wrong). Eviction is least-recently-USED,
+     not least-recently-written: the
      entry a user keeps coming back to survives a walk along the slider.
 
      `validate` is injected rather than written here, because this block is sliced out and evaluated
@@ -2350,7 +2277,7 @@ var SIMUI = (function () {
   }
   return { version: 1, group: group, seOf: seOf, kOf: kOf, onLattice: onLattice,
     triggerState: triggerState, badgeCopy: badgeCopy, progressCopy: progressCopy, cancelGuard: cancelGuard,
-    rerunState: rerunState, makeBook: makeBook, stage2Skip: stage2Skip };
+    rerunState: rerunState, makeBook: makeBook };
 })();
 /* @end:sim-ui-logic */
 
@@ -2365,18 +2292,17 @@ var S = {
      SCORING function's default stays 0, which is what keeps gate I22's v1 identity checkable. */
   d: DEPTH.ref, rake: HAS_ENV ? RAKE.preset : 0, rakeCap: RAKE.capBB, straddle: false,
   cbPatterns: false, monoSuits: false, rain: 8, reduce: false, itab: 'summary', preview: null,
-  expand: (window.POLICY && window.POLICY.EXPAND_INIT) || { cell: null, cursor: -1, count: 0 },
   /* V2-PLAN §4. `vp` false is the DEFAULT and the identity point: with it off the page reads
      `cell.eq` by reference and reproduces v1 across the whole slider. `q` is the shipped opinion
      (0.85) and is user-editable like the 3-bet mix — §7.3, resolved yes. */
   vp: false, q: QDEF == null ? 0.85 : QDEF
 };
 /* §5.1's result, kept out of S because it is a VIEW of the taxonomy and not a setting: it survives
-   no reload, goes in no permalink, and moves no number. `ownedExpand` is the one piece of
-   bookkeeping the feature needs — Esc must undo the expansion the SEARCH opened without touching
+   no reload, goes in no permalink, and moves no number. `ownedHand` is the one piece of
+   bookkeeping the feature needs — Esc must undo the hand panel the SEARCH opened without touching
    one the user opened themselves. */
-var SRCH = { active: false, level: null, row: null, cellKey: null, subKey: null,
-  ownedExpand: false, ownedHand: false, canon: '' };
+var SRCH = { active: false, level: null, row: null, cellKey: null,
+  ownedHand: false, canon: '' };
 /* The four axes `policy.envOf` reads, in one place. Spread into every state bag handed to the
    policy — a solve that does not carry them silently scores at 100bb / rake 0 / no straddle. */
 function envKey() { return S.d + '|' + S.rake + '|' + S.rakeCap + '|' + (S.straddle ? 1 : 0); }
@@ -2780,10 +2706,10 @@ function validBookEntry(r) {
   if (!(r.trialsPerCell > 0)) return false;
   /* The envelope is a RESULT, not a cache payload, so its own fields are checked above; the
      measurement inside goes through the engine's own validator — the same code, not a copy of it.
-     `subs` was unvalidated here for exactly as long as there were two implementations of "is this a
-     measurement", and that gap was reachable from the shared store. `trials` is the field
-     `validMeasurement` reads for its tolerance; a result spells it `trialsPerCell`. */
-  var m = { cells: r.cells, subs: r.subs, subsOf: r.subsOf, trials: r.trialsPerCell };
+     Two implementations of "is this a measurement" is how a gap reachable from the shared store
+     opened here once already. `trials` is the field `validMeasurement` reads; a result spells it
+     `trialsPerCell`. */
+  var m = { cells: r.cells, trials: r.trialsPerCell };
   if (window.SIM && window.SIM.validMeasurement) return window.SIM.validMeasurement(m);
   return false;
 }
@@ -2806,7 +2732,7 @@ function profileNow() {
 function vpKey() {
   if (!(HAS_VP && S.vp)) return 'OFF';
   var r = simResult();
-  return 'ON|' + S.v + '|' + S.q + '|' + (r ? r.settingsHash + '|' + (r.subsOf || '-') : '-');
+  return 'ON|' + S.v + '|' + S.q + '|' + (r ? r.settingsHash : '-');
 }
 function copyOwn(o) {
   var out = {}, k;
@@ -2840,24 +2766,8 @@ function emodel() {
      nothing has moved — and the honest representation of that is MODEL itself, not a hash-shifted
      twin that makes the page re-solve 123 identical cells and re-key its memo. The badge is what
      says the profile is on; the numbers say they are the shipped ones, because they are. */
-  if (!moved && !(r && r.subs && r.subsOf)) { VPM.key = k; VPM.model = MODEL; return MODEL; }
+  if (!moved) { VPM.key = k; VPM.model = MODEL; return MODEL; }
   m.cells = cells;
-  /* Sub-buckets are only ever measured by stage 2, and stage 2 runs on ONE cell. Everything it did
-     not measure stays the random-villain row it ships as — by reference — and the panel says so. */
-  if (r && r.subs && r.subsOf && MODEL.sub && MODEL.sub[r.subsOf]) {
-    var subs = copyOwn(MODEL.sub), arr = MODEL.sub[r.subsOf], meas = r.subs[r.subsOf], out = [];
-    for (var si = 0; si < arr.length; si++) {
-      /* `Array.isArray`, not just a length match: a 7-character string has a length of 7 and would
-         reach `rhoFromEq` as a row of characters. The book validates this block before it gets
-         here, and this is the belt to that pair of braces — the splice is the last point at which a
-         fabricated row can still be turned back. */
-      var s = arr[si], me = meas && meas[s.key];
-      if (!Array.isArray(me) || !s.eq || me.length !== s.eq.length) { out.push(s); continue; }
-      var ns = copyOwn(s); ns.eq = me; ns.rho = rhoFromEq(me); ns.vpSource = 'measured';
-      out.push(ns);
-    }
-    subs[r.subsOf] = out; m.sub = subs;
-  }
   if (POL.hydrate) POL.hydrate(m);
   VPM.key = k; VPM.model = m;
   return m;
@@ -3074,173 +2984,6 @@ function buildGrid() {
     grid.appendChild(bd);
   });
 }
-/* ============================== V2-PLAN §5 — expand-in-place sub-buckets
-   Click or Enter on a cell opens its shipped sub-buckets underneath it, each scored AS IF IT WERE
-   A CELL OF ITS OWN at the current settings. The buckets are deliberately NOT re-cut into the
-   percentile sort — inserting 341 rows would move every other cell's tier and the grid behind the
-   panel would no longer be the grid the panel claims to explain. So the copy says
-   "scored as-if standalone" and means it, and the arithmetic lives in policy.subVerdicts, which is
-   pinned against the real pipeline by test/expand.test.mjs.
-
-   One cell open at a time; the panel survives every settings change (watching the verdicts move IS
-   the feature); Esc collapses; arrows descend into the rows and then hand back to the grid. */
-var HAS_SUBS = !!(POL && POL.subVerdicts && POL.expandReducer && MODEL.sub);
-var subPanel = null;
-function subCount(key) { return (MODEL.sub && MODEL.sub[key] && MODEL.sub[key].length) || 0; }
-function dispatchExpand(action) {
-  if (!HAS_SUBS) return false;
-  var next = POL.expandReducer(S.expand, action);
-  if (next === S.expand) return false;
-  var was = S.expand.cell;
-  S.expand = next;
-  renderExpansion();
-  /* `&exp=` is written HERE, not at the call sites: a collapse used to leave the parameter behind,
-     because only the opening path happened to run through something that pushed the hash. Cursor
-     moves are not state a link carries, so only a change of cell writes. */
-  if (was !== next.cell) pushHash();
-  return true;
-}
-function toggleExpand(key) {
-  if (!HAS_SUBS || !subCount(key)) return;
-  var was = S.expand.cell;
-  dispatchExpand({ type: 'toggle', cell: key, count: subCount(key) });
-  if (S.expand.cell !== key) { announce('sub-buckets collapsed'); return; }
-  var rec = CK[key];
-  announce(rec.row.label + ' by ' + rec.col.label + ' expanded — ' + subCount(key) +
-    ' sub-buckets, scored as-if standalone. Down arrow to read them, Escape to collapse.' +
-    (was && was !== key ? ' Previous expansion closed.' : ''));
-}
-/* the cursor highlight only — safe to call from render(), which must never steal focus */
-function paintSubCursor() {
-  if (!subPanel) return;
-  var i = S.expand.cursor, rows = subPanel.querySelectorAll('tr[data-sub]');
-  for (var k = 0; k < rows.length; k++) rows[k].classList.toggle('cur', k === i);
-}
-/* the same, plus focus and an announcement — only ever called from a user gesture */
-function focusSubRow() {
-  paintSubCursor();
-  if (!subPanel) return;
-  var i = S.expand.cursor;
-  if (i < 0) { var c = CK[S.expand.cell]; if (c) cellNodes[c.i].focus(); return; }
-  var r = subPanel.querySelectorAll('tr[data-sub]')[i];
-  if (!r) return;
-  r.focus();
-  announce(r.getAttribute('aria-label') || '');
-}
-function tierNum(t) { return +String(t).slice(1) || 5; }
-/* V2-PLAN §4's honesty rule for the panel: with the villain profile ON, the CELL equities are
-   filtered but the BUCKET equities are not — only stage 2 of a Simulate run measures those, and it
-   measures exactly one cell. So a row that is still showing the shipped random-villain number says
-   so, until the run that measures it happens. */
-function subProvenanceChip(key) {
-  if (!HAS_VP || !S.vp) return '';
-  var r = simResult(), meas = !!(r && r.subs && r.subsOf === key && r.subs[key]);
-  if (meas) {
-    return '<span class="asif" style="color:var(--accent);border-color:var(--accent-dim)" title="Stage 2 of the '
-      + 'Simulate run measured these buckets against the filtered field.">buckets measured (' + SIMUI.kOf(r.trialsPerCell)
-      + ') · simulated ±' + r.se.toFixed(2) + '</span>';
-  }
-  return '<span class="asif" style="color:var(--s3);border-color:var(--s3)" title="The cell above is priced against '
-    + 'the filtered field. These bucket equities are the shipped RANDOM-villain measurement — the sub layer has no '
-    + 'villain lattice, and only stage 2 of a Simulate run (which needs this cell open) measures it.">buckets: '
-    + 'random-villain equity</span>';
-}
-function renderExpansion() {
-  if (!HAS_SUBS) return;
-  var key = S.expand.cell;
-  if (!key || !CK[key] || !CK[key].live) {
-    if (subPanel) { subPanel.remove(); subPanel = null; }
-    for (var z = 0; z < NCELL; z++) if (cellNodes[z]) cellNodes[z].removeAttribute('aria-expanded');
-    return;
-  }
-  var rec = CK[key], ev = lastEv || evalNow();
-  var out = POL.subVerdicts(emodel(), stateOf({ mix: mixW(S.mix) }), key);
-  if (!subPanel) { subPanel = el('div', 'subpanel'); subPanel.id = 'subpanel'; subPanel.setAttribute('role', 'group'); }
-  subPanel.setAttribute('aria-label', 'Sub-buckets of ' + rec.row.label + ' by ' + rec.col.label + ', scored as-if standalone');
-  /* the panel lives directly under the cell's own row, inside the band */
-  var row = cellNodes[rec.i].parentNode;
-  if (subPanel.previousSibling !== row || subPanel.parentNode !== row.parentNode) row.parentNode.insertBefore(subPanel, row.nextSibling);
-  for (var z2 = 0; z2 < NCELL; z2++) if (cellNodes[z2]) cellNodes[z2].removeAttribute('aria-expanded');
-  cellNodes[rec.i].setAttribute('aria-expanded', 'true');
-
-  var cellT = ev.tier[rec.i];
-  var h = '<div class="sph"><span class="ttl">' + rec.row.label + ' × ' + rec.col.label + ' — ' +
-    (out.rows.length || subCount(key)) + ' sub-buckets</span>' +
-    '<span class="asif" title="Each bucket is priced with its own ν, M_play and cooler against the cuts this grid already paints. The buckets are NOT re-cut into the percentile sort — that would move every other cell on the page.">scored as-if standalone</span>' +
-    subProvenanceChip(key) +
-    '<span class="sp"></span><button type="button" id="subclose">collapse (Esc)</button></div>';
-  if (!out.supported) {
-    h += '<div class="subfoot">' + out.note + '</div>';
-  } else {
-    h += '<div class="subscroll"><table class="subtable"><thead><tr><th class="l">bucket</th><th>combos</th><th class="oneincol">1 in</th>' +
-      '<th>eq @ N ' + f1(out.N) + '</th><th>ν</th><th>cooler</th><th>would-be</th><th>margin</th></tr></thead><tbody>';
-    out.rows.forEach(function (r, i) {
-      var t = tierNum(r.tier), dRank = cellT - t;
-      var arrow = dRank > 0 ? '<span class="up" title="a tier stronger than the cell it sits in"> ▲</span>'
-        : dRank < 0 ? '<span class="dn" title="a tier weaker than the cell it sits in"> ▼</span>' : '';
-      var lab = rec.row.label + ' — ' + r.label + '. ' + commas(r.combos) + ' combos, one in ' + r.oneIn +
-        '. Equity ' + f1(r.eq) + ' percent at ' + f1(out.N) + ' opponents, nut potential ' + f2(r.nu) +
-        ', cooler rate ' + f2(r.cooler) + '. Would be ' + tierShort(t, S.node) + ' scored as-if standalone, ' +
-        (r.margin >= 0 ? '' : 'minus ') + Math.abs(r.margin).toFixed(1) + ' score points ' +
-        (r.margin >= 0 ? 'clear of ' : 'short of ') + r.marginOf + '.';
-      h += '<tr data-sub="' + i + '" tabindex="-1" aria-label="' + lab.replace(/"/g, '&quot;') + '">' +
-        '<td class="l" title="' + (r.ex || []).slice(0, 3).join(' ') + '">' + r.label + '</td>' +
-        '<td>' + commas(r.combos) + '</td><td class="mg oneincol">1 in ' + commas(r.oneIn) + '</td>' +
-        '<td>' + f1(r.eq) + '%</td><td>' + f2(r.nu) + '</td><td>' + f2(r.cooler) + '</td>' +
-        '<td><span class="tp t' + t + 'bg">' + tierShort(t, S.node) + '</span>' + arrow + '</td>' +
-        '<td class="mg">' + (r.margin >= 0 ? '+' : '−') + Math.abs(r.margin).toFixed(1) + '</td></tr>';
-    });
-    h += '</tbody></table></div>';
-    h += '<div class="subfoot">The cell itself is <b>' + tierShort(cellT, S.node) + '</b>' +
-      (out.cell ? ' (rank ' + out.cell.rank + ' of ' + out.cell.of + ')' : '') +
-      '. A bucket is scored against the cuts this grid already paints, so a ▲ means the bucket is ' +
-      'stronger than the row-mates it is averaged with — not that the model plays it differently. ' +
-      'Buckets carry their own M_play and cooler rate (V2-PLAN §2.4); eq and ν are measured at ' +
-      MODEL.meta.trials.sub / 1000 + 'k trials, SE ±' + MODEL.meta.se.sub + ' pt.</div>';
-  }
-  /* the numbers all move on a settings change, so the body is rebuilt; keeping the keyboard where
-     the user left it is the difference between "the panel updated" and "the panel ate my place".
-     Rebuilt only when the markup actually differs — a VPIP drag redraws this 40 times a second. */
-  if (subPanel.__h === h) { paintSubCursor(); return; }
-  subPanel.__h = h;
-  var refocus = subPanel.contains(document.activeElement);
-  subPanel.innerHTML = h;
-  var cb = subPanel.querySelector('#subclose');
-  var collapse = function () { dispatchExpand({ type: 'close' }); cellNodes[rec.i].focus(); announce('sub-buckets collapsed'); };
-  if (cb) cb.onclick = collapse;
-  Array.prototype.forEach.call(subPanel.querySelectorAll('tr[data-sub]'), function (tr) {
-    tr.addEventListener('click', function () { S.expand = { cell: key, cursor: +tr.dataset.sub, count: out.rows.length }; focusSubRow(); });
-    tr.addEventListener('keydown', function (e) {
-      /* down past the last bucket hands back to the grid, on the row below the expanded cell */
-      if (e.key === 'ArrowDown') {
-        if (!dispatchExpandNav('down')) gridMove(rec.i, rec.ri + 1, rec.ci);
-        e.preventDefault();
-      } else if (e.key === 'ArrowUp') { if (dispatchExpandNav('up')) e.preventDefault(); }
-      /* stopped here, or the document Esc chain runs next, finds the panel already closed and
-         falls through to resetting the grid's filters.
-         §5.1: when the SEARCH opened this panel, Esc clears the search too — the spec makes the
-         highlight and the expansion one thing, so undoing half of it from inside would leave an
-         orange cell explaining nothing. clearHandSearch closes the panel and returns focus here. */
-      else if (e.key === 'Escape') { if (SRCH.ownedExpand) clearHandSearch(); else collapse(); e.stopPropagation(); e.preventDefault(); }
-    });
-  });
-  paintSubCursor();
-  if (refocus) { var cur = subPanel.querySelector('tr[data-sub].cur'); if (cur) cur.focus(); }
-}
-/* returns true when the reducer consumed the key; false lets the grid's own navigation have it */
-function dispatchExpandNav(dir) {
-  if (!HAS_SUBS || !S.expand.cell) return false;
-  /* At the vs-3-bet node POLICY.subVerdicts is unsupported, so the panel renders its reason and no
-     rows — while S.expand.count is still the cell's raw bucket count. Descending a cursor over
-     buckets that are not on screen swallowed one ArrowDown per phantom bucket at the grid. What is
-     navigable is what is painted. */
-  if (!subPanel || !subPanel.querySelectorAll('tr[data-sub]').length) return false;
-  var next = POL.expandReducer(S.expand, { type: dir });
-  if (next === S.expand) return false;
-  S.expand = next;
-  focusSubRow();
-  return true;
-}
 function isGhosted(rec, t) {
   if (S.soloRow && rec.row.key !== S.soloRow) return true;
   if (S.soloCol && rec.col.key !== S.soloCol) return true;
@@ -3309,9 +3052,6 @@ function render(opts) {
   }
   paintChrome(ev);
   lastEv = ev;
-  /* inside the timed region on purpose: an expanded panel IS part of the render pass, and a cost
-     hidden from the morph budget is a cost nobody measures */
-  if (S.expand.cell) renderExpansion();
   window.__morphMs = performance.now() - t0;
   return window.__morphMs;
 }
@@ -3969,29 +3709,6 @@ function renderSummary(host, rec) {
       eg.appendChild(b);
     });
     s10.appendChild(eg);
-  }
-  /* 11 sub buckets */
-  var subs = MODEL.sub && MODEL.sub[rec.key];
-  if (subs && subs.length) {
-    var s11 = sec(host, 'Sub-buckets', el('span', 't-micro dim', subs.length + ' of ' + commas(rec.combos)));
-    var list = el('div', 'sublist');
-    subs.forEach(function (sb) {
-      var r = el('div', 'subrow');
-      /* interpolated at the live N_eff like every other equity on the page — the old index-and-clamp
-         read eq[4] for every table five-handed or looser, which v2's N=6,7 measurements make wrong */
-      r.innerHTML = '<span class="tc" style="background:var(--t' + t + ')"></span><span class="nm"></span>' +
-        '<span class="n">' + commas(sb.combos) + '</span><span class="n">' + f1(eqAt(sb, ev.N)) + '%</span>';
-      r.querySelector('.nm').textContent = sb.label;
-      list.appendChild(r);
-    });
-    s11.appendChild(list);
-    if (HAS_SUBS) {
-      var op = el('button', 'btn btn-block', 'Expand in the matrix  ▸');
-      op.style.marginTop = 'var(--sp-3)';
-      op.onclick = function () { if (S.expand.cell !== rec.key) toggleExpand(rec.key); pulseCell(rec.key); };
-      op.title = 'Open the sub-buckets under the cell, each scored as-if standalone';
-      s11.appendChild(op);
-    }
   }
 }
 function rhoLadder(rec, ev) {
@@ -5388,14 +5105,8 @@ function simCacheHint() {
     : 'A repeat of these exact settings may come back instantly from this browser’s own storage. '
       + 'That is a pleasant surprise, not a promise: nothing here is guaranteed to still be there later.';
 }
-/* Which cell stage 2 would measure if Simulate were pressed right now — null when no cell is open.
-   One definition, because the button's copy and the run it describes have to agree about it. */
-function simSubsOf() {
-  return (HAS_SUBS && S.expand.cell && subCount(S.expand.cell)) ? S.expand.cell : null;
-}
 /* WHAT A PRESS WOULD ACTUALLY COST, not merely whether an entry exists.
    'full'   — the stored entry carries everything this press would ask for: nothing runs.
-   'stage1' — it carries the cells but not the open cell's buckets, so stage 2 WILL run.
    'none'   — no usable entry.
    The button said "cached — instant" for the middle case, which is a run: short (about 0.15 s at
    the shipped default) but a real one, and a page whose whole claim is that a number says where it
@@ -5405,8 +5116,7 @@ function cacheOffer() {
   var hit = null;
   try { hit = window.SIM.cache.peek({ v: S.v, q: S.q, trials: simTrials() }); } catch (e) { return 'none'; }
   if (!hit) return 'none';
-  var want = simSubsOf();
-  return (!want || hit.subsOf === want) ? 'full' : 'stage1';
+  return 'full';
 }
 function vpBracketText() {
   if (!POL.latticeBracket) return '';
@@ -5485,10 +5195,6 @@ function vpNoteHTML(t) {
       + 'AAxx/KKxx/QQxx/broadway mix &mdash; a different measurement against a named range &mdash; and the villain '
       + 'profile does not touch it or relabel it. What the profile moves here is the equity ladder in the '
       + 'inspector, not the cut.';
-  }
-  if (HAS_SUBS) {
-    out += '<br><br><span class="dim">Sub-bucket rows keep their shipped random-villain equity until a '
-      + 'Simulate run measures that one cell&rsquo;s buckets; the panel labels which one you are reading.</span>';
   }
   if (t.needsSim && simAvailable()) out += '<br><br><span class="dim">' + simCacheHint() + '</span>';
   if (t.needsSim && !simAvailable()) {
@@ -5593,13 +5299,10 @@ function startSim(mult) {
   var rr = simRerun();
   if (mult > 1 && !rr.can) { syncVP(); return; }
   var trials = mult > 1 ? rr.next : simTrials();
-  /* Stage 2 measures the sub-buckets of ONE cell, and only if that cell is open. Otherwise the
-     pipeline is one stage and the bar says which one it skipped. */
-  var subsOf = simSubsOf();
   SIMERR = ''; SIMCB = '';
   SIMRUN = { token: mine, handle: null };
   var h = window.SIM.run({
-    v: S.v, q: S.q, trials: trials, subsOf: subsOf,
+    v: S.v, q: S.q, trials: trials,
     /* Each handler guards its own body. The engine would catch a throw anyway (and log it), but it
        cannot know that the thing that failed was the page's own painting — only we can say that on
        screen, and only from outside the code that broke. */
@@ -5615,7 +5318,7 @@ function startSim(mult) {
   if (SIMRUN && SIMRUN.token === mine) SIMRUN.handle = h;
   syncVP();
   announce('simulating ' + SIMUI.group(trials) + ' trials per cell against a field playing the top ' + S.v +
-    '% of hands' + (subsOf ? ', then the sub-buckets of the open cell' : ', with no cell expanded so the sub-bucket stage is skipped') + '.');
+    '% of hands.');
 }
 function onSimDone(r) {
   SIMBOOK.put(bookKey(r.v, r.q), r);
@@ -5626,7 +5329,6 @@ function onSimDone(r) {
   render(); renderInspector(true); syncTopbar(); syncTableCtl(); paintSpark();
   paintRibbon($('#railribbon'), $('#railcaret'), $('#railribbonlabels'), $('#railribboncap'));
   if (S.pin) renderPinBox();
-  if (S.expand.cell) renderExpansion();
   syncVP(); pushHash();
   if (!tourRunning) markChanges(before);
   /* THE CLOCK BELONGS TO THIS INVOCATION, SO THE TRIAL COUNT PAIRED WITH IT MUST TOO. #live is the
@@ -5672,7 +5374,6 @@ function commitVP() {
   paintSpark();
   paintRibbon($('#railribbon'), $('#railcaret'), $('#railribbonlabels'), $('#railribboncap'));
   if (S.pin) renderPinBox();
-  if (S.expand.cell) renderExpansion();
   pushHash();
   if (!tourRunning) markChanges(before);
 }
@@ -5761,7 +5462,7 @@ function wireGrid() {
     var rec = CELLS[+c.dataset.i];
     if (!rec.live) { toast(rec.d.why0 || 'impossible cell'); return; }
     if (e.shiftKey) { toggleCompare(rec.key); return; }
-    select(rec.key); toggleExpand(rec.key); openDrawer();
+    select(rec.key); openDrawer();
   });
   grid.addEventListener('contextmenu', function (e) {
     var c = e.target.closest ? e.target.closest('.cell') : null;
@@ -5824,9 +5525,8 @@ function toggleCompare(key) {
   else S.compare.push(key);
   toast('compare: ' + (S.compare.length ? S.compare.join(', ') : 'empty'));
 }
-/* Extracted from onGridKey so the sub-bucket panel can hand a key back to the grid: falling out of
-   the bottom of an expanded panel has to land on the next grid row, and the void-skipping walk is
-   the one piece of that which must not be reimplemented twice. Returns true when focus moved. */
+/* Extracted from onGridKey: the void-skipping walk is the one piece of grid navigation that must
+   not be reimplemented twice. Returns true when focus moved. */
 function gridMove(i, nr, nc) {
   var r = (i / NC) | 0, c = i % NC;
   nr = clamp(nr, 0, NR - 1); nc = clamp(nc, 0, NC - 1);
@@ -5851,22 +5551,15 @@ function onGridKey(e) {
   switch (e.key) {
     case 'ArrowRight': go(r, c + 1); break;
     case 'ArrowLeft': go(r, c - 1); break;
-    /* V2-PLAN §5: from an expanded cell, Down descends into its sub-buckets first and only falls
-       through to the next grid row once the cursor runs off the end of them. */
-    case 'ArrowDown':
-      if (S.expand.cell === CELLS[i].key && dispatchExpandNav('down')) { e.preventDefault(); return; }
-      go(r + 1, c); break;
+    case 'ArrowDown': go(r + 1, c); break;
     case 'ArrowUp': go(r - 1, c); break;
     case 'Home': go(r, 0); break;
     case 'End': go(r, NC - 1); break;
     case 'PageDown': go(bandJump(r, 1), c); break;
     case 'PageUp': go(bandJump(r, -1), c); break;
-    /* §5 says Enter expands. The inspector still opens, because that is what Enter did in v1 and
-       the two are not in competition: the drawer explains the CELL, the panel splits it. */
-    case 'Enter': case ' ': select(CELLS[i].key); toggleExpand(CELLS[i].key); openDrawer(); moved = true; break;
+    case 'Enter': case ' ': select(CELLS[i].key); openDrawer(); moved = true; break;
     /* Escape is deliberately NOT handled here: it belongs to the document-level Esc chain in
-       wireGlobalKeys, which closes the outermost thing first. Handling it in both places closed
-       the panel AND then reset the filters, because the second listener saw an already-empty panel. */
+       wireGlobalKeys, which closes the outermost thing first. */
     default: return;
   }
   if (moved || e.key === 'Enter') e.preventDefault();
@@ -5883,8 +5576,8 @@ function bandJump(r, dir) {
 }
 function wireGlobalKeys() {
   /* Escape belongs to a running tour, and it has to WIN rather than merely be first in the chain
-     below. Tour steps 8 and 10 deliberately park focus inside the sub-bucket panel and the hand
-     search, and both of those consume Escape and stopPropagation() before anything document-level
+     below. A late tour step deliberately parks focus inside the hand search, which consumes Escape
+     and stopPropagation() before anything document-level
      runs — so the chain rung alone left the tour open with its caption describing state the key
      press had just undone. Capture phase cannot be defeated by a descendant, which makes "while the
      tour is open, the first Escape closes the tour" structural. The #tour lookup keeps it inert if
@@ -5915,10 +5608,7 @@ function wireGlobalKeys() {
       case '/': focusHandSearch(); break;
       case '?': showShortcuts(); break;
       case 'Escape':
-        /* Esc chain, outermost first: modal → popover → drawer → hand search → sub-bucket panel
-           → filters. §5.1 puts the search ABOVE the panel deliberately: "Esc clears the search and
-           any resulting highlight/expansion" is one action, and clearHandSearch closes the panel
-           the search opened. A panel the USER opened is untouched by it and gets the next Esc. */
+        /* Esc chain, outermost first: modal → popover → drawer → hand search → filters. */
         if ($('#modal')) { closeModal(); break; }
         /* The tour normally never reaches this rung — tourEscCapture catches Escape in the capture
            phase, above every handler that might stopPropagation() on it. This is the fallback for
@@ -5927,7 +5617,6 @@ function wireGlobalKeys() {
         var pop = $('.pop'); if (pop) { pop.remove(); break; }
         if ($('#inspector').classList.contains('open')) { closeDrawer(); break; }
         if (SRCH.active) { clearHandSearch(); break; }
-        if (S.expand.cell) { dispatchExpand({ type: 'close' }); announce('sub-buckets collapsed'); break; }
         var any = false, k; for (k in S.filters) if (S.filters[k]) any = true;
         if (any || S.soloRow || S.soloCol || S.soloBand) resetFilters();
         break;
@@ -5940,12 +5629,11 @@ function showShortcuts() {
   openModal('Keyboard', '<div class="prose"><ul>' +
     ['<b>← → ↑ ↓</b> move in the matrix (void cells are skipped)',
       '<b>Enter</b> select · <b>Esc</b> clear filters / close',
-      '<b>Enter</b> also expands the cell into its sub-buckets · <b>↓</b> descends into them · <b>Esc</b> collapses',
       '<b>/</b> find a hand — <b>FIND HAND</b> in the top bar takes either grammar. Four specific cards '
       + '(<b>AsKh9s8d</b>) open the inspector on that hand; four ranks in any order (<b>9655</b>) plus an optional '
-      + 'suit code — <b>R</b>/<b>RB</b>, <b>SS</b>, <b>SSA</b>, <b>DS</b>, or <b>F</b> (suit-wasted, narrowed to its '
-      + 'monotone bucket) — move the grid. Ranks alone light the whole rank row; ranks + a code open that cell’s '
-      + 'bucket. <b>↓</b> steps into the grid, <b>Esc</b> clears it',
+      + 'suit code — <b>R</b>/<b>RB</b>, <b>SS</b>, <b>SSA</b>, <b>DS</b>, or <b>F</b> (suit-wasted) — move the '
+      + 'grid. Ranks alone light the whole rank row; ranks + a code pin one cell. <b>↓</b> steps into the grid, '
+      + '<b>Esc</b> clears it',
       '<b>PgUp / PgDn</b> jump band · <b>Home / End</b> row ends',
       '<b>[ ]</b> position · <b>1–4</b> facing action',
       '<b>− =</b> VPIP ∓1 (Shift ∓5) · Shift+←/→ on any slider snaps to its ticks or detents',
@@ -5953,16 +5641,15 @@ function showShortcuts() {
     '</ul></div>', [['Replay the thesis', function () { closeModal(); runTour(); }]]);
 }
 /* =========================================== V2-PLAN §5.1 — HAND SEARCH
-   Four ranks in any order, plus an optional suit code, resolved as deep as the input determines:
-   ranks alone name a ROW (rowOf never looks at suits, so it is the same row in all five columns);
-   ranks + a code name a CELL, and — because the code also pins `suitSub`, the one sub-key field
-   the ranks leave open — a single SUB-BUCKET. `F` is the interesting one: colOf folds three-flush
-   and monotone into one "suit-wasted" column, so `F` means the FLAW cell narrowed to its monotone
-   bucket, falling back to the cell itself where no monotone hand carries those ranks.
+   Two grammars, one box, told apart on the second character. Four SPECIFIC cards open the inspector
+   on that hand. A CLASS query resolves as deep as the input determines: four ranks alone name a ROW
+   (rowOf never looks at suits, so it is the same row in all five columns); ranks plus a suit code
+   name a CELL, which is the finest thing this model resolves. `F` covers both the three-flush and
+   the monotone pattern, exactly as colOf does.
 
    The grammar and the whole ladder live in TAXONOMY.parseHandQuery, next to the classifier they
    answer about and pinned by test/handsearch.test.mjs against the full 270,725-hand enumeration.
-   Everything below is presentation: scroll, highlight, expand, announce. */
+   Everything below is presentation: scroll, highlight, announce. */
 function searchBar() { return $('#handinput'); }
 /* The empty-box hint names BOTH grammars, because the box takes both — and names only the one it
    has when the injected taxonomy is a v1 one and the class half does not exist. */
@@ -6003,19 +5690,11 @@ function scrollTo(rec) {
   if (!rec || !cellNodes[rec.i]) return;
   cellNodes[rec.i].scrollIntoView({ block: 'nearest', behavior: reduceMotion || S.reduce ? 'auto' : 'smooth' });
 }
-function subIndexOf(cellKey, subKey) {
-  var subs = (MODEL.sub && MODEL.sub[cellKey]) || [];
-  for (var i = 0; i < subs.length; i++) if (subs[i].key === subKey) return i;
-  return -1;
-}
-/* Clears the search AND the expansion the search opened — never one the user opened. Idempotent,
-   because it is reachable from the Esc chain, the ✕, a fresh query and the sub-row's own Esc. */
+/* Idempotent, because it is reachable from the Esc chain, the ✕ and a fresh query. */
 function clearHandSearch(opts) {
   var was = SRCH.active, key = SRCH.cellKey, hadHand = SRCH.ownedHand;
-  var inPanel = !!(subPanel && document.activeElement && subPanel.contains(document.activeElement));
-  if (SRCH.ownedExpand && S.expand.cell) dispatchExpand({ type: 'close' });
-  SRCH = { active: false, level: null, row: null, cellKey: null, subKey: null,
-    ownedExpand: false, ownedHand: false, canon: '' };
+  SRCH = { active: false, level: null, row: null, cellKey: null,
+    ownedHand: false, canon: '' };
   /* symmetric with ownedExpand: the hand panel the FINDER opened goes with the finder. One the
      user opened from a link, the picker or the inversion story is not the finder's to close. */
   if (hadHand) { S.hand = null; renderInspector(); }
@@ -6024,7 +5703,7 @@ function clearHandSearch(opts) {
   searchSay('', null);
   if (was) {
     render(); paintSearchRows();
-    if (inPanel && CK[key]) focusCell(CK[key]);
+    if (key && CK[key]) focusCell(CK[key]);
     if (!opts || !opts.quiet) announce('hand search cleared');
   }
   return was;
@@ -6042,8 +5721,8 @@ function runHandSearch(text, opts) {
     return p;
   }
   clearHandSearch({ keepText: true, quiet: true });
-  SRCH = { active: true, level: p.level, row: p.row, cellKey: p.cellKey, subKey: p.subKey,
-    ownedExpand: false, ownedHand: false, canon: p.canon + (p.suffix || '') };
+  SRCH = { active: true, level: p.level, row: p.row, cellKey: p.cellKey,
+    ownedHand: false, canon: p.canon + (p.suffix || '') };
   var rowLabel = (CK[p.row + '|RB'] || {}).row;
   rowLabel = rowLabel ? rowLabel.label : p.row;
   var rec = p.cellKey ? CK[p.cellKey] : null;
@@ -6100,40 +5779,16 @@ function runHandSearch(text, opts) {
     return p;
   }
 
-  /* cell and sub both land on a cell; sub additionally opens §5's panel on its bucket */
+  /* ranks plus a suit code: one cell, which is the finest thing this model resolves */
   if (!rec || !rec.live) { searchSay(head + ' — not in this dataset', 'bad'); if (!opts.silent) announce('no match'); return p; }
-  /* The sub layer carries no verdict at the vs-3-bet node — POLICY.subVerdicts says so and the
-     panel renders that sentence instead of rows. Opening it there and announcing a bucket "scored
-     as-if standalone, bucket 3 of 6" would claim exactly the verdict the model refuses to give,
-     and on a screen reader that announcement is the only thing the user gets. Ask the policy. */
-  var subSupported = HAS_SUBS && p.level === 'sub'
-    && POL.subVerdicts(emodel(), stateOf({ mix: mixW(S.mix) }), p.cellKey).supported;
-  var idx = subSupported ? subIndexOf(p.cellKey, p.subKey) : -1;
-  if (HAS_SUBS && idx >= 0) {
-    S.expand = { cell: p.cellKey, cursor: idx, count: MODEL.sub[p.cellKey].length };
-    SRCH.ownedExpand = true;
-  }
   select(p.cellKey);
-  render(); paintSearchRows();          /* render() draws the panel when S.expand is set */
+  render(); paintSearchRows();
   scrollTo(rec);
+  focusCell(rec);
   var ev = lastEv || evalNow(), tierTxt = tierLabel(ev.tier[rec.i]);
-  var tail = head + ' × ' + colLabel(p.col) + ' — ' + tierTxt;
-  if (SRCH.ownedExpand) {
-    var sub = MODEL.sub[p.cellKey][idx];
-    focusSubRow();
-    searchSay(tail + ' · bucket: ' + sub.label, 'hit');
-    if (!opts.silent) announce(head + ' by ' + colLabel(p.col) + ', ' + tierTxt + '. Expanded on the ' +
-      'sub-bucket ' + sub.label + ', bucket ' + (idx + 1) + ' of ' + MODEL.sub[p.cellKey].length +
-      ', scored as-if standalone. Up and down arrows read the others; Escape clears the search.');
-  } else {
-    focusCell(rec);
-    var noVerdict = p.level === 'sub' && !subSupported;
-    searchSay(tail + (p.level === 'cell' ? ' · suit-wasted cell, unnarrowed'
-      : noVerdict ? ' · no bucket verdict at this node' : ''), 'hit');
-    if (!opts.silent) announce(head + ' by ' + colLabel(p.col) + ', ' + tierTxt + '. ' + p.message + '.' +
-      (noVerdict ? ' This node cuts on equity against the face-up 3-bet mix, measured per cell, so'
-        + ' the sub-bucket carries no verdict here and the cell is highlighted instead.' : '') +
-      ' Escape clears the search.');
+  searchSay(head + ' × ' + colLabel(p.col) + ' — ' + tierTxt, 'hit');
+  if (!opts.silent) {
+    announce(head + ' by ' + colLabel(p.col) + ', ' + tierTxt + '. ' + p.message + '. Escape clears the search.');
   }
   return p;
 }
@@ -6341,7 +5996,6 @@ function buildHash() {
     if (S.vp) h += '&vp=1';
     if (S.q !== QDEF) h += '&q=' + S.q;
   }
-  if (S.expand.cell) h += '&exp=' + S.expand.cell;
   return h;
 }
 function writeHash() {
@@ -6387,7 +6041,6 @@ function readHash() {
     if (q.vp === '1') S.vp = true;
     var qq = num(q.q); if (qq !== null) S.q = clamp(Math.round(qq * 100) / 100, 0, 1);
   }
-  if (HAS_SUBS && q.exp && CK[q.exp] && CK[q.exp].live && subCount(q.exp)) S.expand = { cell: q.exp, cursor: -1, count: subCount(q.exp) };
   var pv = num(q.pin);
   if (pv !== null) {
     S.pin = { pos: S.pos, node: S.node, v: clamp(Math.round(pv), VMIN, VMAX), L: S.L,
@@ -7141,10 +6794,10 @@ function runTour() {
   tourRunning = true;
   /* `search` closes a phase-3 gap: every step calls clearHandSearch, and finish() did too, so a
      tour started over a live search destroyed it and Skip did not put it back. The query string is
-     the whole state — re-running it rebuilds the highlight, the expansion it owned and the message
-     line — so that is what is saved. */
+     the whole state — re-running it rebuilds the highlight and the message line — so that is what
+     is saved. */
   var step = 0, saved = { pos: S.pos, node: S.node, v: S.v, sel: S.sel,
-    d: S.d, rake: S.rake, rakeCap: S.rakeCap, straddle: S.straddle, expand: S.expand,
+    d: S.d, rake: S.rake, rakeCap: S.rakeCap, straddle: S.straddle,
     vp: S.vp, q: S.q,
     /* the box, or the canonicalised query when the search was driven programmatically and the box
        was never typed into — `SRCH.canon` is itself a legal query, so it round-trips either way */
@@ -7155,23 +6808,14 @@ function runTour() {
      share the sparkline plots, so a regeneration moves both together (the old literal said 0.43
      where the model measures 0.42). */
   var tU25 = evaluate(0.25, 'UTG', 'rfi', 2, 'CO', S.mix), tU90 = evaluate(0.90, 'UTG', 'rfi', 2, 'CO', S.mix);
-  /* The v2 steps below are FEATURE-GATED, not assumed: on a v1-injected page HAS_ENV / HAS_SUBS /
+  /* The v2 steps below are FEATURE-GATED, not assumed: on a v1-injected page HAS_ENV / HAS_VP /
      HAS_SEARCH are all false and this is exactly the six-step tour it has always been. A v2 step
      carries an `act` that drives the real controls — the grid behind the bar actually moves — and a
      `cap` that is a function, so every number it quotes is read AFTER the act instead of being
      transcribed into a literal that goes stale. */
-  var TTC = 'SMPAIR_JUNK|SS', TTS = '1p|ss|conn|broadway';   /* the TT-with-junk bucket, §5's story */
+  var TTC = 'SMPAIR_JUNK|SS';                 /* small pairs + junk, single-suited — the depth story */
   var DEEP = (DEPTH.detents && DEPTH.detents[DEPTH.detents.length - 1]) || 200;
   var fact = {}, vpFact = {};
-  function ttSay() {
-    var c = CK[TTC], r = null, o, i;
-    if (!HAS_SUBS || !c || !POL.subVerdicts) return '';
-    o = POL.subVerdicts(emodel(), stateOf({ mix: mixW(S.mix) }), TTC);
-    if (o && o.rows) for (i = 0; i < o.rows.length; i++) if (o.rows[i].subKey === TTS) r = o.rows[i];
-    if (!r || !lastEv) return '';
-    return 'At ' + S.d + 'bb the cell is ' + tierShort(lastEv.tier[c.i], S.node) + ' and the TT bucket is <b>' +
-      tierShort(tierNum(r.action), S.node) + '</b>, ' + signed(r.margin) + ' against the aggressive cut.';
-  }
   function envTo(d, rake) {
     if (!HAS_ENV) return;
     S.d = d; S.rake = rake; S.rakeCap = RAKE.capBB; S.straddle = false; commitEnv(false);
@@ -7249,31 +6893,17 @@ function runTour() {
           'to measure that exact table right here — ' + SIMUI.group(tr * LIVE.length) + ' trials, badged with ' +
           'the ±' + SIMUI.seOf(tr).toFixed(2) + ' that many buys.';
       } }
-  ] : []).concat(HAS_SUBS ? [
+  ] : []).concat(HAS_ENV ? [
     { pos: 'CO', node: 'rfi', v: 55,
-      act: function () {
-        envTo(DEPTH.min, 0);
-        var i = subIndexOf(TTC, TTS);
-        select(TTC, { quiet: true });
-        S.expand = { cell: TTC, cursor: i < 0 ? -1 : i, count: subCount(TTC) };
-        render(); scrollTo(CK[TTC]);
-      },
+      act: function () { envTo(DEPTH.min, 0); select(TTC, { quiet: true }); render(); scrollTo(CK[TTC]); setDepth(DEEP); },
       cap: function () {
-        return 'Click or press <b>Enter</b> on any cell and it splits in place into the sub-buckets the model ships for ' +
-          'it — measured, ' + (MODEL.meta.trials.sub / 1000) + 'k trials each at ±' + MODEL.meta.se.sub + ' pt — and each ' +
-          '<b>scored as-if standalone</b>: priced with its own ν, playability and cooler rate against the cuts ' +
-          'this grid is already painting, and deliberately never re-cut into them, because inserting them would move ' +
-          'every other cell on the page. Small pairs + junk, single-suited, is a fold. ' + ttSay();
-      } }
-  ] : []).concat(HAS_SUBS && HAS_ENV ? [
-    { pos: 'CO', node: 'rfi', v: 55,
-      act: function () { setDepth(DEEP); },
-      cap: function () {
-        return 'The same cell, deeper. ' + ttSay() + ' The <b>cell never moved and the bucket did</b> — λ(d) and ' +
-          'μ(d), both opinion, pulling opposite ways on two measurements (ν and the cooler rate) inside one cell. ' +
-          'That is what the depth term is for. It is the TT/JJ story at the ' +
-          'only level this taxonomy can tell it: pairs split at J, so TT sits with the small pairs, and only the ' +
-          'sub-key\'s high-card field separates TTxx from 22xx-with-a-ten.';
+        var c = CK[TTC];
+        return 'The same cell, deeper. ' + (c && lastEv
+          ? 'Small pairs + junk, single-suited is ' + tierShort(lastEv.tier[c.i], S.node) + ' at ' + S.d + 'bb. '
+          : '') +
+          'λ(d) and μ(d), both opinion, pull opposite ways on two measurements — ν and the cooler rate — and ' +
+          'that is what the depth term is for. The TT/JJ story lives here too, at the only resolution this ' +
+          'taxonomy has: pairs split at J, so TT sits with the small pairs and the rows cannot separate them.';
       } }
   ] : []).concat(HAS_SEARCH ? [
     { pos: 'CO', node: 'rfi', v: 55, refocus: true,
@@ -7299,18 +6929,15 @@ function runTour() {
   function finish(restore) {
     cancelTourAnim();
     box.remove(); tourRunning = false; tourEsc = null;
-    /* the search owns its own highlight and expansion; leaving one behind would eat the user's
-       first Esc on a search they never ran (Worker B's Esc chain, §5.1) */
+    /* the search owns its own highlight; leaving one behind would eat the user's first Esc on a
+       search they never ran (Worker B's Esc chain, §5.1) */
     if (HAS_SEARCH) clearHandSearch({ quiet: true });
     if (restore) {
       S.pos = saved.pos; S.node = saved.node; S.v = saved.v; S.sel = saved.sel;
       S.d = saved.d; S.rake = saved.rake; S.rakeCap = saved.rakeCap; S.straddle = saved.straddle;
-      S.expand = saved.expand;
       S.vp = saved.vp; S.q = saved.q;
       $('#vpip').value = S.v;
     }
-    /* render() only draws the panel; removing a stale one is renderExpansion's own null branch */
-    if (HAS_SUBS) renderExpansion();
     invalidate();
     /* after invalidate(), because re-running the query paints its own highlight and may re-open the
        expansion it owns — both of which a repaint would otherwise wipe */
@@ -7507,7 +7134,6 @@ function init() {
   select(S.sel, { quiet: true });
   renderInspector(true);
   syncTopbar(); syncTableCtl(); syncVP(); renderPinBox(); renderNodeCtl(); renderDisplayCtl(); paintSpark();
-  if (S.expand.cell) renderExpansion();
   paintRibbon($('#railribbon'), $('#railcaret'), $('#railribbonlabels'), $('#railribboncap'));
   setView(S.view);
   buildMobileBar();
@@ -7525,7 +7151,7 @@ function init() {
   };
   window.__rundown = { S: S, CELLS: CELLS, evaluate: evaluate, evalNow: evalNow, select: select, setV: setV, setPos: setPos, setNode: setNode, MODEL: MODEL,
     setDepth: setDepth, setRake: setRake, setRakeCap: setRakeCap, setStraddle: setStraddle,
-    toggleExpand: toggleExpand, expandNav: dispatchExpandNav, hasEnv: HAS_ENV, hasSubs: HAS_SUBS, nMax: NMAX,
+    hasEnv: HAS_ENV, nMax: NMAX,
     handSearch: runHandSearch, clearHandSearch: clearHandSearch, hasSearch: HAS_SEARCH,
     searchState: function () { return SRCH; },
     setView: setView, runTour: runTour, atV1Point: atV1Point,

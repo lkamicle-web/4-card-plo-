@@ -221,14 +221,14 @@ test('no badge where the page shows shipped numbers; a labelled one everywhere e
 // ---------------------------------------------------------------- the bar
 
 const RUN = {
-  phase: 'run', stage: 1, stages: 2, stageKey: 'cell', stageLabel: 'cell equity vs filtered villains',
+  phase: 'run', stage: 1, stages: 1, stageKey: 'cell', stageLabel: 'cell equity vs filtered villains',
   unit: 47, units: 123, trialsDone: 1175000, trialsTotal: 3075000, rate: 901195, etaSec: 2.9,
   se: 0.31622776601683794, trialsPerCell: 25000, degraded: false, paused: false,
 };
 
 test('the bar quotes the trials, the cell counter, the ± and the ETA off the progress event', () => {
   const c = SIMUI.progressCopy(RUN);
-  assert.equal(c.head, 'Stage 1/2 — cell equity vs filtered villains');
+  assert.equal(c.head, 'Stage 1/1 — cell equity vs filtered villains');
   assert.match(c.line, /^Simulating 3,075,000 trials · cell 47\/123 · ±0\.32 pt · ~3s left/);
 });
 
@@ -244,12 +244,15 @@ test('a paused fallback stops the clock instead of counting down', () => {
   assert.ok(!/s left/.test(c.line));
 });
 
-test('stage 2 says it was skipped when no cell is expanded, and says nothing when it runs', () => {
-  assert.match(SIMUI.progressCopy({ ...RUN, stages: 1 }).line, /Stage 2 \(sub-bucket equity\) skipped/);
-  assert.ok(!/skipped/.test(SIMUI.progressCopy(RUN).line));
-  const s2 = SIMUI.progressCopy({ ...RUN, stage: 2, stages: 2, stageKey: 'sub', stageLabel: 'sub-bucket equity vs filtered villains', unit: 3, units: 4 });
-  assert.equal(s2.head, 'Stage 2/2 — sub-bucket equity vs filtered villains');
-  assert.match(s2.line, /bucket 3\/4/);
+test('the bar never mentions a stage that does not exist', () => {
+  /* The pipeline is one stage since the sub-bucket layer was cut. The old copy talked about a
+     stage 2 and about skipping it; both sentences are gone, and their absence is pinned here so
+     they cannot come back without a stage to justify them. */
+  const c = SIMUI.progressCopy(RUN);
+  assert.ok(!/Stage 2/.test(c.line), c.line);
+  assert.ok(!/skipped/.test(c.line), c.line);
+  assert.ok(!/bucket/.test(c.line), c.line);
+  assert.match(c.line, /cell 47\/123/);
 });
 
 test('the degraded path is disclosed in the bar, with what it actually costs', () => {
@@ -280,7 +283,7 @@ test('the one-off pool build is named rather than shown as stalled progress', ()
 
 test('stage 0 with phase run is a legitimate event and must not throw or read as stage 0/2', () => {
   const c = SIMUI.progressCopy({ ...RUN, stage: 0, unit: 0, units: 0, etaSec: null });
-  assert.equal(c.head, 'Stage 1/2 — cell equity vs filtered villains');
+  assert.equal(c.head, 'Stage 1/1 — cell equity vs filtered villains');
 });
 
 // ---------------------------------------------------------------- cancel-on-change
@@ -496,29 +499,10 @@ test('a re-put of the same key replaces rather than double-counting its bytes', 
   assert.equal(b.get('k').trialsPerCell, 2);
 });
 
-// -------------------------------------------- F2: the cache branch owes the same disclosure
-
-test('the cache branch states the stage-2 skip exactly as the running branch does', () => {
-  /* The defect: a user pressing Simulate with no cell expanded got "no trials run" from the cache
-     branch and never learned that stage 2 had not happened, while the identical situation on the
-     running branch said so plainly. One sentence, one definition, both branches. */
-  const one = { phase: 'cache', stages: 1 };
-  const two = { phase: 'cache', stages: 2 };
-  const cachedOne = SIMUI.progressCopy(one);
-  const cachedTwo = SIMUI.progressCopy(two);
-  assert.equal(cachedOne.cached, true);
-  assert.match(cachedOne.line, /no trials run/);
-  assert.match(cachedOne.line, /Stage 2 \(sub-bucket equity\) skipped/);
-  assert.ok(!/Stage 2 \(sub-bucket equity\) skipped/.test(cachedTwo.line),
-    'and not claimed when stage 2 was in scope');
-  /* the two branches must use the SAME sentence, not two that drift apart */
-  assert.equal(SIMUI.stage2Skip(one), SIMUI.stage2Skip({ ...RUN, stages: 1 }));
-  assert.ok(SIMUI.progressCopy({ ...RUN, stages: 1 }).line.includes(SIMUI.stage2Skip(one)));
-  assert.equal(SIMUI.stage2Skip(two), '');
-});
-
-test('a partial run says stage 1 came from the cache', () => {
-  const c = SIMUI.progressCopy({ ...RUN, stage: 2, stages: 2, stageKey: 'sub', unit: 2, units: 4, cachedStage1: true });
-  assert.match(c.line, /Stage 1 \(cell equity\) came straight from this browser’s cache/);
-  assert.ok(!/Stage 1/.test(SIMUI.progressCopy({ ...RUN, stages: 2 }).line), 'silent on a full run');
+test('the cache branch says what it is, and claims nothing about stages', () => {
+  const c = SIMUI.progressCopy({ phase: 'cache', stages: 1 });
+  assert.equal(c.cached, true);
+  assert.match(c.line, /no trials run/);
+  assert.ok(!/Stage 2/.test(c.line), c.line);
+  assert.ok(!/came straight from/.test(c.line), 'there is no partial run left to disclose');
 });

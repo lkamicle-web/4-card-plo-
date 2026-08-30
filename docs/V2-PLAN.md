@@ -5,6 +5,15 @@ contains, why, in what order, and what "done" means for each piece. It follows t
 [METHODOLOGY.md](METHODOLOGY.md): the Monte Carlo layer is objective, the scoring layer is opinion,
 and every new constant gets named, shipped in `constants`, and rendered by the Method view.
 
+> **HISTORICAL RECORD, 2026-08-30.** This is the plan as it was agreed and executed; it is kept as
+> written rather than edited to match what the repository now holds. One item has since been
+> **removed after shipping**: workstream D, the sub-bucket layer and its expand-in-place UI (§0.4,
+> §2.4, §5, and the `sub` half of §2.1 and §2.5). Everything §5 describes was built and worked; it
+> was cut because a bucket verdict was necessarily a hypothetical about a grid that was not being
+> painted, and because the layer was the largest single block in `model.json`. §5.1's hand search
+> survives, resolving to a cell rather than to a bucket. For what went and what it cost, read
+> **METHODOLOGY §2.4**, which is the living document; where the two disagree, METHODOLOGY is right.
+
 ---
 
 ## 0. Scope
@@ -586,6 +595,12 @@ tooltip for the suspicious.
 ---
 
 ## 5. Workstream D — sub-bucket expand-in-place UI
+
+> **SHIPPED, THEN REMOVED (2026-08-30).** Everything in this section was built and worked. It was
+> cut afterwards — see the note at the top of this document and METHODOLOGY §2.4. §5.1's hand
+> search is the one part that survives; it now resolves to a cell, and its three-rung ladder
+> (row → cell → sub) is two rungs (row → cell), because the rung that made `F` ambiguous was the
+> sub-bucket rung. The rest of this section describes something the page no longer does.
 
 Data verdict: **feasible now** — `sub` ships 123 keys with per-bucket `eq[1..5]`, `nu`, `combos`,
 `label`, and example hands. §2.4 adds per-sub `mplay` and `cooler` so verdicts are self-contained.

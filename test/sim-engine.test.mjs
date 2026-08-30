@@ -55,7 +55,7 @@ function fakeStorage({ cap = Infinity, throwOn = null } = {}) {
 function makeWindow(opts = {}) {
   const win = {
     MODEL,
-    TAXONOMY: { rowOf: TAX.rowOf, colOf: TAX.colOf, subKeyOf: TAX.subKeyOf },
+    TAXONOMY: { rowOf: TAX.rowOf, colOf: TAX.colOf },
     SIM_KERNEL_SRC: KERNEL,
     SIM_ENTRY_SRC: '',
     location: { search: opts.search || '', hash: opts.hash || '' },
@@ -189,7 +189,7 @@ function payload(hash, extra) {
   return {
     tag: 'plo4-sim@1', hash, model: MODEL.meta.hash, orderHash: MODEL.meta.orderHash,
     nMax: MODEL.meta.nMax, v: 55, q: 0.85, trials: 500, trialsTotal: 61500,
-    cells: { 'AA_BIGPAIR|DS': [70, 55, 45, 39, 35, 32, 29] }, subs: null, subsOf: null,
+    cells: { 'AA_BIGPAIR|DS': [70, 55, 45, 39, 35, 32, 29] },
     fallbacks: 0, path: 'worker', at: Date.now(), ...extra,
   };
 }
@@ -330,21 +330,16 @@ test('a re-run at the same settings is bit-identical, and the second is a cache 
   for (const k of Object.keys(a.cells)) assert.deepEqual(d.cells[k], a.cells[k], k);
 });
 
-test('stage 2 measures the sub-buckets of one named cell, and only that cell', async () => {
+test('a run is one stage over every live cell, and reports it as one stage', async () => {
   const w = makeWindow();
-  const KEY = 'SMPAIR_CONN|DS';
   const stages = [];
   const r = await w.SIM.run({
-    v: 61, q: 0.9, trials: 40, subsOf: KEY, noCache: true,
-    onProgress: (p) => { if (p.stage) stages.push(p.stage); },
+    v: 61, q: 0.9, trials: 40, noCache: true,
+    onProgress: (p) => { if (p.stage) stages.push(p.stages); },
   }).promise;
-  assert.deepEqual([...new Set(stages)], [1, 2]);
-  assert.ok(r.subs && r.subs[KEY]);
-  assert.equal(Object.keys(r.subs).length, 1, 'only the named cell is expanded');
-  const measured = Object.keys(r.subs[KEY]).sort();
-  const shipped = MODEL.sub[KEY].map((s) => s.key).sort();
-  assert.deepEqual(measured, shipped, 'the sub-bucket keys are the shipped ones');
-  assert.equal(r.trialsTotal, (123 + shipped.length) * 40);
+  assert.deepEqual([...new Set(stages)], [1], 'the bar never claims a stage that does not exist');
+  assert.equal(Object.keys(r.cells).length, 123);
+  assert.equal(r.trialsTotal, 123 * 40);
 });
 
 test('a run can be cancelled, and says so', async () => {
@@ -425,318 +420,99 @@ test('the ceiling is where a simulated number is as precise as the shipped one',
     'the ceiling is the shipped dataset\'s own per-cell trial count');
 });
 
-// ---------------------------------------------- F1: the cache validates subs, not only cells
-/* Adversarial verification reproduced this: sub arrays rewritten in the shared file:// store to
-   [99.9 x 7] were accepted by both validators and painted "RAISE +224.9" on four buckets under a
-   chip that said "measured". Both validators walked `cells` and neither looked at `subs`. */
+// ------------------------------------------------- what validation buys, and what it does not
+/* HISTORY, kept because it is the reason this is shaped the way it is. Adversarial verification
+ * twice defeated an earlier version of this validator. The first walked `cells` and never looked at
+ * the sub-bucket block at all. The second added a combo-weighted partition identity over the
+ * buckets — and evaluated it at index 0 alone, while the page paints `eq @ N` for the CURRENT field
+ * size, an interpolation of indices 2-3. Leaving `eq[0]` as measured and rewriting the rest passed,
+ * and painted 99.9% under a chip that said "measured (900)" (worker-f P11B).
+ *
+ * The sub-bucket layer is gone, and the partition identity went with it — it was the strongest
+ * thing this check ever had, and there is no honest replacement for it at the cell layer, where
+ * there is nothing to reconstruct a cell FROM. What is left is shape and plausibility, applied at
+ * every index rather than at one. The tests below pin exactly that, including the part that is now
+ * ACCEPTED and would once have been caught, because a check that quietly got weaker is worse than
+ * one that says so. */
 function goodPayload(w, over) {
-  const cellKey = 'SMPAIR_CONN|DS';
-  const shipped = MODEL.sub[cellKey].map((s) => s.key);
   const cells = {};
   for (const k of Object.keys(MODEL.cells)) if (MODEL.cells[k].combos) cells[k] = MODEL.cells[k].eq.slice();
-  const subs = {};
-  subs[cellKey] = {};
-  for (const k of shipped) subs[cellKey][k] = MODEL.cells[cellKey].eq.slice();
   return {
     tag: 'plo4-sim@1', hash: 'deadbeef', model: MODEL.meta.hash, orderHash: MODEL.meta.orderHash,
     nMax: MODEL.meta.nMax, v: 55, q: 0.85, trials: 900, trialsTotal: 900 * 123,
-    cells, subs, subsOf: cellKey, fallbacks: 0, path: 'worker', at: Date.now(), ...over,
+    cells, fallbacks: 0, path: 'worker', at: Date.now(), ...over,
   };
 }
 
-test('validMeasurement accepts a real payload, with and without a sub block', () => {
+test('validMeasurement accepts a real payload', () => {
   const w = makeWindow();
-  const p = goodPayload(w);
-  assert.equal(w.SIM.validMeasurement(p), true, 'a stage-2 payload');
-  assert.equal(w.SIM.validMeasurement({ ...p, subs: null, subsOf: null }), true, 'a stage-1-only payload');
+  assert.equal(w.SIM.validMeasurement(goodPayload(w)), true);
 });
 
-test('the reproduced attack is rejected: fabricated sub equities fail the partition identity', () => {
+test('every way a cell equity array can be malformed is rejected, at every index', () => {
   const w = makeWindow();
-  const KEY = 'SMPAIR_CONN|DS';
   const p = goodPayload(w);
-  const poisoned = { ...p, subs: { [KEY]: {} } };
-  for (const k of Object.keys(p.subs[KEY])) poisoned.subs[KEY][k] = [99.9, 99.9, 99.9, 99.9, 99.9, 99.9, 99.9];
-  assert.equal(w.SIM.validMeasurement(poisoned), false,
-    'sub arrays are well-formed and in range, so only the partition check can catch them');
-  /* and the same payload reaches neither the cache nor the book */
-  const ls = fakeStorage();
-  const w2 = makeWindow({ localStorage: ls });
-  ls._map.set('plo4:' + MODEL.meta.hash.slice(0, 12) + ':' + w2.SIM.settingsHash({ v: 55, q: 0.85, trials: 900 }),
-    JSON.stringify({ ...poisoned, hash: w2.SIM.settingsHash({ v: 55, q: 0.85, trials: 900 }) }));
-  assert.equal(w2.SIM.cache.peek({ v: 55, q: 0.85, trials: 900 }), null, 'discarded, not served');
-});
-
-test('every way a sub block can be malformed is rejected', () => {
-  const w = makeWindow();
   const KEY = 'SMPAIR_CONN|DS';
-  const p = goodPayload(w);
-  const one = Object.keys(p.subs[KEY])[0];
   const bad = {
-    'a 7-character string instead of an array': { ...p.subs[KEY], [one]: '1234567' },
-    'a short array': { ...p.subs[KEY], [one]: [1, 2, 3] },
-    'a non-numeric entry': { ...p.subs[KEY], [one]: [50, 40, 30, 25, 20, 17, 'x'] },
-    'a NaN': { ...p.subs[KEY], [one]: [50, 40, 30, 25, 20, 17, NaN] },
-    'an out-of-range equity': { ...p.subs[KEY], [one]: [150, 40, 30, 25, 20, 17, 14] },
-    'a negative equity': { ...p.subs[KEY], [one]: [-1, 40, 30, 25, 20, 17, 14] },
-    'a bucket key this model does not ship': { ...p.subs[KEY], 'not|a|bucket': p.subs[KEY][one] },
+    'a 7-character string instead of an array': '1234567',
+    'a short array': [1, 2, 3],
+    'a non-numeric entry': [50, 40, 30, 25, 20, 17, 'x'],
+    'a NaN': [50, 40, 30, 25, 20, 17, NaN],
+    'an Infinity': [50, 40, 30, 25, 20, 17, Infinity],
+    'an out-of-range equity': [150, 40, 30, 25, 20, 17, 14],
+    'a negative equity': [-1, 40, 30, 25, 20, 17, 14],
   };
-  for (const [why, block] of Object.entries(bad)) {
-    assert.equal(w.SIM.validMeasurement({ ...p, subs: { [KEY]: block } }), false, why);
+  for (const [why, arr] of Object.entries(bad)) {
+    assert.equal(w.SIM.validMeasurement({ ...p, cells: { ...p.cells, [KEY]: arr } }), false, why);
   }
-  /* and the envelope around it */
-  assert.equal(w.SIM.validMeasurement({ ...p, subsOf: 'NO_SUCH|CELL' }), false, 'a cell that does not exist');
-  assert.equal(w.SIM.validMeasurement({ ...p, subs: { [KEY]: {}, 'AA_BIGPAIR|DS': {} } }), false, 'two cells');
-  assert.equal(w.SIM.validMeasurement({ ...p, subsOf: null }), false, 'subs without subsOf');
-  assert.equal(w.SIM.validMeasurement({ ...p, subs: null }), false, 'subsOf without subs');
-  assert.equal(w.SIM.validMeasurement({ ...p, subs: { [KEY]: {} } }), false, 'an empty block');
+  /* one index at a time, so no single field size is left unguarded — this is the P11B lesson,
+     and it is the one part of that defence the cut did not take away */
+  for (let n = 0; n < MODEL.meta.nMax; n++) {
+    const arr = p.cells[KEY].slice(); arr[n] = 150;
+    assert.equal(w.SIM.validMeasurement({ ...p, cells: { ...p.cells, [KEY]: arr } }), false, `index ${n} alone`);
+  }
+  assert.equal(w.SIM.validMeasurement({ ...p, cells: {} }), false, 'no cells at all');
 });
 
-test('the partition tolerance is loose enough that a real measurement is never discarded', () => {
-  /* The failure mode of a check like this is a false discard, which costs a re-measurement rather
-     than a wrong number — but it should still essentially never happen. A whole standard error of
-     scatter on every bucket must pass. */
-  const w = makeWindow();
-  const KEY = 'SMPAIR_CONN|DS';
-  const p = goodPayload(w);
-  const se = 50 / Math.sqrt(p.trials);
-  const jittered = { [KEY]: {} };
-  let i = 0;
-  for (const k of Object.keys(p.subs[KEY])) {
-    jittered[KEY][k] = p.subs[KEY][k].map((x) => x + (i % 2 ? se : -se));
-    i++;
-  }
-  assert.equal(w.SIM.validMeasurement({ ...p, subs: jittered }), true);
-});
-
-// ------------------------- F1, second pass: HOSTILE PAYLOAD FIXTURES (worker-f P11B / P11D)
-/* The first version of this validator walked `cells` and never looked at `subs`. The second added
- * the partition identity — and evaluated it at index 0 alone, over whatever subset of buckets the
- * payload chose to include. Adversarial verification re-broke it with one line changed: the expand
- * panel paints `eq @ N` for the CURRENT field size (an interpolation of indices 2-3) and scores its
- * verdicts off the same rows, so index 0 is the one number the check covered and the one number the
- * panel does not show.
- *
- * These are FIXTURES, not mutations, and the distinction is the lesson. Mutating the validator can
- * only prove that a check it already performs is load-bearing; it can never reveal an attack the
- * unmutated validator accepts. A hostile payload can.
- */
-const F1_KEY = 'SMPAIR_CONN|DS';                 /* 4 buckets, 1,728 combos — worker-f's own target */
-
-/** P11B: leave the guarded index exactly as measured, fabricate every other one. */
-function indexShifted(p, key, value) {
-  const block = {};
-  for (const [k, arr] of Object.entries(p.subs[key])) block[k] = arr.map((x, n) => (n === 0 ? x : value));
-  return { ...p, subs: { [key]: block } };
-}
-
-test('P11B: the partition identity is checked at EVERY field size, not only at index 0', () => {
+test('a payload with no trial count is refused', () => {
+  /* `trials` is what the cache binds to the settings that were requested. A payload that does not
+     say how much measurement stands behind it cannot be told from one that never ran. */
   const w = makeWindow();
   const p = goodPayload(w);
-  const shipped = MODEL.sub[F1_KEY];
-  const attack = indexShifted(p, F1_KEY, 99.9);
-
-  /* the premise of the attack, asserted rather than asserted-about: index 0 still reconstructs the
-     cell exactly, which is precisely why the previous version accepted this payload */
-  let wsum = 0, mean0 = 0;
-  for (const s of shipped) { wsum += s.combos; mean0 += s.combos * attack.subs[F1_KEY][s.key][0]; }
-  assert.ok(Math.abs(mean0 / wsum - p.cells[F1_KEY][0]) < 1e-9,
-    'the fixture must be index-0-consistent, or it is not the attack');
-  assert.equal(w.SIM.validMeasurement(attack), false,
-    '99.9% at every field size the panel actually paints, under an index-0 disguise');
-
-  /* and one index at a time, so no single field size is left unguarded */
-  for (let n = 1; n < MODEL.meta.nMax; n++) {
-    const block = {};
-    for (const [k, arr] of Object.entries(p.subs[F1_KEY])) { block[k] = arr.slice(); block[k][n] = 99.9; }
-    assert.equal(w.SIM.validMeasurement({ ...p, subs: { [F1_KEY]: block } }), false, `index ${n} alone`);
+  for (const t of [undefined, null, 0, -1, 'lots']) {
+    assert.equal(w.SIM.validMeasurement({ ...p, trials: t }), false, String(t));
   }
 });
 
-test('P11B through the real load path: the poisoned entry is discarded, an honest one is served', () => {
-  const settings = { v: 55, q: 0.85, trials: 900 };
-  const ls = fakeStorage();
-  const w = makeWindow({ localStorage: ls });
-  const hash = w.SIM.settingsHash(settings);
-  const honest = goodPayload(w, { hash });
-  const write = (payload) => ls._map.set(NS + hash, JSON.stringify(payload));
-
-  write(indexShifted(honest, F1_KEY, 99.9));
-  assert.equal(w.SIM.cache.peek(settings), null, 'discarded on read, not served');
-  assert.equal(ls._map.has(NS + hash), false, 'and dropped, so it is not re-read for ever');
-
-  /* the control that makes the discard mean something: the SAME envelope with honest buckets is
-     served, so what failed was the payload and not the plumbing */
-  write(honest);
-  const got = w.SIM.cache.peek(settings);
-  assert.ok(got && got.subsOf === F1_KEY, 'an honest payload at the same key is still a hit');
-});
-
-test('P11B: a run is never answered with a poisoned entry — it measures instead', async () => {
-  /* 100 trials/cell keeps the run cheap while leaving the tolerance (400/sqrt(100) = 40 pt) far
-     tighter than the fabrication (99.9 against a cell equity in the 20-50 range). */
-  const settings = { v: 55, q: 0.85, trials: 100 };
-  const ls = fakeStorage();
-  const w = makeWindow({ localStorage: ls });
-  const hash = w.SIM.settingsHash(settings);
-  ls._map.set(NS + hash, JSON.stringify(indexShifted(goodPayload(w, { hash, trials: 100 }), F1_KEY, 99.9)));
-
-  const r = await w.SIM.run({ ...settings, subsOf: F1_KEY }).promise;
-  assert.equal(r.source, 'measured', 'a poisoned entry must not satisfy a run');
-  for (const [k, arr] of Object.entries(r.subs[F1_KEY])) {
-    for (const x of arr) assert.notEqual(x, 99.9, `${k} carries a fabricated equity`);
-  }
-});
-
-test('P11D: a subset of a cell\'s buckets is not its partition, and is rejected', () => {
+test('the limit of the check, written down: a plausible fabrication passes', () => {
+  /* There is no secret on this page, so a payload fabricated to be well-formed and in range is
+     indistinguishable from a real one. This was true before the cut and is true of MORE payloads
+     after it: with no partition identity left, a flat 99.9 across one cell is now accepted. The
+     documentation says validation buys "well-formed and plausible", never "trustworthy"; this is
+     the same statement in a form that fails if anyone upgrades the prose to a guarantee. */
   const w = makeWindow();
   const p = goodPayload(w);
-  const keys = Object.keys(p.subs[F1_KEY]);
-  assert.ok(keys.length > 1, 'the fixture cell must ship more than one bucket');
-
-  /* (a) the attack as reproduced: ONE bucket, its index 0 set to the cell equity so the old check's
-     subset mean "reconstructed" perfectly, everything the panel paints fabricated */
-  const one = { [keys[0]]: p.cells[F1_KEY].map((x, n) => (n === 0 ? x : 99.9)) };
-  assert.equal(w.SIM.validMeasurement({ ...p, subs: { [F1_KEY]: one } }), false, 'one bucket of four');
-
-  /* (b) an HONEST subset is rejected too, and must be: the engine never writes one, and the mean of
-     part of a cell is not an estimate of the cell. Anything less is a hole shaped like this one. */
-  const honestSubset = { ...p.subs[F1_KEY] };
-  delete honestSubset[keys[0]];
-  assert.equal(w.SIM.validMeasurement({ ...p, subs: { [F1_KEY]: honestSubset } }), false, 'three of four');
-
-  /* (c) the count restored with an unknown key standing in for a shipped one — the same size, a
-     different partition. Counting keys is not enough; every shipped key has to be read out. */
-  const swapped = { ...honestSubset, 'not|a|bucket|here': p.subs[F1_KEY][keys[0]] };
-  assert.equal(Object.keys(swapped).length, keys.length, 'the fixture must match the shipped count');
-  assert.equal(w.SIM.validMeasurement({ ...p, subs: { [F1_KEY]: swapped } }), false, 'a substituted key');
-});
-
-test('the tolerance is not the payload\'s to choose: a lie about the trial count buys nothing', () => {
-  /* The tolerance is a multiple of the standard error at `trials`, so a payload claiming one trial
-     would be handing itself a 400-point tolerance — every fabrication inside it. The validator
-     cannot know better on its own; the CACHE does, because it knows what was asked for. */
-  const settings = { v: 55, q: 0.85, trials: 900 };
-  const ls = fakeStorage();
-  const w = makeWindow({ localStorage: ls });
-  const hash = w.SIM.settingsHash(settings);
-  const attack = { ...indexShifted(goodPayload(w, { hash }), F1_KEY, 99.9), trials: 1 };
-
-  assert.equal(w.SIM.validMeasurement(attack), true,
-    'on its own the validator believes the trial count it is given — which is the point');
-  assert.equal(w.SIM.cache.peek(settings), null, 'so the envelope binds it to the settings requested');
-  ls._map.set(NS + hash, JSON.stringify(attack));
-  assert.equal(w.SIM.cache.peek(settings), null, 'a payload that lies about `trials` is not a hit');
-
-  /* the same discipline over the other two settings the payload declares */
-  for (const lie of [{ v: 60 }, { q: 0.5 }]) {
-    ls._map.set(NS + hash, JSON.stringify({ ...goodPayload(w, { hash }), ...lie }));
-    assert.equal(w.SIM.cache.peek(settings), null, `a payload that lies about ${Object.keys(lie)[0]}`);
-  }
-});
-
-test('requiring the whole partition is safe: the shipped sub layer IS the hands\' own partition', () => {
-  /* This is the invariant "no subsets" rests on. If a cell's shipped bucket list ever disagreed
-     with the partition `buildSubPool` derives from that cell's HANDS (the same TAX.subKeyOf), the
-     engine's own honest output would be discarded on every read — a false discard on every cell, in
-     silence. It agrees today for all 123 cells, key for key and combo for combo; this fails the
-     moment a regeneration breaks that, which is the only warning that would arrive in time. */
-  const E = enumerateAll();
-  let cells = 0, buckets = 0;
-  for (let i = 0; i < E.cellKeys.length; i++) {
-    const key = E.cellKeys[i], list = MODEL.sub[key], derived = E.subs[i];
-    if (!MODEL.cells[key] || !MODEL.cells[key].combos) continue;
-    assert.ok(list && list.length, `${key} ships no sub layer`);
-    assert.deepEqual([...derived.keys()].sort(), list.map((s) => s.key).sort(), key);
-    assert.equal(new Set(list.map((s) => s.key)).size, list.length, `${key} ships a duplicate key`);
-    for (const s of list) {
-      assert.equal(derived.get(s.key).combos, s.combos, `${key} / ${s.key}`);
-      /* A zero-combo bucket would carry weight 0 in the identity, so its row would be free to say
-         anything. There are none — every bucket is a non-empty set of hands by construction — and
-         this is the assertion that keeps it that way. */
-      assert.ok(s.combos > 0, `${key} / ${s.key} carries no combos`);
-    }
-    cells++; buckets += list.length;
-  }
-  assert.equal(cells, 123);
-  assert.equal(buckets, 341);
-});
-
-test('the limit of the check, written down: a self-consistent fabrication still passes', () => {
-  /* There is no secret on this page, so a payload fabricated to be well-formed AND consistent is
-     indistinguishable from a real one — including one that moves a cell and its buckets together.
-     The documentation says so in as many words; this is the same statement in a form that fails if
-     anyone ever upgrades the prose to a guarantee. */
-  const w = makeWindow();
-  const p = goodPayload(w);
-  const flat = { ...p, cells: { ...p.cells, [F1_KEY]: new Array(MODEL.meta.nMax).fill(99.9) },
-    subs: { [F1_KEY]: {} } };
-  for (const k of Object.keys(p.subs[F1_KEY])) flat.subs[F1_KEY][k] = new Array(MODEL.meta.nMax).fill(99.9);
+  const flat = { ...p, cells: { ...p.cells, 'SMPAIR_CONN|DS': new Array(MODEL.meta.nMax).fill(99.9) } };
   assert.equal(w.SIM.validMeasurement(flat), true,
-    'validation buys well-formed, plausible and internally consistent — never trustworthy');
+    'well-formed and plausible — and that is the whole claim');
 });
 
-// ------------------------------------------- F2: subsOf, the cache key, and the partial hit
-test('subsOf stays OUT of the settings hash — it is scope, not a measurement input', () => {
+test('the settings hash carries measurement inputs and nothing else', () => {
   const w = makeWindow();
   const base = { v: 55, q: 0.85, trials: 500 };
-  assert.equal(w.SIM.settingsHash({ ...base, subsOf: 'SMPAIR_CONN|DS' }), w.SIM.settingsHash(base));
-  assert.equal(w.SIM.settingsHash({ ...base, subsOf: 'AA_BIGPAIR|DS' }), w.SIM.settingsHash(base));
+  assert.equal(w.SIM.settingsHash({ ...base, subsOf: 'SMPAIR_CONN|DS' }), w.SIM.settingsHash(base),
+    'an input the engine no longer has cannot change the key either');
+  assert.notEqual(w.SIM.settingsHash({ ...base, v: 56 }), w.SIM.settingsHash(base));
 });
 
-test('a cached stage-1-only run no longer denies stage 2 for ever', () => {
-  /* The reproduced defect: run with nothing expanded, then run with a cell expanded at the same
-     settings, and the cache answered the second request with the first result — `subs: null`,
-     `source: 'cache'` — permanently, because the store is on disk. */
-  const KEY = 'SMPAIR_CONN|DS';
+test('a run measures every live cell, so a hit at the same settings is a plain cache hit', () => {
   const w = makeWindow();
   return (async () => {
     const a = await w.SIM.run({ v: 46, q: 0.85, trials: 20 }).promise;
-    assert.equal(a.subsOf, null);
-    assert.equal(a.subs, null);
-
-    const b = await w.SIM.run({ v: 46, q: 0.85, trials: 20, subsOf: KEY }).promise;
-    assert.equal(b.source, 'partial', 'stage 1 reused, stage 2 actually run');
-    assert.equal(b.subsOf, KEY);
-    assert.ok(b.subs && b.subs[KEY], 'the sub-buckets the user asked for exist');
-    assert.deepEqual(Object.keys(b.subs[KEY]).sort(), MODEL.sub[KEY].map((s) => s.key).sort());
-    /* the cells are the CACHED ones, byte for byte — that is the point of not re-running stage 1 */
+    assert.equal(a.source, 'measured');
+    assert.equal(a.trialsTotal, a.trialsRun, 'one stage: what ran is what stands behind it');
+    const b = await w.SIM.run({ v: 46, q: 0.85, trials: 20 }).promise;
+    assert.equal(b.source, 'cache');
     for (const k of Object.keys(a.cells)) assert.deepEqual(b.cells[k], a.cells[k], k);
-    /* and only the sub-buckets were paid for */
-    assert.equal(b.trialsRun, MODEL.sub[KEY].length * 20);
-    assert.equal(b.trialsTotal, a.trialsTotal + b.trialsRun);
-
-    /* a later request that the cache DOES satisfy is a plain hit again */
-    const c = await w.SIM.run({ v: 46, q: 0.85, trials: 20, subsOf: KEY }).promise;
-    assert.equal(c.source, 'cache');
-    assert.equal(c.subsOf, KEY);
-    /* and a request for LESS than the entry carries is satisfied by it */
-    const d = await w.SIM.run({ v: 46, q: 0.85, trials: 20 }).promise;
-    assert.equal(d.source, 'cache');
-  })();
-});
-
-test('a second expanded cell gets its own stage 2, not the first cell\'s', () => {
-  const X = 'SMPAIR_CONN|DS', Y = 'AA_BIGPAIR|DS';
-  const w = makeWindow();
-  return (async () => {
-    const a = await w.SIM.run({ v: 44, q: 0.85, trials: 20, subsOf: X }).promise;
-    assert.equal(a.subsOf, X);
-    const b = await w.SIM.run({ v: 44, q: 0.85, trials: 20, subsOf: Y }).promise;
-    assert.equal(b.subsOf, Y, 'the cell that was asked for, not the cached one');
-    assert.ok(b.subs[Y] && !b.subs[X]);
-    assert.equal(b.source, 'partial');
-  })();
-});
-
-test('the partial run reports a rate for what it ran, not for what it inherited', () => {
-  const KEY = 'SMPAIR_CONN|DS';
-  const w = makeWindow();
-  return (async () => {
-    await w.SIM.run({ v: 43, q: 0.85, trials: 20 }).promise;
-    const b = await w.SIM.run({ v: 43, q: 0.85, trials: 20, subsOf: KEY }).promise;
-    assert.ok(b.rate > 0 && isFinite(b.rate));
-    assert.ok(b.rate <= (b.trialsRun * 1000) / Math.max(1, b.elapsedMs) + 1e-9,
-      'the rate is computed from trialsRun, so it cannot be inflated by the cached stage 1');
   })();
 });

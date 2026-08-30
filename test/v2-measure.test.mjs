@@ -291,24 +291,6 @@ test('the filtered kernel keeps the villains inside the range and the pot legal'
   assert.ok(VILLAIN_DISCIPLINE > 0 && VILLAIN_DISCIPLINE < 1, 'q is a mix, not a switch');
 });
 
-// ---------------------------------------------------------------------------
-// §2.4 the sub layer's own features
-// ---------------------------------------------------------------------------
-test('sub-bucket feature counts sum to their cell', () => {
-  const e = E();
-  const acc = { danglers: new Float64Array(e.cellKeys.length), nut: new Float64Array(e.cellKeys.length),
-    mono: new Float64Array(e.cellKeys.length), tri: new Float64Array(e.cellKeys.length),
-    hi9: new Float64Array(e.cellKeys.length), quads: new Float64Array(e.cellKeys.length) };
-  e.subList.forEach((s, i) => {
-    for (const f of Object.keys(acc)) acc[f][s.cell] += e.subFeat[f][i];
-  });
-  for (let u = 0; u < e.cellKeys.length; u++) {
-    for (const f of Object.keys(acc)) {
-      assert.ok(Math.abs(acc[f][u] - e.feat[f][u]) < 1e-9,
-        `${e.cellKeys[u]} ${f}: sub sum ${acc[f][u]} vs cell ${e.feat[f][u]}`);
-    }
-  }
-});
 
 test('rho interpolates over whatever span the data covers', () => {
   const five = [1, 2, 3, 4, 5];
@@ -343,26 +325,15 @@ test('the shipped cells carry eq to N=7, a cooler, and the lattice', { skip: !HA
   }
 });
 
-test('sub-bucket mplay is a real measurement, and rebuilds its cell', { skip: !HAVE_V2 }, () => {
-  let worst = 0, worstAt = '', differs = 0, buckets = 0;
-  for (const k of Object.keys(M.sub)) {
+test('every live cell carries its own mplay, at 3 dp', { skip: !HAVE_V2 }, () => {
+  let n = 0;
+  for (const k of Object.keys(M.cells)) {
     const c = M.cells[k];
-    const list = M.sub[k];
-    let lg = 0;
-    for (const s of list) {
-      assert.equal(s.eq.length, NMAX, k);
-      assert.equal(+s.mplay.toFixed(3), s.mplay);
-      assert.ok(s.cooler >= 0 && s.cooler <= 1);
-      lg += (s.combos / c.combos) * Math.log(s.mplay);
-      buckets++;
-      if (s.mplay !== c.mplay) differs++;
-    }
-    // M_play is a product of factors raised to combo shares, so the cell value is EXACTLY the
-    // combo-weighted geometric mean of its sub-buckets'. Only 3-dp rounding separates them.
-    const d = Math.abs(Math.exp(lg) - c.mplay);
-    if (d > worst) { worst = d; worstAt = k; }
+    if (!c.combos) continue;
+    assert.equal(c.eq.length, NMAX, k);
+    assert.equal(+c.mplay.toFixed(3), c.mplay, k);
+    assert.ok(c.cooler >= 0 && c.cooler <= 1, k);
+    n++;
   }
-  assert.ok(worst < 0.002, `worst reconstruction error ${worst.toFixed(5)} at ${worstAt}`);
-  assert.ok(differs > buckets * 0.3,
-    `${differs}/${buckets} sub-buckets differ from their cell — the layer would be pointless otherwise`);
+  assert.ok(n >= 120, `${n} live cells`);
 });

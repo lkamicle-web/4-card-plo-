@@ -225,7 +225,9 @@ export function verifyModel(model, opts = {}) {
     // has not really been paid back:
     //   sub     72K -> 0   the layer is gone: no `sub` block, no per-bucket mplay/cooler, and the
     //                      cell is now the finest unit this model resolves.
-    //   total  195 -> 125K measured 118.9K. Headroom 5%, the same margin as every block above.
+    //   total  195 -> 120K measured 113.9K, against 183.5K before the cut — the whole 69.5K of the
+    //                      sub block, and nothing else moved. Headroom 5%, the same margin as
+    //                      every block above.
     //
     // V2-PLAN §2.5 quotes its ceiling as "220 KB pretty-printed". Measured, the emitted file is
     // 143.1 KB as written and 242.2 KB under JSON.stringify(m, null, 1). The plan compares that
@@ -234,7 +236,7 @@ export function verifyModel(model, opts = {}) {
     // v-points, still pretty-prints to 221.0 KB. So the literal reading is not satisfiable by the
     // plan's own remedy, and the ceiling is read on the basis it was written against: the file as
     // emitted. See docs/V2-PLAN.md §2.5, updated with these measurements.
-    const BUD = { cells: 65 * 1024, meta: 13 * 1024, order: 43 * 1024, total: 125 * 1024 };
+    const BUD = { cells: 65 * 1024, meta: 13 * 1024, order: 43 * 1024, total: 120 * 1024 };
     const ok = sizes.cells <= BUD.cells && sizes.meta <= BUD.meta
       && sizes.order <= BUD.order && sizes.total <= BUD.total;
     G('D6', ok, `cells ${(sizes.cells / 1024).toFixed(1)}K/${BUD.cells / 1024}K · ` +

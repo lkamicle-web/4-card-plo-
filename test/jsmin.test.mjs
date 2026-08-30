@@ -214,7 +214,7 @@ test('the stripped taxonomy classifies the same hands as the module', () => {
     while (set.size < 4) set.add(rand(52));
     hands.push([...set]);
   }
-  for (const fn of ['rowOf', 'colOf', 'cellKeyOf', 'subKeyOf', 'suitPattern', 'nutSuited',
+  for (const fn of ['rowOf', 'colOf', 'cellKeyOf', 'suitPattern', 'nutSuited',
     'adjRaw', 'danglerCount', 'domDistinct']) {
     for (const h of hands) {
       const want = T[fn](h);

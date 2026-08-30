@@ -2,10 +2,10 @@
 // against the model the UI will look the answer up in.
 //
 // The parser's whole job is a claim about the taxonomy: "these four ranks with this suit code are
-// THAT cell and THAT sub-bucket, or nothing at all." So the tests are not shape assertions on a
-// return value — they re-derive the answer from `rowOf`/`colOf`/`subKeyOf` and, for the negative
-// verdicts, from the full 270,725-hand enumeration, which is the only thing that can prove a
-// "void" is really void rather than a search that gave up early.
+// THAT cell, or nothing at all." So the tests are not shape assertions on a return value — they
+// re-derive the answer from `rowOf`/`colOf` and, for the negative verdicts, from the full
+// 270,725-hand enumeration, which is the only thing that can prove a "void" is really void rather
+// than a search that gave up early.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,8 +14,8 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseHandQuery, suitsForRanks, SEARCH_SUFFIXES, RANK_CHARS, rankCharValue, rankValueChar,
-  rowOf, colOf, subKeyOf, rankValues, COL_ORDER, ROW_ORDER,
-  SUIT_CHARS, cardChars, suitSub,
+  rowOf, colOf, rankValues, COL_ORDER, ROW_ORDER,
+  SUIT_CHARS, cardChars,
 } from '../scripts/lib/taxonomy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -89,8 +89,6 @@ test('the suffix table is exactly the spec\'s, and it is read off COL_ORDER', ()
   assert.equal(SEARCH_SUFFIXES.SSA.col, 'SSA');
   assert.equal(SEARCH_SUFFIXES.DS.col, 'DS');
   assert.equal(SEARCH_SUFFIXES.F.col, 'FLAW');
-  // F is the ONLY suffix whose column does not already imply one suit pattern
-  assert.equal(SEARCH_SUFFIXES.F.sub, 'ms4');
   // and one worked example per suffix, on a rank string every column can carry
   const got = {};
   for (const s of ['R', 'RB', 'SS', 'SSA', 'DS', 'F']) got[s] = P('AKT9' + s);
@@ -100,38 +98,28 @@ test('the suffix table is exactly the spec\'s, and it is read off COL_ORDER', ()
   assert.equal(got.SSA.cellKey, 'RUN2|SSA');
   assert.equal(got.DS.cellKey, 'RUN2|DS');
   assert.equal(got.F.cellKey, 'RUN2|FLAW');
-  for (const s of ['R', 'RB', 'SS', 'SSA', 'DS', 'F']) assert.equal(got[s].level, 'sub', s);
+  for (const s of ['R', 'RB', 'SS', 'SSA', 'DS', 'F']) assert.equal(got[s].level, 'cell', s);
 });
 
-test('F narrows FLAW to its ms4 (monotone) sub-bucket', () => {
-  const r = P('AKT9F');
-  assert.equal(r.status, 'ok');
-  assert.equal(r.level, 'sub');
-  assert.equal(r.col, 'FLAW');
-  assert.equal(r.subKey.split('|')[1], 'ms4');
-  assert.equal(subKeyOf(r.cards).split('|')[1], 'ms4');
-  // the cards really are four of one suit
-  assert.equal(new Set(r.cards.map((c) => c & 3)).size, 1);
-  // FLAW is genuinely ambiguous at the cell level, which is why F has to exist: the same cell
-  // also holds three-flush hands, and colOf cannot tell them apart.
-  const three = suitsForRanks(r.ranks, { col: 'FLAW', sub: 'ms3' });
-  assert.ok(three, 'AKT9 must also have a three-flush form');
-  assert.equal(colOf(three), 'FLAW');
-  assert.notEqual(subKeyOf(three), r.subKey);
-});
+test('F is the suit-wasted column, and covers both patterns in it', () => {
+  // `colOf` folds the three-flush and the monotone pattern into one column, and so does `F`. The
+  // parser does not try to separate them — nothing downstream of it can tell them apart either.
+  const mono = P('AKT9F');
+  assert.equal(mono.status, 'ok');
+  assert.equal(mono.level, 'cell');
+  assert.equal(mono.col, 'FLAW');
+  assert.equal(colOf(mono.cards), 'FLAW');
 
-test('F falls back to the FLAW cell when no monotone hand has those ranks', () => {
-  // a pair needs two suits, so a paired hand can never be four of one suit
+  // a pair needs two suits, so a paired hand can never be four of one suit — and F still resolves,
+  // because the same column carries the three-flush form
   for (const q of ['AA98F', '9655F', 'KK32F', 'TT98FLAW']) {
     const r = P(q);
     assert.equal(r.status, 'ok', q);
-    assert.equal(r.level, 'cell', q + ' should stop at the cell rung');
+    assert.equal(r.level, 'cell', q);
     assert.equal(r.col, 'FLAW', q);
-    assert.equal(r.subKey, null, q);
     assert.equal(colOf(r.cards), 'FLAW', q);
-    assert.equal(subKeyOf(r.cards).split('|')[1], 'ms3', q + ' falls back to the three-flush form');
   }
-  // and where even the three-flush is impossible (only two distinct ranks) it is void, not a cell
+  // and where the column is genuinely unrealisable it is void, not a cell
   for (const q of ['AAKKF', 'JJTTF', '5522F']) {
     assert.equal(P(q).status, 'void', q);
     assert.equal(P(q).level, null, q);
@@ -143,7 +131,6 @@ test('the resolution ladder goes exactly as deep as the input determines', () =>
   assert.equal(row.level, 'row');
   assert.equal(row.col, null);
   assert.equal(row.cellKey, null);
-  assert.equal(row.subKey, null);
   assert.equal(row.row, rowOf(row.cards));
   // the row claim: the same row in all five columns
   for (const col of COL_ORDER) {
@@ -153,12 +140,10 @@ test('the resolution ladder goes exactly as deep as the input determines', () =>
   const cell = P('9655F');
   assert.equal(cell.level, 'cell');
   assert.equal(cell.cellKey, 'SMPAIR_CONN|FLAW');
-  assert.equal(cell.subKey, null);
 
-  const sub = P('9655DS');
-  assert.equal(sub.level, 'sub');
-  assert.equal(sub.cellKey, 'SMPAIR_CONN|DS');
-  assert.equal(sub.subKey, '1p|ds|conn|mid');
+  const ds = P('9655DS');
+  assert.equal(ds.level, 'cell');
+  assert.equal(ds.cellKey, 'SMPAIR_CONN|DS');
 });
 
 test('garbage and partial inputs are told apart', () => {
@@ -171,11 +156,11 @@ test('garbage and partial inputs are told apart', () => {
   for (const q of ['9655X', '9655B', '9655SSAA', '965DS', '9DS', 'DS', 'XXXX', '1234', '9655 DS extra', 'AAAAA', '96555']) {
     assert.equal(st(q), 'invalid', JSON.stringify(q));
   }
-  // a partial input never claims a cell or a sub-bucket
+  // a partial input never claims a cell
   for (const q of ['', '96', '9655S', '9655X', '965DS']) {
     const r = P(q);
     assert.equal(r.level, null, q);
-    assert.equal(r.subKey, null, q);
+    assert.equal(r.cellKey, null, q);
     assert.ok(r.message.length > 0, q + ' must say why');
   }
   // null / undefined / non-strings do not throw
@@ -184,7 +169,7 @@ test('garbage and partial inputs are told apart', () => {
 });
 
 test('every "ok" resolution is re-derivable from the taxonomy itself', () => {
-  let row = 0, cell = 0, sub = 0, voids = 0;
+  let row = 0, cell = 0, voids = 0;
   for (const rs of rankMultisets()) {
     const canon = canonOf(rs);
     const bare = P(canon);
@@ -201,26 +186,19 @@ test('every "ok" resolution is re-derivable from the taxonomy itself', () => {
       if (r.status === 'void') { assert.equal(r.cards, null); voids++; continue; }
       assert.deepEqual(rankValues(r.cards), rs, canon + suf);
       assert.equal(rowOf(r.cards) + '|' + colOf(r.cards), r.cellKey, canon + suf);
-      if (r.level === 'sub') {
-        assert.equal(subKeyOf(r.cards), r.subKey, canon + suf);
-        assert.equal(r.subKey.split('|')[1], want.sub, canon + suf);
-        sub++;
-      } else {
-        assert.equal(r.level, 'cell', canon + suf);
-        assert.equal(want.col, 'FLAW', 'only F can stop at the cell rung');
-        assert.equal(r.subKey, null);
-        cell++;
-      }
+      assert.equal(r.level, 'cell', canon + suf);
+      assert.equal(colOf(r.cards), want.col, canon + suf);
+      cell++;
     }
   }
   assert.equal(row, 1820);
-  assert.ok(sub > 8000 && cell > 0 && voids > 0, `sub ${sub} cell ${cell} void ${voids}`);
+  assert.ok(cell > 8000 && voids > 0, `cell ${cell} void ${voids}`);
 });
 
 test('a "void" verdict is proved by the full enumeration, not assumed', () => {
-  // build the ground truth once: which (rank pattern, column) and (rank pattern, subKey) pairs
-  // any of the 270,725 hands actually realises
-  const haveCol = new Set(), haveSub = new Set();
+  // build the ground truth once: which (rank pattern, column) pairs any of the 270,725 hands
+  // actually realises
+  const haveCol = new Set();
   const h = [0, 0, 0, 0];
   for (let a = 0; a < 52; a++) {
     h[0] = a;
@@ -232,25 +210,23 @@ test('a "void" verdict is proved by the full enumeration, not assumed', () => {
           h[3] = d;
           const canon = canonOf(rankValues(h));
           haveCol.add(canon + ' ' + colOf(h));
-          haveSub.add(canon + ' ' + subKeyOf(h).split('|')[1]);
         }
       }
     }
   }
-  let voids = 0, subs = 0, cells = 0;
+  let voids = 0, cells = 0;
   for (const rs of rankMultisets()) {
     const canon = canonOf(rs);
     for (const suf of SUFFIXES) {
       const r = P(canon + suf), want = SEARCH_SUFFIXES[suf];
       const colReal = haveCol.has(canon + ' ' + want.col);
-      const subReal = colReal && haveSub.has(canon + ' ' + want.sub);
       if (r.status === 'void') { assert.equal(colReal, false, canon + suf + ' is NOT void'); voids++; continue; }
       assert.equal(colReal, true, canon + suf + ' claims a column no hand realises');
-      if (r.level === 'sub') { assert.equal(subReal, true, canon + suf); subs++; }
-      else { assert.equal(subReal, false, canon + suf + ' stopped at the cell but ms4 exists'); cells++; }
+      assert.equal(r.level, 'cell', canon + suf);
+      cells++;
     }
   }
-  assert.equal(voids + subs + cells, 1820 * SUFFIXES.length);
+  assert.equal(voids + cells, 1820 * SUFFIXES.length);
   assert.ok(voids > 0 && cells > 0);
 });
 
@@ -266,11 +242,6 @@ test('every resolution names something the shipped model actually carries', () =
       assert.ok(allCells.has(r.cellKey), r.cellKey + ' is not one of the 145 cells');
       if (r.status === 'void') { voided++; continue; }
       assert.ok(live.has(r.cellKey), canon + suf + ' -> ' + r.cellKey + ' is not a live cell');
-      if (r.level === 'sub') {
-        const subs = MODEL.sub[r.cellKey] || [];
-        assert.ok(subs.some((s) => s.key === r.subKey),
-          canon + suf + ' -> ' + r.cellKey + ' has no shipped bucket ' + r.subKey);
-      }
       ok++;
     }
   }
@@ -303,7 +274,7 @@ test('suitsForRanks is exhaustive and deterministic', () => {
 // ---------------------------------------------------------------------------
 // The CARD grammar — the second half of the universal finder. Same parser, same result shape;
 // the only new thing is that the classifier is asked directly instead of being reconstructed
-// from a suit code, so the answer is the bucket the hand really lands in.
+// from a suit code, so the answer is the cell the hand really lands in.
 // ---------------------------------------------------------------------------
 const cardsOf = (str) => {
   const out = [];
@@ -322,12 +293,10 @@ test('four specific cards resolve to the hand rung, re-derived from the classifi
     assert.equal(r.row, rowOf(cards), q);
     assert.equal(r.col, colOf(cards), q);
     assert.equal(r.cellKey, rowOf(cards) + '|' + colOf(cards), q);
-    assert.equal(r.subKey, subKeyOf(cards), q);
     assert.deepEqual(r.ranks, rankValues(cards), q);
     assert.equal(r.suffix, null, q);
-    // and it names a live cell carrying that bucket
+    // and it names a live cell
     assert.ok((MODEL.cells[r.cellKey].combos || 0) > 0, q + ' -> ' + r.cellKey);
-    assert.ok((MODEL.sub[r.cellKey] || []).some((x) => x.key === r.subKey), q + ' -> ' + r.subKey);
   }
 });
 
@@ -378,11 +347,12 @@ test('the two grammars are told apart on one character and never collide', () =>
   assert.equal(P('9655D').status, 'incomplete');
 });
 
-test('the hand rung agrees with the class rung wherever the class rung can reach', () => {
-  // For the four unambiguous columns a suit code names exactly one sub-bucket, so a hand and the
-  // class query for its ranks + column must land on the same cell AND the same bucket.
-  const BY_COL = { DS: 'DS', SS: 'SS', SSA: 'SSA', RB: 'RB' };
-  let agreed = 0, flawed = 0;
+test('the two rungs agree: a hand and the class query for its ranks land on the same cell', () => {
+  // The suit code names a column and the hand IS its column, so the two halves of the finder must
+  // never disagree about where a hand lives. Every column maps to exactly one suffix now — there
+  // is no ambiguous case left, because there is nothing below the cell to be ambiguous about.
+  const BY_COL = { DS: 'DS', SS: 'SS', SSA: 'SSA', RB: 'RB', FLAW: 'F' };
+  let agreed = 0;
   const h = [0, 0, 0, 0];
   for (let a = 0; a < 52; a += 3) {
     h[0] = a;
@@ -394,20 +364,13 @@ test('the hand rung agrees with the class rung wherever the class rung can reach
           h[3] = d;
           const hand = P(h.slice().sort((x, y) => y - x).map(cardChars).join(''));
           assert.equal(hand.status, 'ok');
-          const col = colOf(h);
-          const cls = P(canonOf(rankValues(h)) + (BY_COL[col] || 'F'));
+          const cls = P(canonOf(rankValues(h)) + BY_COL[colOf(h)]);
+          assert.equal(cls.status, 'ok', hand.canon);
           assert.equal(cls.cellKey, hand.cellKey, hand.canon + ' cell');
-          if (BY_COL[col]) { assert.equal(cls.subKey, hand.subKey, hand.canon + ' bucket'); agreed++; }
-          else {
-            // FLAW is the documented exception: colOf folds ms3 and ms4 into one column, so the
-            // class query can only ask for ms4 (or fall back to the cell). The hand knows better.
-            if (suitSub(h) === 'ms4') assert.equal(cls.subKey, hand.subKey, hand.canon + ' monotone bucket');
-            else assert.notEqual(cls.subKey, hand.subKey, hand.canon + ' three-flush is not the ms4 bucket');
-            flawed++;
-          }
+          agreed++;
         }
       }
     }
   }
-  assert.ok(agreed > 100 && flawed > 0, `agreed ${agreed} flawed ${flawed}`);
+  assert.ok(agreed > 100, `agreed ${agreed}`);
 });

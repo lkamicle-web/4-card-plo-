@@ -157,16 +157,11 @@ something you turn on.
   broadway run × rainbow gives up **−25.8** equity points heads-up, while a low rundown × nut-suited
   *gains* **+11.2**. Off by default, because it is a different measurement from the one the shipped
   tiers are cut from.
-- **Expand a cell in place.** Click a cell and it splits into its sub-buckets — combos, equity, ν,
-  and the tier each would earn *scored as-if standalone*. It is where the TT/JJ story becomes
-  visible. At the vs-3-bet node it reports that there is no bucket verdict rather than inventing
-  one from machinery that measures something else.
 - **One hand finder, two grammars.** **FIND HAND** in the top bar takes either question and tells
   them apart on the second character, so there is no mode to pick. `AsKh9s8d` — four specific
   cards — opens the inspector on that hand and outlines the cell it lives in. `9655DS` — four
   ranks in any order, with an optional `R`/`SS`/`SSA`/`DS`/`F` suffix — moves the grid to that
-  class, or opens the one sub-bucket the shape pins. `/` focuses it, `↓` steps into the grid,
-  `Esc` clears it and everything it opened.
+  cell. `/` focuses it, `↓` steps into the grid, `Esc` clears it and everything it opened.
 - **A Simulate button.** When the villain profile is on at a VPIP or a discipline the shipped
   lattice never measured, the page stops interpolating and offers to measure it for real:
   **3,075,000 trials** in Web Workers spawned from a Blob URL, about **3.4 seconds** with four
@@ -216,7 +211,7 @@ Node ≥ 22, **zero npm dependencies** anywhere in the repo — stdlib only (`no
 
 ```bash
 node scripts/generate-data.mjs          # enumerate, measure, derive, emit data/model.json
-node scripts/verify.mjs                 # 46 gates: D1-D8, V1-V6, B, invariants I1-I31
+node scripts/verify.mjs                 # 44 gates: D1-D8 (no D3), V1-V6, B, I1-I31 (no I17)
 node scripts/build.mjs                  # compile src/shell.html -> index.html
 node --test test/*.test.mjs             # evaluator, taxonomy and policy unit tests
 node smoke.mjs                          # headless browser gate (Playwright, if installed)
@@ -230,8 +225,8 @@ a single cell re-measurable in isolation. `meta.seed` is a fixed build label rec
 not an input.
 
 A full run is a couple of minutes on a 4-core box: full enumeration of all 270,725 hands into
-the 29×5 grid, 100,000 multiway trials per cell, 40,000 heads-up trials per cell per component
-of the 3-bet range, plus the sub-bucket layer. The verifier then re-measures a benchmark subset
+the 29×5 grid, 100,000 multiway trials per cell, and 40,000 heads-up trials per cell per component
+of the 3-bet range. The verifier then re-measures a benchmark subset
 and cross-checks the production evaluator against a second, independently written equity engine
 (`scripts/lib/equity-ref.mjs`) — two engines agreeing is stronger evidence than either alone.
 

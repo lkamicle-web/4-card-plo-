@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  rowOf, colOf, nutSuited, danglerCount, domDistinct, adjRaw, subKeyOf, subLabel,
+  rowOf, colOf, nutSuited, danglerCount, domDistinct, adjRaw,
   gapOf4, gapVec, best3Span, isDoubleConnector, rankValues, topInGapOrientation,
   ROW_ORDER, COL_ORDER, ROW_META, BAND_ORDER, enumerateAll, spanExamples,
 } from '../scripts/lib/taxonomy.mjs';
@@ -122,27 +122,12 @@ test('D2 — the structurally empty cells are exactly the derivable ones', () =>
   }
 });
 
-test('I17 — the sub-bucket layer partitions every cell', () => {
+test('D1 — the cells partition the whole deck', () => {
   const E = enumerateAll();
-  let total = 0, buckets = 0;
-  for (let i = 0; i < E.cellKeys.length; i++) {
-    const m = E.subs[i];
-    if (E.combos[i] === 0) { assert.equal(m.size, 0); continue; }
-    let s = 0;
-    for (const rec of m.values()) s += rec.combos;
-    assert.equal(s, E.combos[i], E.cellKeys[i]);
-    total += s;
-    buckets += m.size;
-  }
+  let total = 0;
+  for (let i = 0; i < E.cellKeys.length; i++) total += E.combos[i];
   assert.equal(total, 270725);
-  assert.ok(buckets >= 300 && buckets <= 400, `${buckets} sub-buckets, target band 300-400`);
-});
-
-test('sub-keys and their labels are well formed', () => {
-  const k = subKeyOf(h('AsAhKsKh'));
-  assert.equal(k.split('|').length, 4);
-  assert.ok(subLabel(k).includes('double-suited'));
-  assert.ok(!subLabel(k).includes('undefined'));
+  assert.equal(E.total, 270725);
 });
 
 test('every row and band is described', () => {
