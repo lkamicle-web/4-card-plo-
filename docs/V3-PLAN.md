@@ -613,6 +613,19 @@ Rules the script encodes:
   commit if a shipped feature's gate id is absent.
 - Spike results (Phase 0) are written as memos into `docs/spikes/`, and the P1+ launches read
   them — the script, not a human relay, carries the decision-rule inputs forward.
+- **Model tiering, for credit efficiency** (every `agent()` call sets `model` explicitly, so the
+  launching session's own model is never silently inherited by the workers). The Fable tier
+  orchestrates *and plans*: a **Fable milestone architect** (read-only) writes the work-order for
+  every max-effort step before that worker runs, and triages a red verification before the single
+  fix round spends its shot — Fable plans, Opus executes. Workers run **Opus at xhigh** effort
+  (implementation lanes, spikes, integrations, refuters and their resolution); **Opus at max**
+  for the three highest-stakes calls (the payoff-interface freeze, the I34 EV-cut quarantine,
+  the P5 calibration verdict) and for the fix round — each milestone allows exactly one before
+  returning a blocker report, and it runs only after a worker already failed — each under a
+  Fable-authored work-order or triage; **Sonnet at medium** for scout-shaped work (prechecks and
+  the verify agents that run the three checks and grep gate ids); **Haiku** for phase-boundary
+  commits. The script is launched from a **top-level session**, never from inside a
+  sub-orchestrator — its Fable architect tier is the second and last Fable layer.
 
 ---
 

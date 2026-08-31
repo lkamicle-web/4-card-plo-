@@ -45,6 +45,29 @@ const HOUSE = [
 const MILESTONES = ["phase0", "P1", "P2", "P3", "P4", "P5"];
 
 // ---------------------------------------------------------------------------
+// Model policy (credit efficiency, decided 2026-08-31)
+// ---------------------------------------------------------------------------
+// The LAUNCHING SESSION (Fable) is the orchestrator. Its control-flow cost is near zero (this
+// script is deterministic JS), but it is NOT a passive launcher: the fable tier below does the
+// high-level planning inside the run. Workers are tiered by task shape, and every agent() call
+// sets `model` explicitly so a Fable launch never silently inherits Fable pricing onto every
+// worker in the run:
+//   fable @ high   - the milestone ARCHITECT: writes the work-order for every opus@max step
+//                    before that worker runs (decision points called, sharp edges, order of
+//                    operations), and triages a red verification before the fix round fires.
+//                    Fable plans; it never implements - its calls are read-only.
+//   opus @ xhigh   - the default worker: implementation lanes, spikes, integration/merges,
+//                    consolidation, red-team refuters and their resolution.
+//   opus @ max     - the highest-stakes calls only: the payoff-interface freeze (the program's
+//                    load-bearing architecture contract), the I34 EV-cut quarantine, the P5
+//                    calibration verdict (sole --force authorization), and the fix round (one
+//                    per milestone, running only after a worker already failed).
+//                    Each executes under a fable-authored work-order or triage.
+//   sonnet @ medium - scout-shaped work: prechecks and verification agents that run commands,
+//                    read memos, grep gate ids, and report. Quality-equivalent there, ~5x cheaper.
+//   haiku          - commit agents (git add / commit with a supplied message).
+
+// ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
 
@@ -154,6 +177,15 @@ const calibrationSchema = {
   required: ["done", "summary", "verdict", "blockers"]
 };
 
+const workOrderSchema = {
+  type: "object",
+  properties: {
+    plan: { type: "string" },
+    risks: { type: "array", items: { type: "string" } }
+  },
+  required: ["plan", "risks"]
+};
+
 // ---------------------------------------------------------------------------
 // State + generic stages
 // ---------------------------------------------------------------------------
@@ -214,25 +246,70 @@ function commitPrompt(message) {
   ].join("\n");
 }
 
+// Fable-tier planning (model policy above): the milestone architect writes the work-order a
+// max-effort Opus worker executes. Read-only, refines-never-overrides the plan; a null return
+// (architect died) degrades to the plan text alone rather than blocking the step.
+async function fableWorkOrder(state, phaseTitle, label, taskDescription) {
+  const wo = await agent([
+    HOUSE,
+    "",
+    "TASK - orchestrator work-order (you are the Fable-tier milestone architect; you PLAN, you do not implement - read files freely, WRITE NOTHING). A max-effort Opus worker is about to execute the step quoted below. Read the docs/V3-PLAN.md sections it cites and the current code it touches, then write its work-order: the decision points it will hit with your call on each, the sharp edges and integration risks, the order of operations, and what would count as a genuine blocker worth stopping for. Refine, never override, the plan - where you disagree with it, record that as a risk, do not re-plan. Your tier cannot block a milestone: surface any would-be blocker as a risk, not a refusal, and ignore the quoted step's own Return-JSON line - your output contract is the one below.",
+    "",
+    "THE STEP:",
+    taskDescription,
+    "",
+    "Return JSON: plan (the work-order, markdown, 20-60 lines), risks (one-line sharp edges)."
+  ].join("\n"), { label: "architect-" + label, phase: phaseTitle, schema: workOrderSchema, model: "fable", effort: "high" });
+  if (!wo) {
+    state.notes.push("architect for " + label + " died; the step runs on the plan text alone");
+    return "";
+  }
+  state.notes.push("work-order " + label + ": " + wo.risks.length + " risk(s) flagged");
+  return "\n\nORCHESTRATOR WORK-ORDER (Fable milestone architect - it refines, never overrides, the plan sections cited above; where they conflict, the plan wins and the conflict is a finding):\n" +
+    wo.plan + "\nRISKS:\n" + wo.risks.map(function (r) { return "- " + r; }).join("\n");
+}
+
 async function closeMilestone(state, phaseTitle, requiredGateIds, commitMessage, extraNote) {
   phase(phaseTitle);
   state.phasesRun.push(phaseTitle);
   log("Verifying: " + state.milestone + " (required gates: " + requiredGateIds.join(", ") + ")");
   let v = await agent(verifyPrompt(requiredGateIds, extraNote), {
-    label: "verify-" + state.milestone, phase: phaseTitle, schema: verifySchema, effort: "medium"
+    label: "verify-" + state.milestone, phase: phaseTitle, schema: verifySchema, model: "sonnet", effort: "medium"
   });
   if (!v) {
     state.blockers.push("verification agent died on first pass");
     return state;
   }
   if (!v.green || v.missingGateIds.length > 0) {
-    log("Red: " + v.failingGates.concat(v.missingGateIds).join(", ") + " - running the single fix round");
-    const fix = await agent(fixPrompt(v), {
-      label: "fix-" + state.milestone, phase: phaseTitle, schema: stepSchema, effort: "xhigh"
+    if (state.blockers.length > 0) {
+      // Standing blockers already forbid this milestone's commit, so the outcome is decided:
+      // don't spend the fable triage + opus@max fix round on a milestone that cannot close.
+      state.green = false;
+      state.blockers.push("milestone red with standing blockers - triage/fix skipped: " +
+        v.failingGates.concat(v.missingGateIds).join(", ") + " | " + v.detail);
+      return state;
+    }
+    log("Red: " + v.failingGates.concat(v.missingGateIds).join(", ") + " - triaging, then the single fix round");
+    // Fable triages the failure before the one fix round spends its only shot (model policy above).
+    const triage = await agent([
+      HOUSE,
+      "",
+      "TASK - failure triage (you are the Fable-tier orchestrator; read files freely, WRITE NOTHING, fix nothing). The milestone verification came back red:",
+      "FAILING GATES/TESTS: " + v.failingGates.join(", "),
+      "MISSING REQUIRED GATE IDS: " + v.missingGateIds.join(", "),
+      "DETAIL:\n" + v.detail,
+      "Diagnose the most likely root cause(s) from the repo state and write the strategy the SINGLE fix round should follow: where to look first, what the fix must and must not touch (never weaken gates, never re-freeze fixtures), and how to prove it fixed the cause rather than the symptom.",
+      "Return JSON: plan (the fix strategy, markdown), risks (ways the obvious fix would be wrong)."
+    ].join("\n"), { label: "triage-" + state.milestone, phase: phaseTitle, schema: workOrderSchema, model: "fable", effort: "high" });
+    if (!triage) state.notes.push("triage for " + state.milestone + " died; the fix round runs on the failure detail alone");
+    const fix = await agent(fixPrompt(v) + (triage
+      ? "\n\nORCHESTRATOR TRIAGE (Fable-tier diagnosis - follow it unless the evidence in the tree contradicts it, and say so if it does; the hard limits above are NOT negotiable by this triage):\n" + triage.plan + "\nRISKS:\n" + triage.risks.map(function (r) { return "- " + r; }).join("\n")
+      : ""), {
+      label: "fix-" + state.milestone, phase: phaseTitle, schema: stepSchema, model: "opus", effort: "max"
     });
     if (fix && fix.blockers.length) state.blockers.push(...fix.blockers);
     v = await agent(verifyPrompt(requiredGateIds, extraNote), {
-      label: "reverify-" + state.milestone, phase: phaseTitle, schema: verifySchema, effort: "medium"
+      label: "reverify-" + state.milestone, phase: phaseTitle, schema: verifySchema, model: "sonnet", effort: "medium"
     });
   }
   if (v && v.green && v.missingGateIds.length === 0) {
@@ -247,7 +324,7 @@ async function closeMilestone(state, phaseTitle, requiredGateIds, commitMessage,
     }
     state.green = true;
     const c = await agent(commitPrompt(commitMessage), {
-      label: "commit-" + state.milestone, phase: phaseTitle, schema: commitSchema, effort: "low"
+      label: "commit-" + state.milestone, phase: phaseTitle, schema: commitSchema, model: "haiku", effort: "low"
     });
     if (c && c.committed) {
       state.commits.push(c.hash + " " + c.message);
@@ -294,7 +371,7 @@ async function redTeam(state, phaseTitle, constants, refutationDoc) {
   const refuters = (await parallel([0, 1, 2].map(function (i) {
     return function () {
       return agent(refuterPrompt(constants, i), {
-        label: "refuter-" + (i + 1), phase: phaseTitle, schema: refuterSchema, effort: "xhigh"
+        label: "refuter-" + (i + 1), phase: phaseTitle, schema: refuterSchema, model: "opus", effort: "xhigh"
       });
     };
   }))).filter(Boolean);
@@ -325,7 +402,7 @@ async function redTeam(state, phaseTitle, constants, refutationDoc) {
     "2. For each majority-unanchored constant: if docs/V3-PLAN.md section 6 already marks it 'cannot be anchored', verify it ships gated + flagged in `constants` + labeled in the Method view + badged (`estimate`/`interpolated`), and fix the flagging if any leg is missing. If the plan claims it IS anchored, the anchor is refuted: DO NOT invent a replacement anchor - flag the constant per section 6's flagged idiom if a bounding gate exists, otherwise report it as a blocker.",
     "3. Do not commit; the milestone-close stage commits.",
     "Return JSON: done, summary, newConstants (empty), blockers (each majority-unanchored constant that could be neither anchored nor legitimately gated+flagged - these stop the milestone)."
-  ].join("\n"), { label: "redteam-resolve", phase: phaseTitle, schema: stepSchema, effort: "high" });
+  ].join("\n"), { label: "redteam-resolve", phase: phaseTitle, schema: stepSchema, model: "opus", effort: "xhigh" });
   if (!res) state.blockers.push("red-team resolution agent died at " + phaseTitle);
   else {
     if (res.blockers.length) state.blockers.push(...res.blockers);
@@ -388,6 +465,7 @@ const B0_STEPS = [
   },
   {
     label: "b0-payoff-freeze",
+    effort: "max", // the program's load-bearing architecture contract (model policy above)
     prompt: [
       "TASK - B0 step 2: freeze the payoff interface (docs/V3-PLAN.md section 2 - read it in full and follow it exactly). Create scripts/lib/payoff.mjs exporting payoff(cells, potSize, spr, opts) -> { ev, se, source, supported } with exactly the section-2 semantics: cells = cell keys hero-first (HU length 2; multiway may return supported:false, never a guess); potSize in current-unit bb; spr = effective stack / potSize; opts = { ip, seed } - position enters through the argument, never global state; ev is unit-pure pot fraction in [0,1]; se always present and > 0, derived from real trial counts, never typed; out-of-domain never throws and never returns an unflagged number; pure function of (args, model hash). Implement THE STUB: return shipped eq[N] at every spr (source:'checkdown', se from the shipped trial counts). Then write gate I33 with clauses (a)-(f) from section 2 PLUS the separate monotonicity clause (ev monotone in checkdown equity at fixed spr - the clause written to be falsified; it is additional to the six, not one of them). Do not commit.",
       "Return JSON: done, summary, newConstants, blockers."
@@ -413,7 +491,7 @@ async function runPhase0(state) {
     return function () {
       return agent(spikePrompt(s), {
         label: "spike-" + s.id, phase: "P0 spikes + B0 freezes",
-        schema: spikeSchema, effort: "xhigh", isolation: "worktree"
+        schema: spikeSchema, model: "opus", effort: "xhigh", isolation: "worktree"
       });
     };
   }));
@@ -422,8 +500,12 @@ async function runPhase0(state) {
     const out = [];
     for (const step of B0_STEPS) {
       log("B0 serial step: " + step.label);
-      const r = await agent(HOUSE + "\n\n" + step.prompt, {
-        label: step.label, phase: "P0 spikes + B0 freezes", schema: stepSchema, effort: "xhigh"
+      const order = step.effort === "max"
+        ? await fableWorkOrder(state, "P0 spikes + B0 freezes", step.label, step.prompt)
+        : "";
+      const r = await agent(HOUSE + "\n\n" + step.prompt + order, {
+        label: step.label, phase: "P0 spikes + B0 freezes", schema: stepSchema,
+        model: "opus", effort: step.effort || "xhigh"
       });
       out.push(r);
       if (!r || !r.done) {
@@ -462,7 +544,7 @@ async function runPhase0(state) {
     "3. Adjust the affected later-phase specs per the plan's own decision rules: apply S-B's three-band rule (section 3.6 Grade table) by annotating sections 3.2/3.4/5.4 with the selected band and its consequences; apply S-A's branch (CFR+ vs LP/regret-matching, 6-max in/out per the half-budget rule) to section 3.3; apply S-C's outcome to sections 3.5/5.4; apply S-D's outcome to section 5.3/9; apply S-E's buy-list to section 9. Annotations only - do not rewrite plan prose.",
     "4. Draft the full section 7 gate catalog with reserved ids into the scripts/gates/ registry as stubs or a registry manifest (reserved, not yet enforced), and write S-C's PRE-REGISTERED PRIMACY CRITERIA verbatim (from the S-C memo) into the I46 entry - the bar is fixed now, before any EV number exists. If S-C failed, record I46 as unpassable-by-construction.",
     "Do not commit. Return JSON: done, summary, newConstants (empty expected), blockers."
-  ].join("\n"), { label: "consolidate", phase: "P0 consolidation", schema: stepSchema, effort: "xhigh" });
+  ].join("\n"), { label: "consolidate", phase: "P0 consolidation", schema: stepSchema, model: "opus", effort: "xhigh" });
   if (!cons || !cons.done) {
     state.blockers.push("consolidation failed" + (cons ? ": " + cons.blockers.join("; ") : " (agent died)"));
   } else if (cons.blockers.length) {
@@ -531,7 +613,7 @@ async function runP1(state) {
     return function () {
       return agent(lanePrompt(l), {
         label: "lane-" + l.id, phase: "P1 lane fan-out",
-        schema: laneSchema, effort: "xhigh", isolation: "worktree"
+        schema: laneSchema, model: "opus", effort: "xhigh", isolation: "worktree"
       });
     };
   }))).filter(Boolean);
@@ -559,7 +641,7 @@ async function runP1(state) {
     "3. THE B1 FLIP (docs/V3-PLAN.md sections 3.1, 5.1): flip the item-8 villain-profile default to ON - the flip changes the page's INITIAL STATE only, never the semantics of the legacy state; the OFF path stays object-identical. Then THE THIRD-FIXTURE CEREMONY: run scripts/freeze-tiers.mjs to freeze data/tiers-v3-default.fixture.txt at the new default state and commit the printed tier diff into docs/METHODOLOGY.md - ALONGSIDE, not replacing, the v2 fixture. This is the ONE prompt in P1 authorized to run the freeze ceremony.",
     "4. Confirm I22 AND I32 are green AFTER the merge and the flip (the whole point of the legacy lane). If I32 fires, the plan predicts this exact firing during the OFF-path work - fix the leak (most likely a memo key missing a new axis), never the fixture.",
     "Do not make the milestone commit (a later stage does). Return JSON: done, summary, newConstants (any constants integration itself introduced - expected empty), blockers."
-  ].join("\n"), { label: "integrate-P1", phase: "P1 integration + B1 flip", schema: stepSchema, effort: "xhigh" });
+  ].join("\n"), { label: "integrate-P1", phase: "P1 integration + B1 flip", schema: stepSchema, model: "opus", effort: "xhigh" });
   if (!integ || !integ.done) {
     state.blockers.push("P1 integration failed" + (integ ? ": " + integ.blockers.join("; ") : " (agent died)"));
     return closeMilestone(state, "P1 verify + commit", [], "v3 P1 (partial, red)", "");
@@ -591,7 +673,7 @@ async function runP2(state) {
     "",
     "TASK - P2 precheck (the payoff-interface freeze must precede all chain fan-out). Verify: (1) scripts/lib/payoff.mjs exists with the frozen section-2 signature; (2) gate I33 is present and GREEN right now (run `node scripts/verify.mjs`); (3) docs/spikes/S-A.md and docs/spikes/S-B.md exist - read both and extract S-B's grade band (A: p95<=2.5, B: 2.5-5.0, C: >5.0) and S-A's verdict (CFR+ ok, or LP/regret-matching fallback; 6-max in or out per the half-budget rule). Change nothing.",
     "Return JSON: ok (all three conditions hold), detail (S-A verdict + anything failing), gradeBand ('A'|'B'|'C')."
-  ].join("\n"), { label: "precheck-P2", phase: "P2 chain fan-out", schema: precheckSchema, effort: "medium" });
+  ].join("\n"), { label: "precheck-P2", phase: "P2 chain fan-out", schema: precheckSchema, model: "sonnet", effort: "medium" });
   if (!pre || !pre.ok) {
     state.blockers.push("P2 precheck failed - the frozen payoff interface (I33 green) is the fan-out unlock: " + (pre ? pre.detail : "agent died"));
     return finish(state);
@@ -620,7 +702,7 @@ async function runP2(state) {
     return function () {
       return agent(HOUSE + "\n\n" + s.prompt + "\n\nReturn JSON: lane (" + JSON.stringify(s.id) + "), branch, filesTouched, gatesAdded, newConstants (with one-line anchors), summary, blockers.", {
         label: "p2-" + s.id, phase: "P2 chain fan-out",
-        schema: laneSchema, effort: "xhigh", isolation: "worktree"
+        schema: laneSchema, model: "opus", effort: "xhigh", isolation: "worktree"
       });
     };
   }))).filter(Boolean);
@@ -642,7 +724,7 @@ async function runP2(state) {
     "",
     "After merging: run the three checks; confirm I33 is still green (on the stub, and on the model if Grade A/B wired it); confirm the I33 clause-(e) grep gate still proves every consumer goes through the accessor. Fix integration-level breakage only; do not rewrite either component or weaken gates. Do not commit (a later stage does).",
     "Return JSON: done, summary, newConstants (expected empty), blockers."
-  ].join("\n"), { label: "integrate-P2", phase: "P2 integration", schema: stepSchema, effort: "high" });
+  ].join("\n"), { label: "integrate-P2", phase: "P2 integration", schema: stepSchema, model: "opus", effort: "xhigh" });
   if (!integ || !integ.done) {
     state.blockers.push("P2 integration failed" + (integ ? ": " + integ.blockers.join("; ") : " (agent died)"));
     return closeMilestone(state, "P2 verify + commit", [], "v3 P2 (partial, red)", "");
@@ -680,7 +762,7 @@ async function runP3(state) {
     "",
     "TASK - P3 precheck (barrier B2). Verify: (1) scripts/lib/payoff-model.mjs and scripts/lib/cfr.mjs exist and I35 is green; (2) THE B2 CONDITION: gate I33 passes ON THE REAL PAYOFF MODEL (source:'model') - not just the stub - by running the verifier and reading the I33 gate output. Read docs/spikes/S-A.md and docs/spikes/S-B.md for the grade band. If S-B was Grade C, the B2 decision applies: report gradeBand 'C' so the vs-GTO surface ships caveated (checkdown label) or cut per plan sections 3.2/3.6. Change nothing.",
     "Return JSON: ok (conditions hold, or Grade C explicitly acknowledged), detail, gradeBand."
-  ].join("\n"), { label: "precheck-P3", phase: "P3 equilibrium baseline", schema: precheckSchema, effort: "medium" });
+  ].join("\n"), { label: "precheck-P3", phase: "P3 equilibrium baseline", schema: precheckSchema, model: "sonnet", effort: "medium" });
   if (!pre || !pre.ok) {
     state.blockers.push("P3 precheck failed at barrier B2 (solver may not consume the real payoff until I33 passes on it): " + (pre ? pre.detail : "agent died"));
     return finish(state);
@@ -697,7 +779,7 @@ async function runP3(state) {
     "4. The vs-GTO comparand is RAW model tiers with post-passed display noted - the post-passes (nesting, suit monotonicity) are impositions an equilibrium may violate; a violation is a finding to report, not launder. Write gate I36: AA_BIGPAIR x DS opens everywhere; TRASH x RB never opens UTG; emergent positional nesting UTG within HJ within CO within BTN - the plan PREDICTS the nesting clause fails at some seat pair; if it does, record the finding (a Measured annotation in docs/V3-PLAN.md section 7) and scope the clause to the measurement rather than tolerancing it away. The raw-vs-post-passed display decision is forced by that outcome (plan section 14.4).",
     "Run the three checks green (both variants). Do not commit.",
     "Return JSON: done, summary, newConstants (with one-line anchors - baselineQuant expected here), blockers."
-  ].join("\n"), { label: "p3-baseline", phase: "P3 equilibrium baseline", schema: stepSchema, effort: "xhigh" });
+  ].join("\n"), { label: "p3-baseline", phase: "P3 equilibrium baseline", schema: stepSchema, model: "opus", effort: "xhigh" });
   if (!base || !base.done) {
     state.blockers.push("P3 baseline failed" + (base ? ": " + base.blockers.join("; ") : " (agent died)"));
     return closeMilestone(state, "P3 verify + commit", [], "v3 P3 (partial, red)", "");
@@ -709,7 +791,7 @@ async function runP3(state) {
     "",
     "TASK - P3 UI: vs-GTO live, per docs/V3-PLAN.md section 8 (you are the single src/shell.html writer this phase). Wire the vs-GTO colour mode onto the matrix legend-row switch scaffolded in P1: the page's first true diverging signed ramp (the delta-pin two-colour encoding is insufficient for signed magnitude), colorblind redundancy channel, aria labels, tooltip content, I13 combos-partition asserted in this mode; in LITE the mode runs off the quantized baseline-tier block, in FULL off @inject:eq detail; full-only depth renders disabled-with-named-REASON in lite. Inspector: the vs-GTO divergence line slots into the Verdict tab's margin/headline seams (marginUnit/eqSE provenance machinery) and the reason-line machinery gains the divergence sentence. The comparand rendering follows the I36 outcome recorded in docs/V3-PLAN.md section 7 annotations (raw either way; the grid display decision per the finding). Everything inert at legacy settings (TIER default): I32 must stay green. Run the three checks green (both variants). Do not commit.",
     "Return JSON: done, summary, newConstants (expected empty), blockers."
-  ].join("\n"), { label: "p3-ui", phase: "P3 equilibrium baseline", schema: stepSchema, effort: "xhigh" });
+  ].join("\n"), { label: "p3-ui", phase: "P3 equilibrium baseline", schema: stepSchema, model: "opus", effort: "xhigh" });
   if (!ui || !ui.done) {
     state.blockers.push("P3 UI failed" + (ui ? ": " + ui.blockers.join("; ") : " (agent died)"));
     return closeMilestone(state, "P3 verify + commit", [], "v3 P3 (partial, red)", "");
@@ -739,7 +821,7 @@ async function runP4(state) {
     "",
     "TASK - P4 precheck (barrier B3). Verify data/equilibrium.json exists (or its @inject:eq region in the full build), gate D9 is green, and the quantized baseline-tier block ships in the shared core (D6's named sub-budget). Run `node scripts/verify.mjs` to confirm. Also read docs/spikes/S-B.md for the grade band (Grade C halves the skill axis to its fold-more half per plan 3.6). Change nothing.",
     "Return JSON: ok, detail, gradeBand."
-  ].join("\n"), { label: "precheck-P4", phase: "P4 skill + EV cut", schema: precheckSchema, effort: "medium" });
+  ].join("\n"), { label: "precheck-P4", phase: "P4 skill + EV cut", schema: precheckSchema, model: "sonnet", effort: "medium" });
   if (!pre || !pre.ok) {
     state.blockers.push("P4 precheck failed at barrier B3 (skill axis and EV cut may not start before equilibrium.json + D9 + baseline-tier block exist): " + (pre ? pre.detail : "agent died"));
     return finish(state);
@@ -750,19 +832,19 @@ async function runP4(state) {
     "",
     "TASK - P4 skill axis, per docs/V3-PLAN.md section 3.4 (grade band " + pre.gradeBand + "; Grade C: build ONLY the fold-more half). You write scripts/lib/policy.mjs first this phase; the EV-cut agent follows you serially - leave it clean. Skill dial as offset-from-baseline: the fold-more half re-uses the measured v-lattice (anchor: no new opinion); the plays-better half cuts realization through the payoff layer - its coefficient CANNOT be anchored today (no measurement of postflop skill exists): ship it gated (I38 bounds its reach), flagged `estimate`, said out loud in METHODOLOGY. The interior blend between the anchored endpoints (measured lattice at one end, solver baseline at the other) CANNOT be anchored -> gated, flagged, badged `interpolated`. Write gate I38: the lobby endpoint reproduces the current model exactly (OBJECT IDENTITY); combo-weighted width tightens with skill; per-cell exceptions enumerated, never tolerated away; the plays-better coefficient's reach bounded. Also gate I37 (divergence accounting): signed vs-GTO divergence combo-weighted ~ 0 at pool = baseline; per-cell convergence toward equilibrium as the dial rises - the plan PREDICTS the rank-overlap rows (BROADWAY_RUN, RUN0_HIGH) violate monotone convergence; if they do, ship the finding as a Measured annotation, do not tolerance it away. Everything inert at the lobby default: I32 stays green. Run the three checks green. Do not commit.",
     "Return JSON: done, summary, newConstants (with one-line anchors), blockers."
-  ].join("\n"), { label: "p4-skill", phase: "P4 skill + EV cut", schema: stepSchema, effort: "xhigh" });
+  ].join("\n"), { label: "p4-skill", phase: "P4 skill + EV cut", schema: stepSchema, model: "opus", effort: "xhigh" });
   if (!skill || !skill.done) {
     state.blockers.push("P4 skill axis failed" + (skill ? ": " + skill.blockers.join("; ") : " (agent died)"));
     return closeMilestone(state, "P4 verify + commit", [], "v3 P4 (partial, red)", "");
   }
   if (skill.blockers.length) state.blockers.push(...skill.blockers);
 
-  const evcut = await agent([
-    HOUSE,
-    "",
+  const evcutTask = [
     "TASK - P4 absolute-EV cut, per docs/V3-PLAN.md sections 3.4 and 5.4. You are the designated scripts/lib/policy.mjs writer for this step (the skill-axis agent has finished). The EV cut runs BESIDE the percentile cut in aggressiveSet - a second predicate EV >= 0 active only in EV mode - with margins gaining a third unit and t4Band reconciled in frequency terms. THE I34 QUARANTINE (write this gate first): tier output BIT-IDENTICAL across view modes at every setting, verified in ONE process with modes toggled interleaved (the settings-hash-walk idiom - this is what catches memo poisoning), with an OBJECT-IDENTITY clause (assert.equal, not tolerance) so a shaky EV number is structurally unable to move a tier; badge text derives from source/se, never hard-coded; the EV-primary code path gated on model.calibration.verdict === 'pass', which only the P5 ceremony may stamp - ships failing closed. Gate I39: EV(fold) = 0; sign agrees with breakeven at vs-3-bet within tolerance; rake enters exactly (the I31(c) extension); badges derive from data. Gate I40: in EV mode, rake narrows width at percentile nodes (the deliberate anti-I31(a)) and depth moves width with the seat signs; the plan OFFERS for falsification 'shallow+raked folds more than deep+raked at every seat' - if the coupling inverts anywhere, ship the finding. Re-scope I31(a) to the score path. EV MIX band width = k x payoff-se at default trials, where k is NOT free: solve k so the EV-mode MIX band's combo-weighted mass at default settings equals t4Band's measured frequency mass - the section 10.11 transposition made arithmetic on the shipped distribution (the se sets the unit, t4Band's mass sets the multiplier; no felt number anywhere). Everything inert in score mode: I32 stays green. Run the three checks green. Do not commit.",
     "Return JSON: done, summary, newConstants (with one-line anchors), blockers."
-  ].join("\n"), { label: "p4-evcut", phase: "P4 skill + EV cut", schema: stepSchema, effort: "xhigh" });
+  ].join("\n");
+  const evcutOrder = await fableWorkOrder(state, "P4 skill + EV cut", "p4-evcut", evcutTask);
+  const evcut = await agent(HOUSE + "\n\n" + evcutTask + evcutOrder, { label: "p4-evcut", phase: "P4 skill + EV cut", schema: stepSchema, model: "opus", effort: "max" });
   if (!evcut || !evcut.done) {
     state.blockers.push("P4 EV cut failed" + (evcut ? ": " + evcut.blockers.join("; ") : " (agent died)"));
     return closeMilestone(state, "P4 verify + commit", [], "v3 P4 (partial, red)", "");
@@ -774,7 +856,7 @@ async function runP4(state) {
     "",
     "TASK - P4 UI, per docs/V3-PLAN.md section 8 (single src/shell.html writer). Make the EV colour mode fully live against the real payoff surface (sequential ramp + the .ramp legend helper, colorblind redundancy, aria, tooltips, I13 in-mode); surface the skill dial (full build; disabled-with-named-REASON in lite if it depends on full-only payload); inspector Verdict/Numbers tabs gain the EV decomposition + waterfall content against the marginUnit/eqSE provenance seams; all three presentations (absolute EV, decision-delta, score) switchable per plan 5.4, score cutting tiers, EV badged by source. Everything inert at legacy settings (score mode default): I32 and I34 stay green. Run the three checks green (both variants). Do not commit.",
     "Return JSON: done, summary, newConstants (expected empty), blockers."
-  ].join("\n"), { label: "p4-ui", phase: "P4 skill + EV cut", schema: stepSchema, effort: "xhigh" });
+  ].join("\n"), { label: "p4-ui", phase: "P4 skill + EV cut", schema: stepSchema, model: "opus", effort: "xhigh" });
   if (!ui || !ui.done) {
     state.blockers.push("P4 UI failed" + (ui ? ": " + ui.blockers.join("; ") : " (agent died)"));
   } else if (ui.blockers.length) state.blockers.push(...ui.blockers);
@@ -806,7 +888,7 @@ async function runP5(state) {
     "",
     "TASK - P5 precheck (barrier B4). Verify the finished EV surface exists: I34/I37/I38/I39/I40 all green (run the verifier), and the pre-registered I46 primacy criteria written at Phase 0 are present and UNTOUCHED since (git log on the gate file/registry entry - any post-P0 edit to the criteria is a blocker: the bar may never move once EV numbers exist). Read docs/spikes/S-C.md for whether calibration data exists. Change nothing.",
     "Return JSON: ok, detail, gradeBand (S-C 'pass' or 'fail')."
-  ].join("\n"), { label: "precheck-P5", phase: "P5 calibration + residue", schema: precheckSchema, effort: "medium" });
+  ].join("\n"), { label: "precheck-P5", phase: "P5 calibration + residue", schema: precheckSchema, model: "sonnet", effort: "medium" });
   if (!pre || !pre.ok) {
     state.blockers.push("P5 precheck failed at barrier B4: " + (pre ? pre.detail : "agent died"));
     return finish(state);
@@ -828,6 +910,7 @@ async function runP5(state) {
     {
       label: "p5-calibration",
       schema: calibrationSchema,
+      effort: "max", // stamps the primacy verdict and holds the sole --force authorization (model policy above)
       prompt: "TASK - P5 calibration verdict - runs LAST against the finished EV surface, per docs/V3-PLAN.md sections 3.5, 5.1 and 5.4. S-C outcome: " + pre.gradeBand + ". If S-C failed: the verdict is unpassable by construction - stamp nothing, make score-primary permanent, and ensure 'the decision layer remains unfalsified against money' ships as a standing METHODOLOGY section 10 limitation rendered in the Method view. If data exists: run the calibration harness (lane C's plumbing) against the corpus; ship `calibration.disputed` for EVERY fitted-vs-shipped disagreement, rendered in the Method view; compute the primacy verdict ONLY from the Phase-0 pre-registered I46 criteria, bar untouched. Write/finalize gate I46. IF AND ONLY IF the verdict is 'pass': flip EV primary as a constants change through the section-5.1 re-freeze ceremony - you are the ONE P5 prompt authorized to run `scripts/freeze-tiers.mjs --force`, with the printed move-diff committed into docs/METHODOLOGY.md, retiring I22+I32 together with the written reason ('a gate pinning falsified constants would enforce a known-wrong opinion') and re-freezing the calibrated model as the v3 fixture. If the verdict is not 'pass', touch no fixture and leave the primacy path failing closed. The plan predicts fitted q != 0.85 - if so, ship both (shipped constant + disputed entry). Run the three checks green. Do not commit. Return JSON: done, summary (include the verdict), verdict ('pass' ONLY if the I46 primacy verdict passed AND the re-freeze ceremony ran; 'fail' if the criteria were computed and not met; 'no-data' if S-C failed and the verdict is unpassable by construction), newConstants (any constant the ceremony re-froze, named), blockers."
     },
     {
@@ -840,8 +923,12 @@ async function runP5(state) {
   let calibrationVerdict = "not-run";
   for (const s of steps) {
     log("P5 serial step: " + s.label);
-    const r = await agent(HOUSE + "\n\n" + s.prompt, {
-      label: s.label, phase: "P5 calibration + residue", schema: s.schema || stepSchema, effort: "xhigh"
+    const order = s.effort === "max"
+      ? await fableWorkOrder(state, "P5 calibration + residue", s.label, s.prompt)
+      : "";
+    const r = await agent(HOUSE + "\n\n" + s.prompt + order, {
+      label: s.label, phase: "P5 calibration + residue", schema: s.schema || stepSchema,
+      model: "opus", effort: s.effort || "xhigh"
     });
     if (!r || !r.done) {
       state.blockers.push("P5 step failed: " + s.label + (r ? " - " + r.blockers.join("; ") : " (agent died)"));
