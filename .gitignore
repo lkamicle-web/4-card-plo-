@@ -14,6 +14,9 @@ scratch/
 tmp/
 *.tmp
 
+# transient orchestration worktrees (Workflow agents); their branches carry the real work
+.claude/worktrees/
+
 # generated screenshots from smoke.mjs (docs/screenshot.png is committed on purpose)
 shot*.png
 shots/

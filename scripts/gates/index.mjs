@@ -34,6 +34,7 @@ import * as payoff from './payoff.mjs';
 import * as measurement from './measurement.mjs';
 import * as depth from './depth.mjs';
 import * as env from './env.mjs';
+import { CATALOG } from './reserved.mjs';
 
 export const REGISTRY = [
   data,          // D1 D2 D4 D5 I18 D6 D7 D8   the artifact as shipped
@@ -78,6 +79,35 @@ export const EXPECTED_IDS = [
   if (declared !== EXPECTED_IDS.join(' ')) {
     throw new Error('gate registry: the families declare a different gate set than EXPECTED_IDS.\n'
       + `  registry: ${declared}\n  expected: ${EXPECTED_IDS.join(' ')}`);
+  }
+}
+
+// The §7 catalog's boundary, guarded in both directions. `./reserved.mjs` drafts every gate V3-PLAN
+// §7 names, with ids reserved at Phase 0 so a later lane cannot pick its own — but a RESERVED id is
+// a promise about a future run, not a gate, and the failure this guards against is a promise
+// drifting into the enforced set (a 46-gate report that silently becomes 47, or worse, a reserved
+// id printed as `pass` having executed nothing). It also catches the opposite drift: the manifest
+// claiming a gate is live when the registry stopped emitting it.
+//
+// EXPECTED_IDS IS NOT TOUCHED. It stays the written-out literal above, for the reason stated there;
+// this block only reads it. Promoting a reserved gate is a deliberate three-line edit — flip
+// `status`, add the id to a family's `ids`, add it to EXPECTED_IDS — and any two of the three
+// without the third fails here or in the block above. Harness gates (§7.2's S-gates) run outside
+// this runner and are exempt from the live-must-be-enforced half by their `runner` field.
+{
+  const enforced = new Set(EXPECTED_IDS);
+  const bad = [];
+  for (const e of CATALOG) {
+    if (e.status !== 'live' && enforced.has(e.id)) {
+      bad.push(`${e.id} is ${e.status} in the catalog but already appears in EXPECTED_IDS`);
+    }
+    if (e.status === 'live' && e.runner === 'verify' && !enforced.has(e.id)) {
+      bad.push(`${e.id} is 'live' in the catalog but is absent from EXPECTED_IDS`);
+    }
+  }
+  if (bad.length) {
+    throw new Error('gate catalog: reserved and enforced ids disagree (scripts/gates/reserved.mjs).'
+      + `\n  ${bad.join('\n  ')}`);
   }
 }
 

@@ -111,6 +111,28 @@ oscillation/plateau, or whole-cell strategies flapping between iterations (abstr
 → Phase 3 switches to an LP/regret-matching variant for HU, and 6-max MCCFR is descoped to a
 stretch goal.
 
+> **Measured (phase 0).** *Confirmed, with four orders of magnitude of headroom — the failure
+> branch above does not fire.* CFR+ (alternating updates, linear averaging, exact best-response
+> exploitability) reaches ε ≤ 0.25% of pot at **iteration 46 in 11 ms** — 0.009% of the 120 s
+> budget, and **0.018% of the 60 s half-budget**, so §3.3's 6-max clause is met by a factor of
+> 5,400. Peak rss **63.7 MB** against the 1 GB bar (the model's own working set is ~1 MB). ε falls
+> at ≈ T^−1.75 over five decades with no knee, plateau or oscillation. **The named failure mode was
+> checked, not assumed:** whole-cell argmax flapping is *absent* under CFR+ (zero flips across all
+> 615 infosets for the last 98,423 of 100,000 iterations) and *present* under a vanilla-CFR control,
+> still flipping at iteration 99,467 — a difference in kind, and the reason §3.3 must specify CFR+
+> rather than CFR. Correctness has four independent checks including an analytic ground truth (with
+> `E ≡ 0.5` the game is blind economics with true value exactly 0 and Nash = SB opens 100%; solved
+> −6.3e-8 bb, open 100.0000%). **Two findings beyond the verdict.** (1) *The tree this spec asks for
+> is illegal in pot-limit*: at 100bb, facing a 27bb 4-bet, BB's maximum legal raise is 81, so "jam"
+> is not an available action — a NLHE-shaped preflop tree does not port to PLO. The deliverable is
+> the pot-limit maximum ladder **3/9/27/81**, solved at both 100bb and 40bb (5 decision nodes, 9
+> terminals, 615 infosets, 1,599 action slots). (2) *A sampling-measure bug, found and fixed*:
+> redrawing a cell's combo on a board collision weights every board equally instead of weighting a
+> board by how many cell-*i* hands it leaves alive, and read **+1.16 pts high on average, +5.33 pts
+> high on RUN0_HIGH|RB** — a bias larger than every effect v3 intends to model. P2 inherits the hard
+> rule: every payoff sampler must reproduce the shipped `eq[1]` column before its numbers are
+> believed. Memo: [`docs/spikes/S-A.md`](spikes/S-A.md).
+
 **S-B — payoff estimator cost + error. The program's load-bearing spike.** *Question:* can
 `payoff(cells, potSize, spr)` be estimated at acceptable cost, with what error vs street-simulated
 ground truth? *Method:* prototype 2–3 estimator forms (checkdown + realization curve; one-street
@@ -127,6 +149,31 @@ label on-screen, and the B2 barrier decides whether vs-GTO ships caveated or not
 (**Grade C**). §3.6 pre-writes what ships in each band, so a bad result degrades the program and
 never stalls it.
 
+> **Measured (phase 0).** *Falsified — both success criteria fail and the three-band rule lands on
+> **Grade C**.* Best held-out p95 = **7.21** pot-fraction points (form 2R, one-street rollout +
+> fitted curve); best *budget-affordable* held-out p95 = **8.01** (form 3R). Both exceed the
+> pre-registered 5.0 edge, and **nothing tested reached 5.0 at any price**. Cost agrees
+> independently: the forms that come closest cost **1.5–5.1×** the pipeline budget and the forms
+> that fit it are the worst performers. The budget is not six minutes of any laptop but
+> METHODOLOGY's recorded 172 s on four workers = **688 cpu-seconds**, which buys 208 reference
+> deals/pair (se ≈ 3.70 pt): *a street-simulated payoff that fits the pipeline carries an se larger
+> than the Grade A edge before any modelling error is counted.* **Error is dominated by one term.**
+> Collapsing IP/OOP, position-averaged p95 is **3.39** — Grade B territory. It is the positional
+> *gap* that nothing estimates: the reference's mean |IP−OOP| is 1.72 pt at spr 1 but **23.86 pt at
+> spr 10** (max 43.46), and the best form still misses it with p95 10.89. Position enters the frozen
+> interface through `opts.ip`, and it is exactly the argument no estimator serves. **The reference is
+> itself an opinion layer, and that is the load-bearing caveat:** two of REF3's five knobs move the
+> "ground truth" by more than the Grade A/B edge (`bluffT` p95 5.81, `betFrac` p95 4.44), so a
+> p95 ≤ 2.5 verdict was unsupportable from a policy-based reference *no matter how the estimators
+> performed*. **Grade A is blocked by the reference, not the estimator**, and needs a postflop-solver
+> reference — v4 scope. *§6's mandatory pre-registration audit, reported beside the p95:* stub
+> payoff `se` **0.1581 pt** (shipped `meta.se.cell` 0.16 agrees); smallest EV difference that moves
+> a tier **0.1405 pt** predicate-reading / **0.1274 pt** ordering-reading. The 2.5 pt edge is
+> **15.8×** the stub se and **17.8×** the median tier-move — a granularity mismatch **recorded as a
+> finding, not redrawn**, because at the consequence level the edges are sound: 2.5 pt ≈ 7.5% of
+> cells changing side of the aggressive cut, 5.0 pt ≈ 13.9%, the measured best form **19.0%**.
+> Memo: [`docs/spikes/S-B.md`](spikes/S-B.md).
+
 **S-C — hand-history data.** *Question:* does usable 4-card PLO hand-history data exist (volume,
 hole-card visibility, licensing), and what would calibration actually fit? *Method:* inventory
 sources, parse a sample, count per-cell showdown coverage, run the power analysis (hands needed
@@ -139,6 +186,30 @@ ships the calibration harness + self-play consistency only, EV stays secondary p
 METHODOLOGY §10 gains "the decision layer remains unfalsified against money" as a standing
 limitation rendered in the Method view — a shipped sentence, not a silent gap.
 
+> **Measured (phase 0).** *Falsified — the failure branch fires and §3.6's S-C row is taken
+> verbatim.* **The success criterion as written is MET, and is overruled rather than redrawn.** At
+> 1M hands a datamined corpus reaches **118 of 123 cells with ≥ 100 showdowns**, so the showdown
+> clause passes — on data whose every hole card is *outcome-selected*. It is a counting test
+> passable by a corpus that is structurally unable to answer the question; the acquisition and power
+> conjuncts overrule it, and **the repair for future spikes is to count hero rows, not showdowns.**
+> *Power (two-sided α = .05, power .80, σ = 140 bb/100):* this section's "band-level, not cell-level"
+> prediction is **confirmed with a number** — the MDE at the plan's 1M bar is **10 bb/100 for a whole
+> band, 120 bb/100 for the median cell, 295 for a median (cell, pos)**. Separating cells by 5 bb/100
+> needs **578M dealt hands**; the paired ordering test needs **6M–77M hero hands = 6–77 years of one
+> player's full-time play**. *Resolution, from shipped data alone:* of the 122 adjacent cell pairs by
+> shipped HU checkdown equity, **87 (71%) are separated by less than 2·`meta.se.cell`** — already
+> inseparable by the measurement RUNDOWN ships, before money and its ~100× larger noise enter. A
+> 34M-hand corpus would also be 35–70 GB, which no single-file artifact can carry. **The deliverable
+> that survives is the bar itself:** the pre-registered primacy criteria **PC-0..PC-8** are written
+> verbatim into `scripts/gates/reserved.mjs` as I46's fixed bar and reproduced in the memo, the two
+> copies byte-compared. PC-1/PC-2/PC-3 are unsatisfiable today and PC-0 is failure-closed, so **I46
+> is unpassable by construction — parked, not lowered**, and comes alive unchanged the day a
+> conforming corpus exists. *One finding the plan should absorb:* the observational framing was the
+> wrong question — **no corpus size fixes PC-3, because you cannot read the EV of an action nobody
+> took.** The only design that satisfies these criteria is a prospective randomised A/B test on the
+> marginal cells, run by a player against their own play; named here as the successor experiment
+> rather than left implicit, and out of scope for v3. Memo: [`docs/spikes/S-C.md`](spikes/S-C.md).
+
 **S-D — full/lite split cost.** *Question:* is one source + feature flags viable? *Method:*
 prototype `--variant=lite` in `build.mjs` (the `@inject`-marker seam plus `@only:` markup
 markers), build both artifacts, run per-variant `--check`. *Deliverable:* working diff,
@@ -148,6 +219,25 @@ and byte-comparable. *Failure:* markup divergence proves invasive → **degrade,
 *full* build is constrained to lite-plus-injected-blocks (lite is the non-negotiable artifact per
 4.2; full is the one that flexes) until real divergence machinery earns its way in. The worktree
 must not leave a half-split build on the main tree.
+
+> **Measured (phase 0).** *Confirmed — 28/28 harness checks pass, both artifacts deterministic and
+> byte-comparable, so the failure branch does not fire and the full build is **not** constrained to
+> lite-plus-injected-blocks.* **Inertness is the claim that mattered and it holds exactly:**
+> `--variant=lite` over an *unmodified* `src/shell.html` differs from the pre-spike `index.html` by
+> **+127 B, every byte of it the provenance banner** — the page body after the banner is
+> **sha256-identical**. Byte table: lite **482.2 KB**, full **548.5 KB**, and only **0.5 KB of the
+> 66.3 KB divergence is app code**; the rest is payload. Source cost is six seams — **3,316 B in a
+> 414 KB shell (0.78%)**. The dual build is free: lite 103 ms, full 105 ms, both variants plus both
+> `--check`s ≈ 415 ms, each `--check` reporting STALE against the other's artifact *and naming which
+> one it found*. Every refusal fires: `fetch(` and `<script src=>` inside a full-only block while
+> building lite, unwrapped `@inject:eq`, marker typos, unclosed / stray / nested `@only:`, and
+> `--variant=medium`. **One measured gap, asserted in the harness so the finding cannot rot:**
+> lite-visible code calling a full-only symbol **builds clean and ships the dangling call** — which
+> is why the per-variant *smoke* run, not the per-variant `--check`, is the thing that catches it.
+> **One named blocker carried forward:** full's size budgets are unanchored, so the build prints
+> SIZE NOT GATED and pins `VARIANTS.full.budgets === null` by test to make the flip deliberate; D9
+> sets it from the first real `data/equilibrium.json` at measured + 5% after P3, and must refuse a
+> payload carrying `meta.synthetic: true`. Memo: [`docs/spikes/S-D.md`](spikes/S-D.md).
 
 **S-E — what opening the toolchain buys.** *Question:* concretely, what is worth the identity
 cost? *Method:* add `package.json` (no `"type"` field — preserves `.mjs`/`.js` semantics
@@ -163,6 +253,32 @@ runtime-dependency-free.** *Success:* smoke green. *Failure branch that is a fin
 blocker:* **prediction, expected falsified — the 8 ms slider-morph p95 budget fails on first
 re-run** (unmeasured since v1; the page has grown two model layers since). If it fires, the budget
 is retuned to the measurement and pinned, not quietly widened.
+
+> **Measured (phase 0).** *Smoke green enough to pass (**11/12**, deterministic over three runs);
+> buy-list = **Playwright only**; and the prediction above is falsified — **but not in the direction
+> predicted**.* Toolchain cost: `npm install` **1.90 s, 2 packages**, `package.json` 23 lines +
+> `package-lock.json` 66 lines, **zero source files touched**, and all three checks byte-identical
+> to baseline with `package.json` and `node_modules` present. **The three declines are now
+> measurements rather than taste, and one is disqualifying on its own:** `esbuild --format=cjs`
+> rewrites `import.meta`, so `verify.mjs`'s `import.meta.url === file://${argv[1]}` CLI detection
+> **silently does not fire — the verifier exits 0 having run zero gates**, with no error and no
+> warning. A toolchain that can turn the gate runner into a no-op cannot enter a repository whose
+> whole discipline is "gates are written to FAIL". (TypeScript cannot be adopted at all without
+> renaming `.mjs`; `tsc --checkJs` over the scripts yields 81 errors of which **zero are real
+> defects**.) **The morph budget: the prediction was that 8 ms fails on first re-run; the
+> measurement is that the budget is UNFALSIFIABLE.** `__measureMorph` times a JS-only pass whose p95
+> is **0.100 ms — exactly one tick of Chromium's 100 µs clock** — so the gate cannot distinguish
+> today's page from one 80× slower. Retuning to the measurement therefore means **tightening**:
+> include a forced style+layout flush (measured p95 **2.700 ms**, max 5.500 over 528 passes) and set
+> the budget to **4.0 ms** — measured p95 + ~50%, the same measured+headroom rule the byte budgets
+> use. Do *not* keep 8 ms against the JS-only metric and call it green. That edit lives in
+> `src/shell.html`, which the spike worktree may not touch, so it belongs to §8's UI workstream and
+> lands with the S-gate re-arming (deferred to P1-U). **Smoke's one red is a shipped-page defect,
+> not a toolchain verdict:** the topbar's intrinsic width is **1443 px against a 1279 px
+> breakpoint**, so at every viewport in **1280–1442** the Drill, Guide, Settings and Info buttons sit
+> outside the viewport, clipped by `body{overflow-x:hidden}` — invisible and unclickable, identical
+> to the pixel in Chromium, Firefox and WebKit. 1280×800 and 1366×768 are both inside the band.
+> Memo: [`docs/spikes/S-E.md`](spikes/S-E.md).
 
 **Phase 0 also (the B0 deliverables, on the main tree, serial):**
 
@@ -280,6 +396,32 @@ independent of payoff grade. M_deep's anchors (I23's measured counts, μ's sd-ra
 re-anchored, never silently broken, wherever the payoff model supersedes them. *Falsifies:* I33's
 monotonicity clause; S-B's error bound out-of-sample.
 
+> **Measured (phase 0) — S-B → Grade C.** The decision rule in this paragraph is written for the
+> 2.5–5.0 band; S-B landed **above 5.0**, so §3.6's stronger row applies: **the stub payoff stays
+> and P2 builds no payoff table.** Phase 5's primacy question is answered "no" *a fortiori* — and,
+> independently, by S-C — while the phase still ships, because the vs-GTO *structure* is
+> payoff-grade independent exactly as written. **Descope, per the measurement:** P2's payoff half
+> becomes a payoff **correction**, not a payoff **table**. Form 1 (pairwise checkdown + fitted
+> realization curve) costs 105 cpu-s — **0.2× the 688 cpu-second budget** — needs only the pairwise
+> checkdown table plus a closed form, and reaches held-out p95 8.44 with Spearman 0.970; it is worth
+> shipping as a labelled `estimate` **if** any consumer needs an spr axis, and worth cutting if none
+> does. **Do not build form 2** (one-street rollout): 1.5× over budget at 600 deals/pair, a trial
+> count whose own se (2.69 pt) already exceeds the Grade A edge. The **solver half is unaffected** —
+> S-A passed, so `cfr.mjs` proceeds per §3.3, and S-A's board-budget finding applies here too (25k
+> boards suffice; 400k is 10× more than the solver can use — spend the pipeline budget elsewhere).
+> *This section's promised falsification has already happened:* I33's monotonicity clause fails at
+> **1.7% of pairs at spr 1, 8.1% at spr 4, 15.9% IP / 20.5% OOP at spr 10**, worst case 9.1 pt
+> *less* checkdown equity for 20.0 pt *more* ev. Rewrite the clause to the measurement per house
+> style; do not delete it. **Three amendments the §2 freeze needs before P2 consumes it**, each
+> measured: (i) `payoff()` must also return `potMult` (E[F]/potSize, measured range
+> **1.603–11.865**) and `invShare` (**0.199–0.730**), or `EVbb = ev·finalPot − invested` is wrong by
+> up to an order of magnitude in the pot term; (ii) `opts.ip` must be in every memo key —
+> `ev(A,B,ip) ≠ ev(A,B,¬ip)` by up to **43 pt**, the `envKey` docstring trap in a new place; (iii)
+> `supported:false` gains a **card-removal** clause, its real domain being shared-rank degeneracy
+> (AA_DANGLER|RB × AA_BIGPAIR|DS is degenerate on **12.56%** of street evaluations), whose failure
+> mode is silent — the first spike implementation collapsed every AA-vs-AA pair to a checkdown with
+> no error raised.
+
 ### 3.3 P3 — equilibrium baseline
 
 Marry solver to payoff (the solver may not consume the real payoff until I33 passes on it —
@@ -292,6 +434,31 @@ post-passed display noted — the post-passes (nesting, suit monotonicity) are i
 equilibrium may violate, and a violation is a finding to report, not launder. *Falsifies:*
 emergent positional nesting at equilibrium (I36 — see §7's prediction).
 
+> **Measured (phase 0) — S-A → pass, S-B → Grade C.** *Both conditionals in this paragraph resolve,
+> and they resolve in opposite directions.* **Solver = CFR+** — not an LP/regret-matching variant
+> (§3.6's S-A row does not fire) and *not* vanilla CFR: the vanilla control was still flipping
+> whole-cell argmaxes at iteration 99,467 while CFR+ stopped at 1,577, and that is the one
+> algorithmic choice the spike forces. **6-max MCCFR is greenlit by this section's own criterion:**
+> HU landed at 11 ms against the 60,000 ms half-budget, inside by **5,400×**, so it is *attempted* in
+> P3 and the "the baseline is HU" caveat is not pre-shipped. Its claims stay fixed-point-only per
+> I35 and the §5.7 labeling is unchanged. **The tree spec is corrected before P3 writes code:**
+> "open/fold/3-bet/call/4-bet/jam" at 100bb is not a legal pot-limit tree, so the tree is the
+> pot-limit maximum ladder **3/9/27/81** — an arithmetic identity, hence **zero new constants** and
+> *stronger* than §6 assumed (the sizing set is **anchored**, not merely flagged). Solve both 100bb
+> (cap = the pot 5-bet to 81) and 40bb (where the cap is a genuine all-in); they differ in exactly
+> one terminal pot and make a controlled pair for the depth axis. I35's cap-list clause still governs
+> the *omissions* — no limp, no sixth raise, no postflop. **Grade C makes I35's checkdown-label
+> clause load-bearing rather than defensive**, and the checkdown equilibrium shows why: its value is
+> **BB-positive** — the button loses **0.1418 bb/hand**, BB folds **0.16%** against a 3bb open, SB
+> opens 89.3%. That is what "postflop does not exist" looks like — strip position of its only source
+> of value and the button's edge inverts — and a reader shown a 0.16% fold frequency *without* the
+> label is shown a lie. Per §2's phase-0 annotation the label must key off `source === 'checkdown'`,
+> never off `supported`. It also predicts the direction of any future Grade-A correction: a real
+> payoff must move value toward the button and narrow BB's continuing range. *Anchors handed to §6,
+> measured not chosen:* ε = **5e-5 bb** (the out-of-sample exploitability floor, 0.0034% of pot);
+> iteration cap **2,000** (ε first crosses 5e-5 bb at iteration 456 / 40 ms — a 4× margin at 143 ms);
+> and I35's two-seed clause gated at **0.15% of pot** against **0.035%** measured, written to fail.
+
 ### 3.4 P4 — skill axis + absolute-EV cut
 
 Skill dial as offset-from-baseline (locked 4.3): the fold-more half re-uses the measured
@@ -301,6 +468,22 @@ the I34 quarantine, with margins gaining a third unit and `t4Band` reconciled in
 I31(a) is re-scoped to the score path; I40 asserts the deliberate inversion (rake and depth *do*
 move EV-mode width). *Falsifies:* monotone exploit→equilibrium convergence per cell (I37); "rake
 folds the same hands at every depth" (I40's prediction).
+
+> **Measured (phase 0) — S-B → Grade C.** §3.6's Grade-C row cuts this phase in half, in a
+> pre-written way. **The skill axis halves to its fold-more (lattice) half.** That half re-uses the
+> measured v-lattice and needs no payoff, so it ships. The plays-better half "cuts realization
+> through the payoff layer" — and under Grade C there is no such layer to cut through: the stub is
+> checkdown and spr-blind. So it is **not built in v3**, and §6's `skill-dial plays-better
+> coefficient` row is not merely unanchored but unexercised; I38's reach-bounding clause is what
+> keeps that honest. **The absolute-EV cut still ships — display-only and `estimate`-badged** —
+> running beside the percentile cut behind the I34 quarantine exactly as specified. Grade C removes
+> EV's claim to accuracy, not its right to be shown, and I34 is what makes that coherent rather than
+> a hedge: under the quarantine tiers are bit-identical across view modes, so **no EV error of any
+> size can move a tier** (S-B measured the smallest tier-moving EV difference in score mode as +∞ *by
+> construction*). I40's assertions are unaffected — that rake and depth move EV-mode width is a
+> structural claim about the cut, not about the payoff's accuracy. I37's two anchored endpoints both
+> survive (the measured lattice, and the P3 solver baseline that S-A greenlit), so its
+> monotone-interpolation clause stands as written.
 
 ### 3.5 P5 — calibration decision + residue
 
@@ -312,6 +495,26 @@ EV that P4 then replaces. Items 10 and 11 land here (11 subject to its §4 cut-l
 every allowance re-pinned during P1–P4. METHODOLOGY final rewrite (§0 honesty statement, §10
 items 16–17, per-variant claim sentences). *Falsifies:* q = 0.85 (I46's prediction), the I11b
 thesis against money, and "EV beats score" itself.
+
+> **Measured (phase 0) — S-C → fail.** *§3.6's S-C row is taken verbatim, with no re-planning.*
+> **The pre-registered primacy test cannot run, and that is a verdict rather than a gap.** PC-1
+> (hero visibility independent of outcome), PC-2 (lawful provenance) and PC-3 (assignment) are
+> unsatisfiable — no lawful, hero-visible, assigned 4-card PLO corpus exists at any volume — and
+> PC-0 makes a criterion that cannot be evaluated a FAIL. So **P5 ships the calibration harness plus
+> self-play consistency only**, and `model.calibration.verdict` **ships hard-failing**, with
+> PC-0..PC-8 stored as shipped data and rendered by the Method view so the reason is *on screen*
+> rather than in a doc. **The harness is still worth building:** PC-4's paired statistic is exactly
+> the shape a self-play consistency check takes, so the code is not wasted — only its input is
+> missing. **EV primacy never flips**, so §5.1's re-freeze ceremony is not exercised for that reason
+> (its trigger — a calibration-falsified constant — likewise cannot occur without a corpus). This
+> section's three promised falsifications split accordingly: **"EV beats score" is unfalsifiable in
+> v3 and ships saying so**; **q = 0.85 goes untested against money** for the same reason; and the
+> I11b thesis is unreached. METHODOLOGY §10 gains **"the decision layer remains unfalsified against
+> money"** as a standing limitation rendered from shipped data. Items 10 and 11 are untouched by
+> this. **The successor experiment is named rather than left implicit:** no corpus size fixes PC-3 —
+> you cannot read the EV of an action nobody took — so the only design that satisfies the bar is a
+> *prospective randomised A/B test on the marginal cells*, run by a player against their own play,
+> and it is out of scope for v3.
 
 ### 3.6 The Grade B program — the pre-written degraded v3
 
@@ -327,6 +530,19 @@ So that a failed spike cancels one track and never stalls or re-plans the progra
 | S-E fails | Smoke budget re-pinned to measurement (a finding); adoption list shrinks to Playwright or nothing |
 
 Each of these is a shippable, honest v3 — smaller thesis, zero rework.
+
+> **Measured (phase 0).** *Which rows fired, recorded against the table as written.* **S-B > 5.0
+> (Grade C) — FIRES** (best held-out p95 7.21). **S-C fails — FIRES** (no lawful, hero-visible,
+> assigned corpus at any volume). **S-E — FIRES in substance**: the smoke budget is re-pinned to the
+> measurement and the adoption list shrinks to Playwright, though as a *finding* rather than a
+> failure — smoke itself is green at 11/12, and the budget was found **unfalsifiable rather than
+> breached** (§1's S-E annotation). **S-A fails — DOES NOT FIRE** (pass, with 5,400× headroom on the
+> half-budget clause; CFR+ stays, 6-max MCCFR stays a live target). **S-D fails — DOES NOT FIRE**
+> (both artifacts deterministic and byte-comparable). The Grade-B row does not fire either: S-B
+> landed a band below it. **Two live rows compound in one place**, worth stating because no single
+> row says it: Grade C makes EV display-only and `estimate`-badged, and S-C makes score-primacy
+> permanent, so §5.4's primacy machinery ships **failing by construction** rather than merely
+> unexercised. **Zero re-planning was required**, which is what this table was for.
 
 ### 3.7 Not decidable pre-spike — encoded as rules, not designs
 
@@ -436,6 +652,26 @@ per-variant honesty sentence is grep-gated. The `fetch(` / `<script src=>` refus
 **absolute for both shipped artifacts** — both remain self-contained pages; only the dev
 toolchain opens (S-E's rule).
 
+> **Measured (phase 0) — S-D → pass.** One source + feature flags is viable, so this section is
+> implemented as written and the full build is **not** constrained to lite-plus-injected-blocks.
+> Measured: six seams, **3,316 B of source (0.78% of the 414 KB shell), 0 B in the lite artifact** —
+> `--variant=lite` over an unmodified shell reproduces today's page body **sha256-identical**, the
+> only delta a 127-byte provenance banner. Lite **482.2 KB** / full **548.5 KB**, of which only
+> **0.5 KB** is app code; lite pays 1.5 KB over the inert build for the disablement pane and its
+> claim sentence. **D10 and D11 can be written directly against the spike's assertions** — they are
+> already phrased as gate claims — and the spike's negative manifest *is* D10's: lite carries no
+> `@inject:eq`, no EQUILIBRIUM, no `evEstimate`, no `.solverpane` CSS; both carry `model.order`
+> (packed/orderHash) per §5.2; neither artifact carries an `@only:` marker. **D9 is deliberately not
+> set here.** Full's size budgets stay unanchored until a real `data/equilibrium.json` exists, so the
+> build prints SIZE NOT GATED and pins `VARIANTS.full.budgets === null` by test to make the flip
+> deliberate; D9 sets it at measured + 5% after P3 and **must refuse a payload carrying
+> `meta.synthetic: true`**. P1 must not invent full's ceiling. **One measured gap D10 has to carry:**
+> lite-visible code calling a full-only symbol **builds clean and ships the dangling call** — the
+> per-variant `--check` cannot see it, so the per-variant *smoke* run is non-optional and joins §0.3's
+> GREEN definition. *Noted for lane M:* METHODOLOGY §9.11's honest-claim sentence is stale on its own
+> terms before it is even split per variant — it says 574.4 KB against a shipped 480.8 KB after the
+> sub-bucket cut. Re-measure when splitting.
+
 ### 5.4 EV primacy — exactly per locked 4.4
 
 All three presentations (absolute EV, decision-delta, score) ship as switchable view modes; **the
@@ -456,6 +692,30 @@ it happens, is itself a constants change and passes through §5.1's fixture-re-f
 with its own committed diff. If S-C fails, the gate is unpassable by construction: score-primary
 becomes permanent, and "the decision layer remains unvalidated against money" ships as a standing
 METHODOLOGY §10 limitation rendered in the Method view.
+
+> **Measured (phase 0) — S-B → Grade C.** All three presentations still ship as switchable view
+> modes and **the score still cuts tiers**: Grade C changes what EV *claims*, not where it sits. EV
+> is `estimate`-badged everywhere and display-only, with `se` derived from trial counts as written.
+> **I34's quarantine is what makes that coherent, and S-B measured its consequence exactly:** under
+> the quarantine tiers are bit-identical across view modes, so the smallest EV difference that moves
+> a tier is **+∞ by construction** — no EV error of any size can reach a tier. The EV-mode figures,
+> recorded for §6's audit: the smallest EV difference that moves a tier is **0.1405 pt** under the
+> predicate reading (§3.4's `EV ≥ 0` cut) and **0.1274 pt** under the ordering reading (this
+> section's primacy, EV as sort key — with two cells tying at **0.0000**), against a stub payoff `se`
+> of **0.1581 pt**.
+
+> **Measured (phase 0) — S-C → fail.** **Primacy is now unreachable in fact as well as by
+> construction.** The Phase-0 pre-registration this section requires is done: **PC-0..PC-8**,
+> written before any EV number exists, stored verbatim in `scripts/gates/reserved.mjs` as I46's
+> fixed bar and byte-compared against `docs/spikes/S-C.md` so neither copy can move alone. PC-1
+> (admissible visibility), PC-2 (admissible provenance) and PC-3 (assignment) are unsatisfiable
+> today, and PC-0 is failure-closed — a criterion that cannot be evaluated counts as FAIL — so
+> `model.calibration.verdict` **can only be stamped FAIL**. The gate is unpassable by construction
+> exactly as this section anticipates: **score-primary is permanent for v3**, and "the decision layer
+> remains unfalsified against money" ships as a standing METHODOLOGY §10 limitation rendered in the
+> Method view. **Parked, not lowered** — the bar is recorded at full strength, so it comes alive
+> unchanged the day a lawful, hero-visible, assigned corpus exists. §5.1's fixture-re-freeze ceremony
+> is therefore not exercised for primacy in v3.
 
 ---
 
@@ -483,6 +743,29 @@ Per brief §2.1: anchored, or flagged unanchorable and gated. "Flagged" means na
 | `evPrimary` mechanism | `model.calibration.verdict`, anchored to I46 by construction — ships failing |
 | per-build byte budgets (D9, full-page tripwire) | measured+5%, arithmetic |
 | calibration tolerances | pre-registered at Phase 0 from S-C's power analysis |
+
+> **Measured (phase 0).** *Five rows of this table are now measurements rather than promises, and
+> one flag's teeth bit.* **`solver exploitability target ε`.** The decision-relevant reading of "≤
+> the payoff's own `se`" is *out-of-sample* exploitability — σ solved on one payoff sample, scored
+> against an independent one — measured **5.16e-5 bb = 0.0034% of pot**, so **ε = 5e-5 bb**. The
+> per-entry se (0.143 equity pts) is *not* the decision-relevant quantity, and the distinction earns
+> its keep: it puts §1's 0.25%-of-pot spike threshold **74× above the noise floor**, so that
+> threshold is real headroom rather than fake precision. **`solver iteration cap`: 2,000** — from the
+> measured curve, where ε first crosses 5e-5 bb at iteration 456 / 40 ms, a 4× margin at 143 ms.
+> **`solver tree/sizing set`: ANCHORED, not flagged.** The pot-limit maximum ladder **3/9/27/81** is
+> an arithmetic identity of the game, so the sizing set introduces **zero new constants** — stronger
+> than this row assumed. I35's cap-list clause still bounds the *omissions* (no limp, no sixth raise,
+> no postflop), which remain abstraction choices and must render on-screen. **`payoff estimator
+> params` and `estimator stack-off knob`: not exercised in v3.** S-B graded C and P2 ships no payoff
+> table (§3.2), so no estimator is fitted and neither row ships an unanchored constant. **`Phase-0
+> spike success thresholds`: the flag's teeth bit, and the line was not redrawn.** S-B's mandated
+> audit was reported beside its p95 and found a genuine mismatch — the blind 2.5 / 5.0 edges sit
+> **15.8–20× above** the granularity at which EV flips a cell (stub `se` 0.1581 pt; median tier-move
+> 0.1405 pt predicate / 0.1274 pt ordering). At the *consequence* level the edges are defensible —
+> 2.5 pt ≈ **7.5% of cells / 8.7% of combo mass** changing side of the aggressive cut, 5.0 pt ≈
+> **13.9% / 15.2%**, and the measured best form ≈ **19.0% / 19.4%** — so the mismatch **ships as a
+> finding**, which is exactly what this row pre-committed to. **`evPrimary` ships failing** as
+> designed: see §5.4's S-C annotation.
 
 ---
 
@@ -528,6 +811,21 @@ Ids continue the live numbering (I1–I31 with no I17; D1–D8 with no D3).
 | **D10** | lite negative manifest per §5.3. |
 | **D11** | dual determinism + per-variant provenance + grep-gated honesty sentences per §5.3. |
 | **S-gates** (harness, not verify.mjs) | smoke re-armed per variant (with the §1 S-E prediction on its 8 ms budget); **SF** (Firefox) and **SS** (Safari), the two harness gates §9 defines, record METHODOLOGY §10.15's three facts per browser as *measured verdicts* — the gate asserts **the on-screen disclosure matches the measurement**, not that everything works. |
+
+> **Measured (phase 0, B0 step 4).** The catalog above is drafted into the registry as
+> **`scripts/gates/reserved.mjs` — a manifest of RESERVED IDS, not entries in the enforced set.**
+> Nothing in it runs, nothing is stamped into `model.gates`, and the report is still the same **46
+> gates in the same order**: `EXPECTED_IDS` remains the written-out literal it was, for the reason
+> stated in `scripts/gates/index.mjs`, and the manifest is guarded against it **in both directions
+> at import time** — a reserved id appearing in `EXPECTED_IDS`, or an id the manifest calls live
+> that the registry stopped emitting, throws rather than passing quietly. Only **I32** and **I33**
+> are live; **I34–I47, D9, D10, D11** are reserved; **SF** and **SS** are reserved as harness gates —
+> §7.2 names ids only for those two, so none is invented for `smoke.mjs` itself. **I46 is recorded
+> as parked**: S-C's PRE-REGISTERED PRIMACY CRITERIA **PC-0..PC-8** are stored verbatim as its fixed
+> bar and byte-compared against `docs/spikes/S-C.md`, with PC-1/PC-2/PC-3 unsatisfiable and PC-0
+> failure-closed, so the gate is **unpassable by construction — parked, not lowered**, carrying the
+> named reason so it comes alive unchanged if that reason ever stops being true.
+> `test/gates-reserved.test.mjs` pins all of it, including the two guards' own failure modes.
 
 ### 7.3 Adversarial verification duty
 
@@ -586,6 +884,38 @@ ids §7.2's S-gates row uses — each measuring exactly METHODOLOGY §10.15's th
 while hidden) and recording them as measured verdicts — headless,
 temp profiles only, never the user's installed browsers — and the page's on-screen disclosures
 are updated to whatever is measured, degradations disclosed rather than patched blind.
+
+> **Measured (phase 0) — S-D → pass, S-E → buy Playwright only.** *Dual build.* Viable and
+> effectively free: lite 103 ms, full 105 ms, both variants plus both `--check`s ≈ 415 ms, each
+> variant reproducing its own digest across builds and reporting STALE against the other's artifact
+> **by name**. Every refusal this section relies on was verified to fire, including `fetch(` and
+> `<script src=>` inside a full-only block while building lite. **Merge order per §12 stands:** S-D's
+> `scripts/lib/variant.mjs`, `scripts/build.mjs` and `test/variant.test.mjs` land first — inert on
+> today's shell but for the banner and a one-time `index.html` rebuild — and only then are the six
+> seams applied to `src/shell.html` for real. **The per-variant smoke run joins the per-variant
+> `--check` in the GREEN definition**, because it is the only one of the two that catches a lite page
+> calling a stripped symbol. *Toolchain.* **`package.json` + Playwright as the sole devDependency,
+> and nothing else**: 2 packages, 1.90 s, 23 + 66 lines of repo text, zero source files touched, all
+> three checks byte-identical to baseline. The three declines are measured, and one is disqualifying
+> by itself — **`esbuild --format=cjs` makes `verify.mjs`'s CLI detection silently not fire, so the
+> verifier exits 0 having run zero gates.** Every further adoption still needs a named consumer; the
+> default stays no. *The two harness gates are two thirds cheaper than assumed and one third
+> impossible as specified.* **F1** (Blob worker from `file://`) and **F2** (localStorage reachable
+> there) are now measured **green on Chromium 151, Firefox 153 and WebKit 26.5**, with round-trips
+> 4.6 / 6.0 / 10.0 ms — METHODOLOGY limitation 15 can be rewritten from "Firefox and Safari have not
+> been run at all" to a three-engine table, with the honest caveat that **Playwright's WebKit is not
+> Safari.app**. **F2 falsifies the expectation §9.12 quotes:** WebKit 26.5 does *not* throw
+> `SecurityError` on the first `file://` localStorage access. The write probe stays the right design;
+> the sentence explaining *why* becomes a measured verdict. **F3** (a hidden tab suspends rAF)
+> **cannot be measured headless by any available mechanism** — `bringToFront` leaves
+> `visibilityState` 'visible', `Emulation.setPageVisibilityOverride` is gone from CDP, and
+> `Page.setWebLifecycleState` frozen changes nothing — so SF/SS re-scope the F3 clause to assert the
+> **consequence** (stub `requestAnimationFrame` to stop; assert the run pauses and the disclosure
+> renders), which is testable headless and is the claim that actually matters, and keep the raw fact
+> as a standing limitation rather than pretending a headed run is in scope. *Smoke* re-arms per
+> variant and reports **11/12** until §8 fixes the 1280–1442 px topbar clipping (§1's S-E
+> annotation); its width list should gain **1280 and 1360** so the middle of the band is sampled, not
+> only its 3 px edge.
 
 ---
 
@@ -709,6 +1039,14 @@ per-gate timing line and soft ceiling exist for exactly this.
 
 1. **S-B's winning estimator form** and its constants' anchors — decided by the spike's error
    table and sensitivity sweep; the three-band rule (§1) pre-commits the consequences.
+
+   > **Resolved (phase 0). No form wins; none is adopted.** S-B graded **C** (best held-out p95
+   > 7.21 > 5.0), so the Grade-C row fires: the stub payoff stays and P2 ships a payoff *correction*
+   > at most, never a table (§3.2). The constants this question was about are therefore never
+   > created. The finding underneath is that **the blocker on ever reaching Grade A is the
+   > reference, not the estimator** — two of its five opinion knobs move the "ground truth" by more
+   > than the Grade A/B edge — and a reference that does not have that problem needs a postflop
+   > solver: v4 scope.
 2. **λ/μ re-weight vs re-describe** (item 7) — decided at P1-M from the §5.2 correlations by the
    §3.1 rule; either outcome is asserted in the I23 rewrite.
 3. **Whether item 11 survives its cut-line** — decided at P5 against D6's post-item-5 headroom
@@ -717,5 +1055,18 @@ per-gate timing line and soft ceiling exist for exactly this.
    the comparand is raw either way (§3.3), the question is only what the grid shows next to it.
 5. **6-max MCCFR in or out** — S-A's wall-time answer (attempted only if HU lands inside half its
    budget).
+
+   > **Resolved (phase 0). IN.** HU landed at **11 ms against the 60,000 ms half-budget** — inside
+   > by 5,400× — so the criterion is met and 6-max MCCFR is attempted in P3 rather than pre-deferred
+   > with the on-screen caveat (§3.3). Its claims stay fixed-point-only per I35, and the §5.7
+   > labeling split ("GTO" for HU, "self-play fixed point" for anything multiway) is unchanged.
+
 6. **The full build's toolchain shape beyond Playwright** — S-E's buy-list; default no per item
    without a named consumer.
+
+   > **Resolved (phase 0). Playwright, and nothing else.** Every other adoption is declined on a
+   > measurement rather than on taste, and one decline is disqualifying on its own: `esbuild
+   > --format=cjs` makes `verify.mjs`'s CLI detection **silently not fire, so the verifier exits 0
+   > having run zero gates** (§9). TypeScript cannot be adopted without renaming `.mjs` off ESM
+   > semantics, and `tsc --checkJs` over the scripts found **zero real defects** in 81 errors. The
+   > named-consumer rule stands for anything proposed later.
