@@ -994,5 +994,4 @@ async function main() {
   return out;
 }
 
-const result = await main();
-export default result;
+return await main();

@@ -211,7 +211,7 @@ Node ≥ 22, **zero npm dependencies** anywhere in the repo — stdlib only (`no
 
 ```bash
 node scripts/generate-data.mjs          # enumerate, measure, derive, emit data/model.json
-node scripts/verify.mjs                 # 44 gates: D1-D8 (no D3), V1-V6, B, I1-I31 (no I17)
+node scripts/verify.mjs                 # 45 gates: D1-D8 (no D3), V1-V6, B, I1-I32 (no I17)
 node scripts/build.mjs                  # compile src/shell.html -> index.html
 node --test test/*.test.mjs             # evaluator, taxonomy and policy unit tests
 node smoke.mjs                          # headless browser gate (Playwright, if installed)
@@ -266,10 +266,14 @@ src/shell.html          the hand-authored source of that page: markup, CSS, app 
 data/model.json         committed generator output (183 KB, diffable, reviewable)
 scripts/
   generate-data.mjs     the pipeline
-  verify.mjs            gates and invariants
+  verify.mjs            the gate runner: walks the registry, times it, formats the report
+  gates/                the gates themselves, one file per family — index.mjs is the registry
+                        data · engine · structure · policy-sweep · fixtures · payoff
+                        measurement · depth · env
   build.mjs             compiles src/shell.html + model + policy -> index.html
   lib/                  eval5 · taxonomy · mc · villains · villain-range · policy · equity-ref
-                        jsmin · shell-compile · order-pack · sim-bundle · sim-kernel · sim-worker
+                        payoff · jsmin · shell-compile · order-pack · sim-bundle · sim-kernel
+                        sim-worker
 test/                   node --test unit tests
 docs/METHODOLOGY.md     the full technical honesty document
 smoke.mjs               headless load + interaction gate

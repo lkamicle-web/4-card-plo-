@@ -206,6 +206,22 @@ trial counts) — honestly the game the current measurement already describes �
 CFR engine, the EV presentation, the EV cut, and the inspector simultaneously, without waiting
 for S-B's winner.
 
+> **Measured (phase 0, B0 step 2).** *The stub as written above cannot pass clause (b), and the
+> refinement is recorded rather than edited away.* `eq` is measured against RANDOM opponents, so it
+> carries no villain identity and `eq_A + eq_B ≠ 1` for almost every pair; returning it literally
+> heads-up violates the zero-sum clause on **15,006 of 15,006 ordered pairs** (measured by breaking
+> `payoff.mjs` back to the literal form and reading I33's own diagnostic). The two clauses are
+> jointly satisfiable only if the stub conserves, so the heads-up stub returns the **zero-sum
+> projection of the same shipped measurement**, `ev = 0.5 + (eq_A[0] − eq_B[0])/200` — the average
+> of two readings of one quantity, built from shipped numbers only, **zero new constants**, and
+> conserving to the last bit (I33(b) therefore asserts `= 1` exactly where §2 asked for `1 ± 2·se`).
+> It is still checkdown and says so in `source`. Multiway takes no projection — there is no pair to
+> project onto — so it returns hero's shipped `eq[N−1]` flagged `supported:false`: a number,
+> flagged, never a guess presented as supported. **Consequence for downstream badges:** heads-up is
+> `supported:true` today even though villain identity is unmeasured, so the checkdown honesty rides
+> entirely on `source`. I35's Grade-C label must key off `source === 'checkdown'`, never off
+> `supported`, or it will silently upgrade the checkdown game to a solved one.
+
 **Gate I33 pins the freeze:**
 (a) a unit test freezing arity, key names, and value types — the freeze is a test, not a doc;
 (b) **zero-sum/conservation as an explicit clause**: HU, `ev(A,B) + ev(B,A) = 1 ± 2·se` over

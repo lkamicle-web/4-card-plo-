@@ -13,10 +13,10 @@
 //   S2L lattice     the same, against VPIP-filtered villains at five lattice points
 //   S3 vs-3-bet     per cell x component: heads-up trials vs a rejection-sampled villain
 //   S5 derive+emit  rho, nu, mplay, cooler, lattice deltas, adjMean, waveD, benchmarks, assembly
-//   S6 verify       44 gates: D1-D8 (no D3), V1-V6, benchmarks, I1-I22 (no I17) + I24/I25 (the v2 measurement
+//   S6 verify       45 gates: D1-D8 (no D3), V1-V6, benchmarks, I1-I22 (no I17) + I24/I25 (the v2 measurement
 //                   shapes) + I23/I27/I28 (the depth axis, §3.1) + I26/I29/I30/I31 (the straddle
-//                   and the rake, §3.2/§3.3), size budgets and the §2.5 payload ceiling; stamps
-//                   MODEL.gates
+//                   and the rake, §3.2/§3.3) + I32 (the v2 tier surface, frozen before v3 —
+//                   V3-PLAN §0.4), size budgets and the §2.5 payload ceiling; stamps MODEL.gates
 //
 // Zero npm dependencies. All randomness is seeded and runs are reproducible, but there is no
 // global seed knob: every Monte Carlo stream is keyed by its own stage and cell name (see

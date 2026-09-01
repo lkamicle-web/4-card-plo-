@@ -6599,7 +6599,11 @@ function renderMethod() {
       DEPTH.ref + 'bb / rake 0 / no straddle; I23–I25, the depth anchors and the taxonomy findings that falsified the ' +
       'plan\'s own predictions; <b>I26</b>, a straddle tightens every opening range; <b>I27</b>, the κ/λ separation as a ' +
       'fact; I28–I30, continuity and painted widening re-checked deep, shallow and straddled; <b>I31</b>, the rake ' +
-      'claim in both halves.' : '') + '</p>';
+      'claim in both halves.' : '') +
+    (gk.indexOf('I32') >= 0 ? ' <b>I32</b> is the same idea one level up, and it is what makes the next version safe ' +
+      'to build in the open: it freezes this build\'s tiers over the whole environment <i>surface</i> — twelve lanes of ' +
+      'depth × rake × straddle, 2,045,736 tiers — not merely at the one point I22 watches. The point I22 watches is ' +
+      'inside it, checked rather than assumed, which is why both gates run and neither retires alone.' : '') + '</p>';
   if (HAS_ENV) {
     var _rf = Math.min(RAKE.preset / 100, RAKE.capBB / (RAKE.potBB || 60));
     var _be = C.vs3bet.breakeven, _cl = C.vs3bet.call;
