@@ -39,7 +39,8 @@ const HOUSE = [
   "- New model work needs new gates (ids per docs/V3-PLAN.md section 7) before its phase can close. Gates are written to FAIL, never tolerances widened to pass.",
   "- The v3 identity constraint (plan section 0.4): every mechanism enters as (a) a new axis inert at legacy settings, (b) a new artifact, or (c) a deliberate re-freeze via `scripts/freeze-tiers.mjs --force` with the printed move-diff committed. NEVER run freeze-tiers with --force unless this prompt explicitly names that ceremony as your step. freeze-tiers.mjs is the sole fixture writer.",
   "- Commit ONLY when this prompt says to, with a descriptive message. NEVER push. NEVER touch the user's installed browsers - browser testing is headless with temp profiles only.",
-  "- You are fully autonomous: never ask the user anything; decide, or surface a blocker in your structured return value."
+  "- You are fully autonomous: never ask the user anything; decide, or surface a blocker in your structured return value.",
+  "- In structured returns, `blockers` is RESERVED for issues that must stop this milestone from committing: a deliverable you could not produce, a gate you could not make green without weakening it, a constant that can be neither anchored nor legitimately gated+flagged, or a decision only the user can make that blocks correctness. Informational findings, resolved trade-offs, provenance notes, and items deliberately left for a later phase belong in `summary`, NEVER in `blockers` - a note filed as a blocker halts the whole milestone (this aborted the first phase0 run; user-adjudicated 2026-08-31)."
 ].join("\n");
 
 const MILESTONES = ["phase0", "P1", "P2", "P3", "P4", "P5"];
