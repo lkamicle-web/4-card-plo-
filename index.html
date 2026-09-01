@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- GENERATED FILE — do not edit. Built by scripts/build.mjs from:
-       src/shell.html   sha256 9c526bc2e4690c90
+       src/shell.html   sha256 f9e379377c277c43
        data/model.json   1.0.0 · 11af1ad31c22a298
        scripts/lib/policy.mjs + scripts/lib/taxonomy.mjs (inlined)
      Comments and dead whitespace are stripped from the JavaScript;
@@ -6070,7 +6070,7 @@ if(inp&&(!opts||!opts.keepText))inp.value='';
 searchSay('',null);
 if(was){
 render();paintSearchRows();
-if(key&&CK[key])focusCell(CK[key]);
+if(key&&CK[key]&&document.activeElement!==$('#handq'))focusCell(CK[key]);
 if(!opts||!opts.quiet)announce('hand search cleared');
 }
 return was;
@@ -6167,7 +6167,7 @@ searchSay('',null);
 loadHand(p.cards.map(cardName).join(''));
 return;
 }
-if(e.key==='Escape'){clearHandSearch();inp.blur();e.preventDefault();e.stopPropagation();return;}
+if(e.key==='Escape'){inp.blur();clearHandSearch();e.preventDefault();e.stopPropagation();return;}
 if(e.key==='ArrowDown'&&SRCH.active){
 var target=SRCH.level==='row'?firstLiveIn(SRCH.row):CK[SRCH.cellKey];
 if(target&&target.live){focusCell(target);announce(target.row.label+' by '+target.col.label);e.preventDefault();}

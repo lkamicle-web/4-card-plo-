@@ -7,7 +7,7 @@
       "runtimeArgs": [
         "-I",
         "-c",
-        "import os,functools,http.server as h;h.test(HandlerClass=functools.partial(h.SimpleHTTPRequestHandler,directory=os.environ.get('PWD') or '.'),port=int(os.environ.get('PORT','8123')))"
+        "import os,functools,http.server as h;h.test(HandlerClass=functools.partial(h.SimpleHTTPRequestHandler,directory=os.environ.get('RUNDOWN_ROOT') or '/Users/leo/Documents/GitHub/4-card-plo-'),port=int(os.environ.get('PORT','8123')))"
       ],
       "port": 8123,
       "autoPort": true

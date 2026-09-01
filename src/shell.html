@@ -5703,7 +5703,11 @@ function clearHandSearch(opts) {
   searchSay('', null);
   if (was) {
     render(); paintSearchRows();
-    if (key && CK[key]) focusCell(CK[key]);
+    /* Refocusing the found cell serves the Esc chain, where focus is already out in the grid.
+       A clear that fires while the user is TYPING in the box — the as-you-type validity pass and
+       the re-query inside runHandSearch both come through here — must not pull focus out from
+       under their hands. */
+    if (key && CK[key] && document.activeElement !== $('#handq')) focusCell(CK[key]);
     if (!opts || !opts.quiet) announce('hand search cleared');
   }
   return was;
@@ -5821,8 +5825,10 @@ function wireHandSearch() {
       loadHand(p.cards.map(cardName).join(''));
       return;
     }
-    /* §5.1: Esc clears the search and everything it put on screen, from inside the field too */
-    if (e.key === 'Escape') { clearHandSearch(); inp.blur(); e.preventDefault(); e.stopPropagation(); return; }
+    /* §5.1: Esc clears the search and everything it put on screen, from inside the field too.
+       Blur FIRST: clearHandSearch only hands focus to the found cell when focus is not in the
+       box, so leaving the field before clearing keeps Esc's focus-to-cell hand-off. */
+    if (e.key === 'Escape') { inp.blur(); clearHandSearch(); e.preventDefault(); e.stopPropagation(); return; }
     /* hand the keyboard to the grid at whatever the finder is pointing at */
     if (e.key === 'ArrowDown' && SRCH.active) {
       var target = SRCH.level === 'row' ? firstLiveIn(SRCH.row) : CK[SRCH.cellKey];
