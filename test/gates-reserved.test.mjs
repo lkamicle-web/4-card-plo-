@@ -42,14 +42,25 @@ test('reserved ids are disjoint from the enforced set', () => {
   assert.deepEqual(leaked, [], `reserved ids in EXPECTED_IDS: ${leaked.join(' ')}`);
 });
 
-test('everything the catalog calls live IS enforced, and only the promoted four are', () => {
-  // P0 froze this at [I32, I33]. P1 lane I promoted D10 and D11 with the dual build (V3-PLAN §5.3,
-  // §9) — the three-line promotion index.mjs describes, and THIS LINE IS THE FOURTH. Editing it is
-  // the deliberate act: a gate quietly flipped to 'live' without its id reaching EXPECTED_IDS
-  // fails index.mjs's import-time guard, and one that reaches EXPECTED_IDS without a lane owning
-  // it fails here. Later phases append; nothing is ever removed from this list.
-  assert.deepEqual(LIVE_IDS, ['I32', 'I33', 'D10', 'D11']);
-  for (const id of LIVE_IDS) assert.ok(EXPECTED_IDS.includes(id), `${id} claims live but is not run`);
+test('everything the catalog calls live IS enforced, and only the promoted six are', () => {
+  // P0 froze this at [I32, I33]. P1 lane I promoted four: D10/D11 with the dual build and SF/SS
+  // with the browser harness (V3-PLAN §5.3, §9) — the three-line promotion index.mjs describes,
+  // and THIS LINE IS THE FOURTH. Editing it is the deliberate act: a gate quietly flipped to
+  // 'live' without its id reaching EXPECTED_IDS fails index.mjs's import-time guard, and one that
+  // reaches EXPECTED_IDS without a lane owning it fails here. Later phases append; nothing is ever
+  // removed from this list.
+  assert.deepEqual(LIVE_IDS, ['I32', 'I33', 'D10', 'D11', 'SF', 'SS']);
+  // Harness gates run OUTSIDE this runner (browsers.mjs), so they are live without being in
+  // EXPECTED_IDS — the `runner` field is what makes that legal rather than an inconsistency, and
+  // index.mjs's guard reads it. Every VERIFY-runner live id must be enforced.
+  for (const e of CATALOG.filter((x) => x.status === 'live' && x.runner === 'verify')) {
+    assert.ok(EXPECTED_IDS.includes(e.id), `${e.id} claims live but is not run`);
+  }
+  for (const e of CATALOG.filter((x) => x.status === 'live' && x.runner === 'harness')) {
+    assert.ok(!EXPECTED_IDS.includes(e.id), `${e.id} is a harness gate and must not be in EXPECTED_IDS`);
+    assert.ok(typeof e.live === 'string' && e.live.length > 40,
+      `${e.id} is live but records no measurement — a harness gate's verdicts are its evidence`);
+  }
 });
 
 test('the enforced report is the 48 gates, and EXPECTED_IDS is still a literal', () => {
