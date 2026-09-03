@@ -42,19 +42,26 @@ test('reserved ids are disjoint from the enforced set', () => {
   assert.deepEqual(leaked, [], `reserved ids in EXPECTED_IDS: ${leaked.join(' ')}`);
 });
 
-test('everything the catalog calls live IS enforced, and only I32/I33 are', () => {
-  assert.deepEqual(LIVE_IDS, ['I32', 'I33']);
+test('everything the catalog calls live IS enforced, and only the promoted four are', () => {
+  // P0 froze this at [I32, I33]. P1 lane I promoted D10 and D11 with the dual build (V3-PLAN §5.3,
+  // §9) — the three-line promotion index.mjs describes, and THIS LINE IS THE FOURTH. Editing it is
+  // the deliberate act: a gate quietly flipped to 'live' without its id reaching EXPECTED_IDS
+  // fails index.mjs's import-time guard, and one that reaches EXPECTED_IDS without a lane owning
+  // it fails here. Later phases append; nothing is ever removed from this list.
+  assert.deepEqual(LIVE_IDS, ['I32', 'I33', 'D10', 'D11']);
   for (const id of LIVE_IDS) assert.ok(EXPECTED_IDS.includes(id), `${id} claims live but is not run`);
 });
 
-test('the enforced report is still the 46 gates, and EXPECTED_IDS is still a literal', () => {
-  assert.equal(EXPECTED_IDS.length, 46);
+test('the enforced report is the 48 gates, and EXPECTED_IDS is still a literal', () => {
+  // 46 at P0; +D10 +D11 at P1 (the dual build). The count is asserted rather than derived for the
+  // same reason EXPECTED_IDS is a literal: a number that follows the list cannot contradict it.
+  assert.equal(EXPECTED_IDS.length, 48);
   // Written out, not derived — the reason is in index.mjs: a list flat-mapped from REGISTRY cannot
   // detect a deleted family, because it shrinks with it. Adding a reserved-id manifest must not
   // become the excuse to generate this list.
   const decl = INDEX_SRC.slice(INDEX_SRC.indexOf('export const EXPECTED_IDS'));
   const literal = decl.slice(0, decl.indexOf('];') + 2);
-  assert.equal((literal.match(/'[A-Z]+\d*'/g) || []).length, 46);
+  assert.equal((literal.match(/'[A-Z]+\d*'/g) || []).length, 48);
   assert.match(literal, /^export const EXPECTED_IDS = \[/, 'EXPECTED_IDS is no longer a literal');
   assert.ok(!literal.includes('flatMap') && !literal.includes('CATALOG'),
     'EXPECTED_IDS is being derived — the independent copy is the point');

@@ -118,6 +118,7 @@ export function build(ctx) {
       cells: b(model.cells),
       meta: b(model.meta) + b(model.rows) + b(model.cols) + b(model.bands) + b(model.constants) + b(model.benchmarks),
       order: model.order ? b(model.order) : 0,
+      baseline: model.baselineTiers ? b(model.baselineTiers) : 0,
       total: b(model),
     };
     // Budgets, raised for the v2 payload (V2-PLAN §2.5), in the same spirit as build.mjs's own
@@ -158,14 +159,46 @@ export function build(ctx) {
     // v-points, still pretty-prints to 221.0 KB. So the literal reading is not satisfiable by the
     // plan's own remedy, and the ceiling is read on the basis it was written against: the file as
     // emitted. See docs/V2-PLAN.md §2.5, updated with these measurements.
-    const BUD = { cells: 65 * 1024, meta: 13 * 1024, order: 43 * 1024, total: 120 * 1024 };
+    //
+    // THE DUAL BUILD (V3-PLAN §5.3, P1 lane I): this gate is RESTATED, not rewritten. `model.json`
+    // stays the single shared artifact both variants inject, and §5.3 re-reads D6 as **the lite
+    // contract** — lite is the constraining consumer (brief §5.8), so the numbers above bind the
+    // lite artifact and the full artifact inherits them for the shared core and carries its own
+    // payload separately under D9. Not one byte of the budgets above moves for that restatement.
+    //
+    // THE ONE ADDITION, named and paid for at the gate:
+    //   baseline  new, 12K   the quantized equilibrium baseline-tier block — per (pos, node, cell)
+    //                        baseline tiers — which is what buys LITE a tier-level vs-GTO colour
+    //                        mode instead of a disabled one. §5.3's judgement, and it is the right
+    //                        one: "same model" (locked 4.2) is truer than "same model minus the
+    //                        mode we could not afford".
+    //   total  120 -> 132K   ...and this is where the phrase "paid for" has to mean something. A
+    //                        ceiling raised by 12K before the 12K block exists is 12K of headroom
+    //                        handed to every OTHER block, which is precisely the tolerance-widening
+    //                        this repository refuses. So the raise is RESERVED, not granted: the
+    //                        `core` clause below re-asserts the ORIGINAL 120K ceiling against the
+    //                        payload minus the baseline block, and the 132K total can only be
+    //                        approached by the baseline block actually being there. Today
+    //                        `sizes.baseline` is 0, `core === total`, and this gate is bit-for-bit
+    //                        as strict as it was. The day P3 emits the block, it gets its 12K and
+    //                        nothing else does.
+    const BUD = {
+      cells: 65 * 1024, meta: 13 * 1024, order: 43 * 1024, baseline: 12 * 1024, total: 132 * 1024,
+    };
+    const CORE_BUDGET = BUD.total - BUD.baseline;   // the pre-raise 120K, still binding
+    const core = sizes.total - sizes.baseline;
     const ok = sizes.cells <= BUD.cells && sizes.meta <= BUD.meta
-      && sizes.order <= BUD.order && sizes.total <= BUD.total;
+      && sizes.order <= BUD.order && sizes.baseline <= BUD.baseline
+      && core <= CORE_BUDGET && sizes.total <= BUD.total;
     G('D6', ok, `cells ${(sizes.cells / 1024).toFixed(1)}K/${BUD.cells / 1024}K · ` +
       `meta+tables ${(sizes.meta / 1024).toFixed(1)}K/${BUD.meta / 1024}K · ` +
       `order ${(sizes.order / 1024).toFixed(1)}K/${BUD.order / 1024}K · ` +
+      `baseline tiers ${(sizes.baseline / 1024).toFixed(1)}K/${BUD.baseline / 1024}K · ` +
       `total ${(sizes.total / 1024).toFixed(1)}K/${BUD.total / 1024}K ` +
-      `(pretty-printed ${(Buffer.byteLength(JSON.stringify(model, null, 1)) / 1024).toFixed(1)}K)`);
+      `(of which core ${(core / 1024).toFixed(1)}K/${CORE_BUDGET / 1024}K — the baseline block's ` +
+      `12K is reserved for it and grants no other block headroom; ` +
+      `pretty-printed ${(Buffer.byteLength(JSON.stringify(model, null, 1)) / 1024).toFixed(1)}K). ` +
+      `BINDING ON THE LITE ARTIFACT (§5.3): model.json is shared, and lite is the constraining consumer`);
     } },
 
     // =========================================================================
@@ -193,6 +226,14 @@ export function build(ctx) {
     // `meta.hash` are not yet stamped into the model, so the size measured there is ~0.6 KB short
     // of the file that lands on disk. Re-running `node scripts/verify.mjs` over the written file
     // reports the true size (146,551 B). Both readings sit far inside the ceiling.
+    //
+    // THE DUAL BUILD (V3-PLAN §5.3): restated only, no code change. `model.json` is the shared
+    // core both variants inject, so this ceiling is **binding on the lite artifact** — lite is the
+    // constraining consumer, and a payload that fits lite fits full by construction. The full-only
+    // `data/equilibrium.json` is NOT measured here and never should be: it is a different file
+    // under a different gate (D9), sized from its own first real measurement at +5%, and folding
+    // it into a ceiling calibrated against the shared model would blow that ceiling for a reason
+    // that has nothing to do with the model creeping.
     const BUDGET = 220 * 1024;
     const emitted = sizes.total;
     const pretty = Buffer.byteLength(JSON.stringify(model, null, 1));

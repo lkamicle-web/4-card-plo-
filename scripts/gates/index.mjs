@@ -34,6 +34,7 @@ import * as payoff from './payoff.mjs';
 import * as measurement from './measurement.mjs';
 import * as depth from './depth.mjs';
 import * as env from './env.mjs';
+import * as variants from './variants.mjs';
 import { CATALOG } from './reserved.mjs';
 
 export const REGISTRY = [
@@ -46,10 +47,17 @@ export const REGISTRY = [
   measurement,   // I24 I25                    the v2 measurement shapes
   depth,         // I23 I27 I28                the depth axis
   env,           // I26 I29 I30 I31            straddle + rake
+  variants,      // D10 D11                    the dual build, read off the artifacts on disk
 ];
 
 /**
- * The frozen report order — 46 gates, D3 and I17 retired with the sub-bucket layer.
+ * The frozen report order — 48 gates, D3 and I17 retired with the sub-bucket layer.
+ *
+ * P1 lane I appends D10 and D11 at the END of the sequence rather than beside D6/D7 where their
+ * family would otherwise sort. Deliberate: the note below says the report order is a thing
+ * reviewers diff, and appending keeps the 46-gate report a strict PREFIX of the 48-gate one, so
+ * the dual build's arrival shows up as two new rows rather than as a re-ordering of every gate
+ * after D8. Same reason the timing block went at the bottom when the registry was split.
  *
  * WRITTEN OUT, NOT DERIVED FROM `REGISTRY`. A list built by flat-mapping the registry cannot
  * detect the failure it exists to detect: delete a family from `REGISTRY` and the derived list
@@ -69,6 +77,7 @@ export const EXPECTED_IDS = [
   'I24', 'I25',
   'I23', 'I27', 'I28',
   'I26', 'I29', 'I30', 'I31',
+  'D10', 'D11',
 ];
 
 // Import-time consistency: what the families DECLARE must equal the frozen list. This is the
@@ -118,7 +127,7 @@ export const EXPECTED_IDS = [
 // repository bounds a deterministic quantity — D6 counts bytes, D7 counts bytes, and "measured +
 // 5%" is a fair margin because a re-run produces the same number. Wall time is not that. It is a
 // property of the machine, its load, and its thermal state, not of the repository, so a hard
-// ceiling would make the whole 46-gate suite fail for reasons that have nothing to do with the
+// ceiling would make the whole 48-gate suite fail for reasons that have nothing to do with the
 // model. A gate that fires on someone else's laptop teaches the next person to widen it, which is
 // how tolerance-widening starts — and this repository's rule is that gates are written to FAIL,
 // never widened to pass. So verification cost is MEASURED and STATED on every run, and going over

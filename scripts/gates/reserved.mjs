@@ -251,18 +251,29 @@ export const CATALOG = [
       + 'meta.synthetic: true.',
   },
   {
-    id: 'D10', status: 'reserved', runner: 'verify', phase: 'P1', plan: '§5.3, §7.2',
+    id: 'D10', status: 'live', runner: 'verify', phase: 'P1', plan: '§5.3, §7.2',
     claim: 'the lite negative manifest: no @inject:eq region, no solver payload, no estimator '
       + 'runtime; full-only modes render disabled-with-named-REASON in the SIM.available idiom; '
       + 'the baseline-tier block is explicitly lite-legal.',
     fails: 'a full-only payload reaching lite — or lite-visible code calling a full-only symbol, '
       + 'which S-D measured BUILDS CLEAN and ships the dangling call.',
+    note: 'LIVE at P1 (scripts/gates/variants.mjs), split across three mechanisms: the artifact '
+      + 'manifest is the gate itself; the dangling-call half is refused in build.mjs by '
+      + 'danglingSymbols(), which closes S-D §F at the seam rather than leaving it to the browser; '
+      + 'the per-variant smoke run backstops both. The baseline-tier row is a POSITIVE clause in '
+      + 'the same list — absent from the model today, and armed to require it in lite the day P3 '
+      + 'emits it.',
   },
   {
-    id: 'D11', status: 'reserved', runner: 'verify', phase: 'P1', plan: '§5.3, §7.2',
+    id: 'D11', status: 'live', runner: 'verify', phase: 'P1', plan: '§5.3, §7.2',
     claim: 'dual determinism: both variants byte-compare under --check, the variant is named in the '
       + 'provenance banner, and the per-variant honesty sentence is grep-gated.',
     fails: 'one artifact carrying the other\'s claim sentence.',
+    note: 'LIVE at P1 (scripts/gates/variants.mjs). The byte-comparison clause is carried by the '
+      + 'per-variant `build.mjs --check` loop rather than by the gate, because verifyModel also '
+      + 'runs inside generate-data.mjs where a rebuild would compare against the previous run\'s '
+      + 'model.json; what the gate asserts instead is source-hash currency, which is the same '
+      + 'statement given a deterministic build and is true in both processes.',
   },
   {
     id: 'SF', status: 'reserved', runner: 'harness', phase: 'P1', plan: '§7.2 S-gates, §9',
