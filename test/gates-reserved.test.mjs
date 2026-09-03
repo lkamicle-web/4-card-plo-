@@ -42,22 +42,39 @@ test('reserved ids are disjoint from the enforced set', () => {
   assert.deepEqual(leaked, [], `reserved ids in EXPECTED_IDS: ${leaked.join(' ')}`);
 });
 
-test('everything the catalog calls live IS enforced, and the live set is the P0+P1 set', () => {
-  // P1 lane M promoted I41-I44 (V3-PLAN §3.1 items 6, 6b, 9, 8) by the three-line edit index.mjs
-  // describes: flip `status`, add to a family's `ids`, add to EXPECTED_IDS. This list is the fourth
-  // copy, on purpose — a promotion that forgot one of the four fails here rather than quietly.
-  assert.deepEqual(LIVE_IDS, ['I32', 'I33', 'I41', 'I42', 'I43', 'I44']);
-  for (const id of LIVE_IDS) assert.ok(EXPECTED_IDS.includes(id), `${id} claims live but is not run`);
+test('everything the catalog calls live IS enforced, and only the promoted ten are', () => {
+  // P0 froze this at [I32, I33]. P1 promoted eight across two lanes: lane M's I41-I44 (the four v3
+  // axes, V3-PLAN §3.1 items 6, 6b, 9, 8), lane I's D10/D11 (the dual build, §5.3) and SF/SS (the
+  // browser harness, §9) — each by the three-line promotion index.mjs describes, and THIS LINE IS
+  // THE FOURTH COPY. Editing it is the deliberate act: a gate quietly flipped to 'live' without its
+  // id reaching EXPECTED_IDS fails index.mjs's import-time guard, and one that reaches EXPECTED_IDS
+  // without a lane owning it fails here. Order is CATALOG order (the plan's §7.2 order), not
+  // promotion order. Later phases append; nothing is ever removed from this list.
+  assert.deepEqual(LIVE_IDS, ['I32', 'I33', 'I41', 'I42', 'I43', 'I44', 'D10', 'D11', 'SF', 'SS']);
+  // Harness gates run OUTSIDE this runner (browsers.mjs), so they are live without being in
+  // EXPECTED_IDS — the `runner` field is what makes that legal rather than an inconsistency, and
+  // index.mjs's guard reads it. Every VERIFY-runner live id must be enforced.
+  for (const e of CATALOG.filter((x) => x.status === 'live' && x.runner === 'verify')) {
+    assert.ok(EXPECTED_IDS.includes(e.id), `${e.id} claims live but is not run`);
+  }
+  for (const e of CATALOG.filter((x) => x.status === 'live' && x.runner === 'harness')) {
+    assert.ok(!EXPECTED_IDS.includes(e.id), `${e.id} is a harness gate and must not be in EXPECTED_IDS`);
+    assert.ok(typeof e.live === 'string' && e.live.length > 40,
+      `${e.id} is live but records no measurement — a harness gate's verdicts are its evidence`);
+  }
 });
 
-test('the enforced report is the 50 gates, and EXPECTED_IDS is still a literal', () => {
-  assert.equal(EXPECTED_IDS.length, 50);
+test('the enforced report is the 52 gates, and EXPECTED_IDS is still a literal', () => {
+  // 46 at P0; +I41..I44 (lane M) +D10 +D11 (lane I) at P1. The count is asserted rather than
+  // derived for the same reason EXPECTED_IDS is a literal: a number that follows the list cannot
+  // contradict it.
+  assert.equal(EXPECTED_IDS.length, 52);
   // Written out, not derived — the reason is in index.mjs: a list flat-mapped from REGISTRY cannot
   // detect a deleted family, because it shrinks with it. Adding a reserved-id manifest must not
   // become the excuse to generate this list.
   const decl = INDEX_SRC.slice(INDEX_SRC.indexOf('export const EXPECTED_IDS'));
   const literal = decl.slice(0, decl.indexOf('];') + 2);
-  assert.equal((literal.match(/'[A-Z]+\d*'/g) || []).length, 50);
+  assert.equal((literal.match(/'[A-Z]+\d*'/g) || []).length, 52);
   assert.match(literal, /^export const EXPECTED_IDS = \[/, 'EXPECTED_IDS is no longer a literal');
   assert.ok(!literal.includes('flatMap') && !literal.includes('CATALOG'),
     'EXPECTED_IDS is being derived — the independent copy is the point');

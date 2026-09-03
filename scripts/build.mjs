@@ -61,10 +61,14 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { Script } from 'node:vm';
 import { minify, JsminError } from './lib/jsmin.mjs';
 import { buildSimBundle, asJsString } from './lib/sim-bundle.mjs';
 import { compileShellScripts, ShellCompileError } from './lib/shell-compile.mjs';
+import {
+  VARIANTS, VARIANT_NAMES, stripOnlyBlocks, regionManifest, danglingSymbols, VariantError,
+} from './lib/variant.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -77,11 +81,89 @@ const flag = (name) => {
   const hit = argv.find((a) => a.startsWith(`--${name}=`));
   return hit ? hit.slice(name.length + 3) : null;
 };
-const SOURCE_PATH = resolve(ROOT, flag('source') || 'src/shell.html');
-const OUT_PATH = resolve(ROOT, flag('out') || 'index.html');
-const rel = (p) => relative(ROOT, p);
 
 const die = (msg) => { console.error(`build: ${msg}`); process.exit(1); };
+
+/* --- THE PER-VARIANT --check LOOP (V3-PLAN §9; the house GREEN rule, which reads "both variants
+   once the dual build exists").
+//
+   `node scripts/build.mjs --check` with no `--variant=` checks EVERY shipped artifact, not the
+   default one. A check that covered only lite would read as coverage while providing none the day
+   a second artifact ships — and the whole reason S-D made `--check` report STALE against the other
+   variant's file BY NAME was that a check which passes regardless of variant is worthless.
+
+   Each variant is checked in a child process rather than in a loop inside this file. The child is
+   this same script with `--variant=` appended, so every path below — the refusals, the region
+   manifest, the budgets, the banner, the byte comparison — is exercised exactly as it is in a real
+   single-variant run. A restructure into a callable function would have to prove it kept those
+   identical; a re-exec does not.
+
+   THE DISPOSITION TABLE, and it is failure-closed in both directions, which is the point:
+
+     inputs present, artifact present   run the real --check (this is lite, today)
+     inputs present, artifact ABSENT    FAIL — the child says "it has never been built"
+     inputs ABSENT,  artifact present   FAIL here — the artifact outlived the input it was built
+                                        from, which is the one state neither a build nor a byte
+                                        comparison can notice
+     inputs ABSENT,  artifact absent    SKIPPED, reported by name
+
+   The third row is why the loop is worth writing today, and the second is why it is worth writing
+   BEFORE the full artifact exists: the day P3 lands `data/equilibrium.json`, this loop starts
+   demanding `index-full.html` with no edit to it. It arms itself. */
+if (CHECK_ONLY && flag('variant') === null && flag('out') === null) {
+  const relRoot = (p) => relative(ROOT, p);
+  const eqPath = resolve(ROOT, flag('eq') || 'data/equilibrium.json');
+  const self = fileURLToPath(import.meta.url);
+  const skipped = [];
+  const failed = [];
+  const checked = [];
+
+  for (const name of VARIANT_NAMES) {
+    const spec = VARIANTS[name];
+    const out = resolve(ROOT, spec.out);
+    const missing = (spec.regions.includes('eq') ? [eqPath] : []).filter((f) => !existsSync(f));
+    const built = existsSync(out);
+
+    if (missing.length && !built) {
+      skipped.push(`${name} (no ${missing.map(relRoot).join(', ')}, and no ${relRoot(out)} — `
+        + 'that variant is not built in this repository yet)');
+      continue;
+    }
+    if (missing.length && built) {
+      console.log(`${relRoot(out)} is STALE: the ${name} artifact exists but `
+        + `${missing.map(relRoot).join(', ')} does not — it outlived the input it was built from. `
+        + `Restore the input and rebuild, or delete ${relRoot(out)}.`);
+      failed.push(name);
+      continue;
+    }
+    const r = spawnSync(process.execPath, [self, ...argv, `--variant=${name}`], { stdio: 'inherit' });
+    if (r.error) die(`could not re-exec for --variant=${name}: ${r.error.message}`);
+    if (r.status === 0) checked.push(name); else failed.push(name);
+  }
+
+  const parts = [`${checked.length}/${checked.length + failed.length} variant`
+    + `${checked.length + failed.length === 1 ? '' : 's'} current`
+    + (checked.length ? ` (${checked.join(', ')})` : '')];
+  if (failed.length) parts.push(`STALE: ${failed.join(', ')}`);
+  if (skipped.length) parts.push(`skipped: ${skipped.join('; ')}`);
+  console.log(`build --check: ${parts.join(' · ')}`);
+  process.exit(failed.length ? 1 : 0);
+}
+
+/* --- the dual build (docs/V3-PLAN.md §5.2/§5.3/§9; S-D prototype).
+   `lite` is the default, and that is a decision rather than an alphabetical accident: lite is the
+   non-negotiable artifact (locked 4.2), so a bare `node scripts/build.mjs` must keep producing it
+   at index.html exactly as it did before this flag existed. */
+const VARIANT_NAME = flag('variant') || 'lite';
+if (!VARIANT_NAMES.includes(VARIANT_NAME)) {
+  die(`--variant=${VARIANT_NAME} is not a variant — known variants are ${VARIANT_NAMES.join(', ')}`);
+}
+const VARIANT = VARIANTS[VARIANT_NAME];
+
+const SOURCE_PATH = resolve(ROOT, flag('source') || 'src/shell.html');
+const OUT_PATH = resolve(ROOT, flag('out') || VARIANT.out);
+const EQ_PATH = resolve(ROOT, flag('eq') || 'data/equilibrium.json');
+const rel = (p) => relative(ROOT, p);
 
 if (!existsSync(MODEL_PATH)) die(`no model at ${MODEL_PATH} — run scripts/generate-data.mjs first`);
 if (!existsSync(SOURCE_PATH)) {
@@ -162,8 +244,60 @@ if (BANNER_RE.test(source)) {
 /* Walk every <script> in the shell source and run its body through the same lexer the injected
    modules use. The rules, and the reasoning behind each, are in scripts/lib/shell-compile.mjs —
    it lives there rather than here so test/shell-compile.test.mjs can hold it to them. */
+/* THE TWO REFUSALS RUN ON THE RAW SOURCE, BEFORE ANY VARIANT STRIPPING, and that ordering is the
+   whole point. Both are absolute for both shipped artifacts (§5.3) — but if they only ran on the
+   built page, a `fetch(` or a `<script src=>` living inside an `@only:full` block would be invisible
+   to every lite build. CI would then have to build BOTH variants to catch it, and a refusal whose
+   coverage depends on which artifacts someone happened to build is not absolute. Scanning the
+   un-stripped source makes a lite-only build refuse a full-only violation, which is the property
+   the word "absolute" was claiming all along. The post-build page scan stays too: it also covers
+   the generated blocks, which are not in the source at all. */
+{
+  const src = /<script\b([^>]*)>/gi;
+  for (let m; (m = src.exec(source));) {
+    if (/\bsrc\s*=/i.test(m[1])) {
+      die(`${rel(SOURCE_PATH)}: <script src=…> at line ${source.slice(0, m.index).split('\n').length}`
+        + ' would break the single-file, offline promise — refused in every variant, including the'
+        + ' ones this build is not producing');
+    }
+  }
+  if (/\bfetch\s*\(/.test(source)) {
+    die(`${rel(SOURCE_PATH)} calls fetch(), which is CORS-blocked on file:// — refused in every`
+      + ' variant, including the ones this build is not producing');
+  }
+}
+
+/* Variant stripping runs BEFORE the <script> walk: a full-only <script> must never be minified,
+   parse-gated or size-counted for a lite artifact it is not in. */
+let only;
+try { only = stripOnlyBlocks(source, VARIANT_NAME, { label: rel(SOURCE_PATH) }); }
+catch (e) {
+  if (e instanceof VariantError) die(e.message);
+  throw e;
+}
+
+/* S-D §F's measured gap, refused here rather than left to the browser: code this variant KEEPS
+   calling a function this variant DROPPED. The build is the only place with both halves in hand —
+   see danglingSymbols() in lib/variant.mjs for why it is scoped to call sites, and why a name the
+   kept text also declares is not a finding. This is the build-time half of gate D10; the artifact
+   half (no EQUILIBRIUM, no evEstimate, no solver payload in lite) is D10 proper in verify.mjs. */
+{
+  const dangling = danglingSymbols(only, source);
+  if (dangling.length) {
+    const first = dangling[0];
+    die(`${rel(SOURCE_PATH)}: the ${VARIANT_NAME} build keeps a call to ${first.name}() at line `
+      + `${first.line}, but ${first.name} is declared only inside the @only:${first.fromVariant} `
+      + `block opened at line ${first.fromLine} — the ${VARIANT_NAME} page would parse, ship, and `
+      + `throw at runtime`
+      + (dangling.length > 1
+        ? ` (${dangling.length} such symbols: ${dangling.map((d) => d.name).join(', ')})`
+        : '')
+      + '. Move the caller into the same @only block, or give the variant its own definition.');
+  }
+}
+
 let shell;
-try { shell = compileShellScripts(source, { label: rel(SOURCE_PATH), noMinify: NO_MINIFY }); }
+try { shell = compileShellScripts(only.text, { label: rel(SOURCE_PATH), noMinify: NO_MINIFY }); }
 catch (e) {
   if (e instanceof ShellCompileError) die(e.message);
   throw e;
@@ -183,16 +317,44 @@ for (const [half, src] of [['kernel', sim.kernel], ['entry', sim.entry]]) {
   try { new Script(src); } catch (e) { die(`sim bundle ${half} does not parse — ${e.message}`); }
 }
 
+/* The full-only equilibrium payload (§5.3): the solved baseline, the pair matrix and the
+   calibration detail that must NOT be in lite. It is a separate file from model.json on purpose —
+   model.json stays the single shared artifact both variants inject, and D6/D7 keep binding it as
+   the lite contract. */
+let eqRaw = null;
+if (VARIANT.regions.includes('eq')) {
+  if (!existsSync(EQ_PATH)) {
+    die(`the ${VARIANT_NAME} build needs ${rel(EQ_PATH)} — the full-only equilibrium payload `
+      + '(V3-PLAN §5.3). Generate it, or build --variant=lite.');
+  }
+  eqRaw = readFileSync(EQ_PATH, 'utf8');
+  try { JSON.parse(eqRaw); } catch (e) { die(`${rel(EQ_PATH)} is not JSON — ${e.message}`); }
+}
+
 const blocks = {
   data: `const MODEL = ${JSON.stringify(model)};`,
   policy: moduleToIife('scripts/lib/policy.mjs', 'POLICY'),
   taxonomy: moduleToIife('scripts/lib/taxonomy.mjs', 'TAXONOMY', { cutAt: '/* @browser-cut' }),
   engine: `const SIM_KERNEL_SRC = ${asJsString(sim.kernel)};\n`
     + `const SIM_ENTRY_SRC = ${asJsString(sim.entry)};`,
+  eq: eqRaw === null ? null : `const EQUILIBRIUM = ${JSON.stringify(JSON.parse(eqRaw))};`,
 };
 
+/* Which regions this variant fills, checked BOTH ways against the stripped source: a missing one
+   fails, and so does one this variant does not own. That second half is gate D10's build-time
+   teeth — an `@inject:eq` region that someone forgot to wrap in `@only:full` fails the lite build
+   instead of shipping an empty region into the artifact that must not have it. */
+let regions;
+try { regions = regionManifest(shell.html, VARIANT_NAME, { label: rel(SOURCE_PATH) }); }
+catch (e) {
+  if (e instanceof VariantError) die(e.message);
+  throw e;
+}
+
 let page = shell.html;
-for (const [key, body] of Object.entries(blocks)) {
+for (const key of regions) {
+  const body = blocks[key];
+  if (body == null) die(`internal: no generated block for @inject:${key}`);
   const start = `/* @inject:${key} */`;
   const end = `/* @end:${key} */`;
   const si = page.indexOf(start);
@@ -205,13 +367,22 @@ for (const [key, body] of Object.entries(blocks)) {
 /* Provenance, in the artifact, where someone who opened the wrong file will see it. The source
    hash is what --check reads back to say *which* input drifted. Nothing here may vary between two
    builds of the same inputs — no timestamps — or --check's rebuild-and-compare stops working. */
+/* The variant line is what makes the banner answer "which of the two artifacts am I holding?" —
+   D11's per-variant provenance clause. It also means the two artifacts can never be byte-identical
+   even if their contents happen to coincide, which is the property that keeps a `--check` run
+   honest when the out paths are passed by hand. */
+const eqLine = eqRaw === null ? ''
+  : `       data/equilibrium.json   ${(Buffer.byteLength(eqRaw) / 1024).toFixed(1)} KB `
+    + `· sha256 ${createHash('sha256').update(eqRaw).digest('hex').slice(0, 16)}\n`;
 const banner = `<!-- GENERATED FILE — do not edit. Built by scripts/build.mjs from:\n`
   + `       ${rel(SOURCE_PATH)}   sha256 ${sourceHash.slice(0, 16)}\n`
   + `       data/model.json   ${model.meta.version} · ${model.meta.hash.slice(0, 16)}\n`
+  + eqLine
   + `       scripts/lib/policy.mjs + scripts/lib/taxonomy.mjs (inlined)\n`
+  + `     VARIANT ${VARIANT_NAME} — ${VARIANT.claim}.\n`
   + `     Comments and dead whitespace are stripped from the JavaScript${NO_MINIFY ? ' — EXCEPT IN THIS BUILD, which passed --no-minify' : ''};\n`
   + `     the commented originals are the files above. Edit ${rel(SOURCE_PATH)}, then run:\n`
-  + `       node scripts/build.mjs\n-->`;
+  + `       node scripts/build.mjs --variant=${VARIANT_NAME}\n-->`;
 const doctype = /^<!doctype html>\r?\n/i.exec(page);
 page = doctype ? `${doctype[0]}${banner}\n${page.slice(doctype[0].length)}` : `${banner}\n${page}`;
 
@@ -222,13 +393,19 @@ const total = Buffer.byteLength(page);
 const dataBytes = Buffer.byteLength(blocks.data);
 const modelCode = Buffer.byteLength(blocks.policy) + Buffer.byteLength(blocks.taxonomy);
 const engineBytes = Buffer.byteLength(blocks.engine);
+const eqBytes = blocks.eq === null ? 0 : Buffer.byteLength(blocks.eq);
 /* `app` keeps its established meaning — everything that is not the dataset or the inlined model
    source — so the APP budget below still binds the same quantity it was calibrated against. The
    engine's share of it is reported separately because it is machine-generated like the model code,
    not hand-written interface code, and a reader deserves to know which is which. */
-const app = total - dataBytes - modelCode;
-const report = `index.html ${(total / 1024).toFixed(1)} KB `
+/* The equilibrium payload comes OUT of `app` as well as out of `data`: it is neither interface
+   code nor the shared model, it is the full build's own dataset, and folding it into `app` would
+   silently blow a budget calibrated against markup+CSS+JS. It is reported on its own line and
+   gated on its own (D9). At lite this term is 0 and every number below is what it was. */
+const app = total - dataBytes - modelCode - eqBytes;
+const report = `${rel(OUT_PATH)} [${VARIANT_NAME}] ${(total / 1024).toFixed(1)} KB `
   + `(data ${(dataBytes / 1024).toFixed(1)} + model code ${(modelCode / 1024).toFixed(1)} `
+  + (eqBytes ? `+ equilibrium ${(eqBytes / 1024).toFixed(1)} ` : '')
   + `+ app ${(app / 1024).toFixed(1)} KB, of which sim engine ${(engineBytes / 1024).toFixed(1)})`;
 
 // Budgets. Three numbers, set 2026-08-30 against the finished v2 page — the phase-4 end retune,
@@ -284,20 +461,39 @@ const report = `index.html ${(total / 1024).toFixed(1)} KB `
 // The data block carries no budget here; its ceiling is gate D7 in scripts/verify.mjs, which owns
 // the payload size question and can reason about what the bytes buy. Full accounting, with the
 // decision history the split reversed: docs/METHODOLOGY.md §9.11.
-const TOTAL_BUDGET = 600 * 1024;
-const APP_BUDGET = 360 * 1024;
-const MODEL_CODE_BUDGET = 50 * 1024;
+//
+// UNDER THE DUAL BUILD these three are LITE's numbers, and they are unchanged: the budgets live in
+// scripts/lib/variant.mjs keyed by variant, and lite's row carries exactly the figures above. The
+// full build has NO budgets, on purpose. Every number in this block was derived from a measurement
+// of a page that exists; there is no measurement of a full artifact, because the equilibrium
+// payload it would be sized around has not been solved yet. Inventing a ceiling would ship an
+// unanchored constant wearing the costume of a checked one — so the full build prints its bytes,
+// says out loud that nothing is asserted, and leaves the number to gate D9 once P3 produces a real
+// data/equilibrium.json. See docs/spikes/S-D.md.
+const BUDGETS = VARIANT.budgets;
 
 const problems = [];
 const sizeProblems = [];
 const kb = (b) => (b / 1024).toFixed(1);
-if (total > TOTAL_BUDGET) sizeProblems.push(`index.html is ${kb(total)} KB, budget ${TOTAL_BUDGET / 1024} KB`);
-if (app > APP_BUDGET) sizeProblems.push(`app CSS+JS+markup is ${kb(app)} KB, budget ${APP_BUDGET / 1024} KB`);
-if (modelCode > MODEL_CODE_BUDGET) {
-  sizeProblems.push(`inlined model code is ${kb(modelCode)} KB, budget ${MODEL_CODE_BUDGET / 1024} KB`
-    + (NO_MINIFY ? ' (this build passed --no-minify; the budget assumes stripping)' : ''));
+if (BUDGETS) {
+  if (total > BUDGETS.total) sizeProblems.push(`${rel(OUT_PATH)} is ${kb(total)} KB, budget ${BUDGETS.total / 1024} KB`);
+  if (app > BUDGETS.app) sizeProblems.push(`app CSS+JS+markup is ${kb(app)} KB, budget ${BUDGETS.app / 1024} KB`);
+  if (modelCode > BUDGETS.modelCode) {
+    sizeProblems.push(`inlined model code is ${kb(modelCode)} KB, budget ${BUDGETS.modelCode / 1024} KB`
+      + (NO_MINIFY ? ' (this build passed --no-minify; the budget assumes stripping)' : ''));
+  }
+} else {
+  console.error(`build: [${VARIANT_NAME}] SIZE NOT GATED — ${VARIANT.budgetSource}. `
+    + `Measured ${kb(total)} KB total / ${kb(app)} KB app / ${kb(eqBytes)} KB equilibrium.`);
 }
-if (/\bfetch\s*\(/.test(page)) problems.push('index.html calls fetch(), which is CORS-blocked on file://');
+if (/\bfetch\s*\(/.test(page)) problems.push(`${rel(OUT_PATH)} calls fetch(), which is CORS-blocked on file://`);
+/* The artifact must not carry the seam's own markers. A leaked `@only:` is either a marker the
+   stripper failed to consume or a string literal that spelled one, and either way the page is not
+   the page the manifest describes. Cheap, and it closes the stripper's one known text-scan hazard
+   at the artifact rather than trusting the scan. */
+if (/@only:|@end:only/.test(page)) {
+  problems.push(`${rel(OUT_PATH)} still contains an @only: marker — the variant seam did not consume it`);
+}
 /* --allow-over-budget exists for one job: producing an inspectable artifact mid-rebuild, when the
    page is knowingly over budget and the point of the build is to measure how far over. It never
    suppresses a correctness gate, and CI must not pass it. */
@@ -306,6 +502,10 @@ else problems.push(...sizeProblems);
 if (problems.length) { console.error(report); die(problems.join('; ')); }
 
 const shellLine = `shell ${rel(SOURCE_PATH)} ${kb(Buffer.byteLength(source))} KB source`
+  + (only.blocks.length
+    ? ` -> @only ${only.kept} kept (${kb(only.keptBytes)} KB) / ${only.dropped} dropped `
+      + `(${kb(only.droppedBytes)} KB)`
+    : ' -> no @only blocks (variant-inert source)')
   + ` -> ${shell.blocks} inline script${shell.blocks === 1 ? '' : 's'} `
   + (NO_MINIFY ? `copied verbatim (--no-minify)` : `${kb(shell.before)} -> ${kb(shell.after)} KB`);
 
@@ -324,8 +524,15 @@ if (CHECK_ONLY) {
      shell edited without a rebuild — the common case, and the one this gate exists for — is named
      exactly, rather than reported as a generic byte difference. */
   let why;
+  const stampedVariant = onDisk === null ? null : /^\s*VARIANT (\w+) —/m.exec(onDisk);
   if (onDisk === null) why = `there is no ${rel(OUT_PATH)} — it has never been built`;
-  else {
+  else if (stampedVariant && stampedVariant[1] !== VARIANT_NAME) {
+    /* The likeliest way to get here is a --check with --out= pointed at the other artifact, and a
+       generic byte-difference message would send the reader hunting for a drifted input that is
+       fine. Name it. */
+    why = `${rel(OUT_PATH)} is the ${stampedVariant[1]} artifact, and this is a ${VARIANT_NAME} `
+      + `--check — pass --variant=${stampedVariant[1]}, or point --out= at ${VARIANT.out}`;
+  } else {
     const stamped = /sha256 ([0-9a-f]{16})/.exec(onDisk);
     if (!stamped) why = `${rel(OUT_PATH)} carries no build banner, so it was not produced by this build`;
     else if (stamped[1] !== sourceHash.slice(0, 16)) {

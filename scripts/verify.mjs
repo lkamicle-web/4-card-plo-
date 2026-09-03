@@ -29,7 +29,11 @@
 //   I31    rake                                    the §3.2 haircut
 //   I41-44 v3 axes        gates/couplings.mjs      rake-depth, depth-width, profile-ON, 3-bet sizing
 //
-// 50 gates in total — D3 and I17 went with the sub-bucket layer they asserted (the dual-key
+//   D10-11 the dual build  gates/variants.mjs      the lite negative manifest, and per-variant
+//                                                  provenance, read off the artifacts on disk
+//
+// 52 gates in total — 46 through Phase 0, plus lane M's I41-I44 and lane I's D10/D11 at P1. D3 and
+// I17 went with the sub-bucket layer they asserted (the dual-key
 // partition, and the geometric-mean reconstruction of a cell's M_play from its buckets'). D1
 // already pins sum(cells) === 270,725, which is what is left of the partition claim.
 // V1/I5 and V2/V3/I4 are RANDOM-VILLAIN gates: the filtered-villain lattice is exempt from

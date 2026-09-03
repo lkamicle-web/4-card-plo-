@@ -35,6 +35,7 @@ import * as measurement from './measurement.mjs';
 import * as depth from './depth.mjs';
 import * as env from './env.mjs';
 import * as couplings from './couplings.mjs';
+import * as variants from './variants.mjs';
 import { CATALOG } from './reserved.mjs';
 
 export const REGISTRY = [
@@ -48,10 +49,22 @@ export const REGISTRY = [
   depth,         // I23 I27 I28                the depth axis
   env,           // I26 I29 I30 I31            straddle + rake
   couplings,     // I41 I42 I43 I44            the v3 axes (P1 lane M)
+  variants,      // D10 D11                    the dual build, read off the artifacts on disk
 ];
 
 /**
- * The frozen report order — 50 gates, D3 and I17 retired with the sub-bucket layer.
+ * The frozen report order — 52 gates, D3 and I17 retired with the sub-bucket layer.
+ *
+ * P1 lane I appends D10 and D11 at the END of the sequence rather than beside D6/D7 where their
+ * family would otherwise sort. Deliberate: the note below says the report order is a thing
+ * reviewers diff, and appending keeps the 46-gate report a strict PREFIX of the 48-gate one, so
+ * the dual build's arrival shows up as two new rows rather than as a re-ordering of every gate
+ * after D8. Same reason the timing block went at the bottom when the registry was split.
+ *
+ * P1 INTEGRATION (B1): both appending lanes landed, so the tail is lane M's I41–I44 followed by
+ * lane I's D10–D11. Each lane's prefix argument survives the other's: 46 is a prefix of 50 and 50
+ * is a prefix of 52. D10/D11 stay LAST because their family reads artifacts off disk and is the
+ * only family whose inputs are produced by a step outside the runner.
  *
  * WRITTEN OUT, NOT DERIVED FROM `REGISTRY`. A list built by flat-mapping the registry cannot
  * detect the failure it exists to detect: delete a family from `REGISTRY` and the derived list
@@ -75,6 +88,8 @@ export const EXPECTED_IDS = [
   // thing reviewers diff, and appending keeps the pre-existing 46 lines a strict prefix of the new
   // report exactly as the registry split itself was gated on.
   'I41', 'I42', 'I43', 'I44',
+  // P1 lane I (V3-PLAN §5.3, item 16). Last, for the reason given above the list.
+  'D10', 'D11',
 ];
 
 // Import-time consistency: what the families DECLARE must equal the frozen list. This is the
@@ -124,7 +139,7 @@ export const EXPECTED_IDS = [
 // repository bounds a deterministic quantity — D6 counts bytes, D7 counts bytes, and "measured +
 // 5%" is a fair margin because a re-run produces the same number. Wall time is not that. It is a
 // property of the machine, its load, and its thermal state, not of the repository, so a hard
-// ceiling would make the whole 46-gate suite fail for reasons that have nothing to do with the
+// ceiling would make the whole 48-gate suite fail for reasons that have nothing to do with the
 // model. A gate that fires on someone else's laptop teaches the next person to widen it, which is
 // how tolerance-widening starts — and this repository's rule is that gates are written to FAIL,
 // never widened to pass. So verification cost is MEASURED and STATED on every run, and going over

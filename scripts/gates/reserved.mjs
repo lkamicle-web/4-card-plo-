@@ -251,21 +251,32 @@ export const CATALOG = [
       + 'meta.synthetic: true.',
   },
   {
-    id: 'D10', status: 'reserved', runner: 'verify', phase: 'P1', plan: '§5.3, §7.2',
+    id: 'D10', status: 'live', runner: 'verify', phase: 'P1', plan: '§5.3, §7.2',
     claim: 'the lite negative manifest: no @inject:eq region, no solver payload, no estimator '
       + 'runtime; full-only modes render disabled-with-named-REASON in the SIM.available idiom; '
       + 'the baseline-tier block is explicitly lite-legal.',
     fails: 'a full-only payload reaching lite — or lite-visible code calling a full-only symbol, '
       + 'which S-D measured BUILDS CLEAN and ships the dangling call.',
+    note: 'LIVE at P1 (scripts/gates/variants.mjs), split across three mechanisms: the artifact '
+      + 'manifest is the gate itself; the dangling-call half is refused in build.mjs by '
+      + 'danglingSymbols(), which closes S-D §F at the seam rather than leaving it to the browser; '
+      + 'the per-variant smoke run backstops both. The baseline-tier row is a POSITIVE clause in '
+      + 'the same list — absent from the model today, and armed to require it in lite the day P3 '
+      + 'emits it.',
   },
   {
-    id: 'D11', status: 'reserved', runner: 'verify', phase: 'P1', plan: '§5.3, §7.2',
+    id: 'D11', status: 'live', runner: 'verify', phase: 'P1', plan: '§5.3, §7.2',
     claim: 'dual determinism: both variants byte-compare under --check, the variant is named in the '
       + 'provenance banner, and the per-variant honesty sentence is grep-gated.',
     fails: 'one artifact carrying the other\'s claim sentence.',
+    note: 'LIVE at P1 (scripts/gates/variants.mjs). The byte-comparison clause is carried by the '
+      + 'per-variant `build.mjs --check` loop rather than by the gate, because verifyModel also '
+      + 'runs inside generate-data.mjs where a rebuild would compare against the previous run\'s '
+      + 'model.json; what the gate asserts instead is source-hash currency, which is the same '
+      + 'statement given a deterministic build and is true in both processes.',
   },
   {
-    id: 'SF', status: 'reserved', runner: 'harness', phase: 'P1', plan: '§7.2 S-gates, §9',
+    id: 'SF', status: 'live', runner: 'harness', phase: 'P1', plan: '§7.2 S-gates, §9',
     claim: 'Firefox: METHODOLOGY §10.15\'s three named facts recorded as MEASURED VERDICTS — the '
       + 'gate asserts the on-screen disclosure matches the measurement, not that everything works.',
     fails: 'a disclosure that outlives the measurement contradicting it.',
@@ -273,15 +284,30 @@ export const CATALOG = [
       + 'Firefox 153, and found F3 (rAF suspends while hidden) UNMEASURABLE headless by any '
       + 'available mechanism — re-scope F3 to assert the consequence (stub rAF, assert the run '
       + 'pauses and the disclosure renders) and keep the raw fact as a standing limitation.',
+    live: 'browsers.mjs (P1 lane I). Firefox 153.0: F1 Blob worker BOOTS on file:// (single-digit '
+      + 'ms) and the page reports engine "worker", deciding within ~300 ms; F2 localStorage '
+      + 'REACHABLE and the page caches to localStorage; F3 raw still unmeasurable (bringToFront '
+      + 'leaves visibilityState "visible") and ASSERTED to be so, so the limitation cannot outlive '
+      + 'its cause — with the consequence measured green: the fallback run pauses, freezes, does '
+      + 'not finish hidden, resumes, clears the flag, and the page carries the sentence it renders '
+      + 'from. Firefox is where the harness\'s own race showed first: the first-run tour auto-arms '
+      + '400 ms after init and its per-step setProfile() CANCELLED the run being measured, so SF '
+      + 'read a red row off a page that was behaving correctly. The tour is now suppressed through '
+      + 'its own sessionStorage guard and the suppression is itself a gate row.',
   },
   {
-    id: 'SS', status: 'reserved', runner: 'harness', phase: 'P1', plan: '§7.2 S-gates, §9',
+    id: 'SS', status: 'live', runner: 'harness', phase: 'P1', plan: '§7.2 S-gates, §9',
     claim: 'Safari/WebKit: the same three facts as SF, recorded as measured verdicts, with the '
       + 'honest caveat that Playwright\'s WebKit build is not Safari.app.',
     fails: 'the same way SF does.',
     note: 'S-E: F2 FALSIFIES the expectation quoted in METHODOLOGY §9.12 — WebKit 26.5 does NOT '
       + 'throw SecurityError on the first file:// localStorage access. The write probe stays the '
       + 'right design; the sentence explaining why becomes a measured verdict.',
+    live: 'browsers.mjs (P1 lane I). WebKit 26.5, all three facts on the same terms as SF: the '
+      + 'worker boots (single-digit ms) and the page chooses it, localStorage is reachable — '
+      + 'INDEPENDENTLY REPRODUCING S-E\'s falsification of §9.12\'s SecurityError expectation — and '
+      + 'the F3 consequence is green. The harness prints the caveat on every run: Playwright\'s '
+      + 'WebKit is not Safari.app.',
   },
 ];
 

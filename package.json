@@ -1,0 +1,27 @@
+{
+  "name": "rundown",
+  "version": "3.0.0-dev",
+  "private": true,
+  "description": "RUNDOWN — a 4-card PLO preflop range explorer. The shipped artifact (index.html) and the generator that builds it are runtime-dependency-free; everything below is dev-time only.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "//type": "There is deliberately NO \"type\" field. Adding one would flip .js resolution repo-wide; scripts/lib/sim-kernel.js and scripts/lib/sim-worker.js are classic scripts by design (they are read as text and evaluated in a Blob worker, never imported by Node), and the .mjs sources are explicit ESM already. Absence of the field reproduces the pre-package.json semantics exactly.",
+  "//deps": "Playwright is the ONLY dependency, dev-time, with one named consumer: smoke.mjs (and the SF/SS browser-harness gates in docs/V3-PLAN.md §9). Any further adoption needs a named consumer and a memo; the default answer is no. See docs/spikes/S-E.md.",
+  "scripts": {
+    "verify": "node scripts/verify.mjs",
+    "test": "node --test test/*.test.mjs",
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/build.mjs --check",
+    "smoke": "node smoke.mjs",
+    "browsers": "node browsers.mjs",
+    "green": "node scripts/verify.mjs && node --test test/*.test.mjs && node scripts/build.mjs --check",
+    "//smoke": "No env prefix any more: smoke.mjs now defaults RUNDOWN_PLAYWRIGHT to the bare specifier 'playwright' (which resolves through the node_modules this manifest creates) and RUNDOWN_BROWSER to the empty string, meaning the browser `npx playwright install chromium` downloaded — never an installed browser. Both env vars still override, for the CI image whose absolute paths used to be the defaults. With no page argument it runs EVERY built variant in turn (V3-PLAN §9).",
+    "//browsers": "Harness gates SF (Firefox) and SS (Safari/WebKit), V3-PLAN §9 item 17. Needs `npx playwright install firefox webkit` as well as chromium. Headless, throwaway profiles, never an installed browser.",
+    "//green": "The house definition of GREEN, in one command. Note that it does NOT include smoke or browsers: those need the Playwright browsers downloaded, so they are named separately rather than made a silent prerequisite of the three checks every contributor runs."
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}
