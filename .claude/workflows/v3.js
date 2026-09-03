@@ -9,6 +9,7 @@ export const meta = {
     { title: "P1 integration + B1 flip", detail: "Merge all four lanes, item-8 default flip, third-fixture ceremony (tiers-v3-default), I32 green after merge." },
     { title: "P1 adversarial verification", detail: "Three independent refuters attack the P1 opinion constants; majority rules; unanchorable constants surface as blockers or ship gated+flagged per plan section 6." },
     { title: "P1 verify + commit", detail: "Three checks green, I41/I42/I43/I44 (+D10/D11) present; commit; one fix round on red." },
+    { title: "P2 pre-stage", detail: "Serial, on the main tree, BEFORE fan-out (decided at the P1 close-out, 2026-09-02): the I33 amendment ceremony (S-B's three measured amendments to the frozen payoff interface + the falsified monotonicity clause rewritten to the measurement), then the slider-morph re-anchor (page emodel() hoisted onto POLICY.profiledModel with a per-VPIP memo, re-measured, ON-default budget pinned as its own smoke row). No commit inside the stage." },
     { title: "P2 chain fan-out", detail: "Payoff estimator and CFR solver engine built in parallel worktrees against the frozen I33 interface, per S-A/S-B spike memos and the three-band rule." },
     { title: "P2 integration", detail: "Merge the two P2 branches onto the main tree; I33 still green; grade-band consequences applied." },
     { title: "P2 adversarial verification", detail: "Refuters attack payoff params, stack-off knob, solver epsilon, iteration cap, tree/sizing set." },
@@ -682,6 +683,95 @@ async function runP2(state) {
   const band = pre.gradeBand;
   log("P2 fan-out under S-B Grade " + band + " (" + pre.detail.slice(0, 140) + ")");
 
+  // ---------------------------------------------------------------------------------------------
+  // P2 PRE-STAGE (decided at the P1 close-out, 2026-09-02). Two SERIAL steps on the MAIN tree,
+  // before any worktree is cut. Plan section 3.2's Measured block records three amendments the
+  // section-2 freeze needs "before P2 consumes it", and P2 is the phase that builds the consumers,
+  // so the amendment is a named ceremony here, not something a lane does in passing. The second
+  // step closes the one smoke row that is red at HEAD, whose cause was MEASURED at the close-out
+  // (it is not the "cold sweep" note smoke.mjs carries - that was measured on a pre-flip page).
+  // Model policy: the payoff freeze is one of the three opus@max calls (section 11), so its
+  // amendment runs at that tier under a fable work-order; the morph fix is ordinary lane work.
+  // Neither step commits - the milestone boundary commits everything or nothing.
+  // ---------------------------------------------------------------------------------------------
+  phase("P2 pre-stage");
+  state.phasesRun.push("P2 pre-stage");
+  const P2_PRE_STAGE = [
+    {
+      label: "p2-i33-amendment",
+      effort: "max",
+      prompt: [
+        "TASK - P2 pre-stage step 1 of 2: THE I33 AMENDMENT CEREMONY, on the MAIN tree, serial, before the P2 fan-out cuts any worktree. Amending a frozen interface is a ceremony: it is done once, in the open, with the gate rewritten in the same step, and recorded per house style - never by a consumer in passing.",
+        "",
+        "READ FIRST, IN FULL: docs/V3-PLAN.md section 2 (the freeze, including its '> **Measured (phase 0, B0 step 2).**' block) and the '> **Measured (phase 0).**' block at the end of section 3.2; docs/spikes/S-B.md, especially 'Findings for the payoff interface freeze (section 2 / I33)'; scripts/lib/payoff.mjs (the frozen accessor and its header contract); scripts/gates/payoff.mjs (gate I33, clauses (a)-(f) + the separate monotonicity clause, each ARMED against a fabricated violator - keep that idiom); test/payoff.test.mjs and test/ui-payoff-mirror.test.mjs. S-B's prototype is the DEFINITION of the two new quantities: read scripts/spike/sb-core.mjs on the S-B spike branch (worktree-wf_5a8a2571-726-3; its checkout is listed by `git worktree list`, or use `git show worktree-wf_5a8a2571-726-3:scripts/spike/sb-core.mjs`) - potMult = E[F]/potSize where F is the final pot (uncalled bets included), invShare = E[hero invested]/E[F]. Freeze S-B's measured quantities, not a re-invention of them.",
+        "",
+        "THE THREE AMENDMENTS (each measured by S-B; the numbers are the anchors, quote them in the clause text):",
+        "(i) payoff() ALSO returns `potMult` (S-B measured range 1.603-11.865 across 300 points) and `invShare` (0.199-0.730), because `EVbb = ev*finalPot - invested` is caller arithmetic that cannot be done from `ev` alone - the pot term is wrong by up to an order of magnitude without them. RESULT_KEYS becomes six; the header contract, the JSDoc and I33 clause (a) (arity, key names, value types) are rewritten together. THE STUB's values follow from what checkdown IS - no betting after the decision node, so E[F] = potSize and potMult = 1 exactly, with ZERO new constants. `invShare` under checkdown is hero's already-invested share of the pot at the node, which the four frozen arguments do not carry: decide the honest stub value from the definition and the arguments you have (never a typed split), state in the header exactly which arithmetic the caller owes and from which caller-known quantity, and make I33 assert the stub's values as identities (potMult === 1 at every spr for source:'checkdown'; whatever invShare identity you derive) so a later source that moves them is measured against a pinned baseline. If you conclude the definition needs an argument the signature lacks, that is a FINDING recorded in the plan annotation, not a fifth argument: the signature's arity stays four and `opts` is the door.",
+        "(ii) `opts.ip` enters EVERY memo key. payoff.mjs deliberately has no memo today, so this amendment is to the CONTRACT and its gate: the header's memo rule names `ip` explicitly beside every argument and the model hash, and I33 gains an ARMED clause that a payoff memo which drops `ip` is caught - S-B measured ev(A,B,ip) != ev(A,B,not ip) by up to 43 pt, so a keyless memo is wrong by more than the whole error budget (the `envKey` docstring trap in a new place). Design the detector so it fires on a fabricated memoizing wrapper that omits ip and clears one that includes it, and so it will also cover consumers (P2's cfr.mjs / payoff-model.mjs and P4's EV cut) when they appear - the clause-(e) filename-scoped grep idiom is the precedent.",
+        "(iii) `supported:false` gains the CARD-REMOVAL clause. Its real domain is shared-rank degeneracy, not multiway: cells pinning the same ranks make some (cell, cell, board) triples impossible from the observer's seat - AA_DANGLER|RB x AA_BIGPAIR|DS is degenerate on 12.56% of street evaluations, mean 0.73% over 50 pairs, 4/50 over 1% (S-A independently found 43 structurally undealable pairs, AA_* x A_BLOCKED, mass 3.6e-5). The failure mode is SILENT: S-B's first implementation collapsed every AA-vs-AA pair to a checkdown with no error raised. The clause: any source that evaluates against dealt boards must surface degeneracy honestly - an undealable or degenerate request returns supported:false (or its degeneracy mass, flagged), never a silent collapse to checkdown. The stub deals nothing and is exempt by construction, but the clause must be ARMED against a fabricated source that silently collapses a degenerate pair, and it must state the measured numbers.",
+        "",
+        "PLUS THE MONOTONICITY CLAUSE, which is already recorded as FALSIFIED (section 3.2's Measured block: inversions on 1.7% of pairs at spr 1, 8.1% at spr 4, 15.9% IP / 20.5% OOP at spr 10; worst case 9.1 pt LESS checkdown equity for 20.0 pt MORE ev). Rewrite it to the measurement per house style; do NOT delete it. The checkdown stub is monotone by construction (strictly increasing in hero's checkdown equity) and stays asserted so; a non-checkdown source at spr >= 4 is EXPECTED to show inversions in the measured band, and zero inversions from a source claiming to model realization is the new failure - write it that way, with the numbers.",
+        "",
+        "RECORD THE CEREMONY: (1) payoff.mjs's header contract rewritten to the six-key return and the ip-in-every-memo-key rule; (2) I33's clause text and its verifier detail line say what was amended and quote the anchors; (3) docs/V3-PLAN.md section 2 gains a `> **Amended (P2 pre-stage).**` block beneath the freeze (plan text above it kept as written - the V2-PLAN idiom), naming the three amendments, the rewritten monotonicity clause, and any finding from (i); (4) docs/METHODOLOGY.md wherever the payoff contract or I33 is described (grep 'payoff' and 'I33') is brought into agreement - METHODOLOGY wins on disagreement, so leave nothing in it that still describes the four-key return.",
+        "",
+        "CONSTRAINTS: the freeze is a test, not a doc - every amended clause must be able to FAIL and be shown to (fabricated violators, as the file already does). payoff.mjs is inlined into the page (build.mjs's moduleToIife), so keep its browser-safety rules (no top-level import, export const|let|function|class only, Node-only code below @browser-cut) and rebuild: `node scripts/build.mjs` then `--check` current for every built variant. Zero new constants: potMult = 1 and any invShare identity are arithmetic of the checkdown definition, not numbers you chose. I22, I32, I43 and the fixtures are untouched (payoff.mjs is not on the tier path; NEVER run freeze-tiers.mjs --force). Do not touch policy.mjs, src/shell.html or smoke.mjs - step 2 owns them. Run the three checks green (`node scripts/verify.mjs` all gates incl. I33; `node --test test/*.test.mjs`; `node scripts/build.mjs --check`). Do NOT commit - the milestone boundary commits.",
+        "Return JSON: done (true only with the three checks green), summary (MUST state: the six keys and the stub's potMult/invShare identities with the caller arithmetic they imply; how the ip-memo clause and the card-removal clause are armed; the monotonicity clause's new wording; every file touched), newConstants (expected EMPTY - name anything you could not derive), blockers."
+      ].join("\n")
+    },
+    {
+      label: "p2-morph-reanchor",
+      effort: "xhigh",
+      prompt: [
+        "TASK - P2 pre-stage step 2 of 2: THE SLIDER-MORPH RE-ANCHOR, on the MAIN tree, serial, after the I33 amendment (which is on the tree, uncommitted). You are the single writer of src/shell.html, scripts/lib/policy.mjs and smoke.mjs for this step.",
+        "",
+        "THE FACT: `node smoke.mjs` is RED on exactly one row at HEAD - 'slider-morph incl. layout p95 < 4 ms' reads p95 ~14-15 ms (median ~11). Everything else in smoke is green, and browsers.mjs (SF/SS) is green.",
+        "THE MEASURED CAUSE (P1 close-out, 2026-09-02) - and it is NOT the 'cold sweep' account in smoke.mjs's header, which was measured on a PRE-FLIP page and is wrong for HEAD: the 4.0 ms anchor (S-E section 3, p95 2.7 ms) was measured with the villain profile OFF; barrier B1 made ON the load default (src/shell.html: `S.vp = VP_DEFAULT`, derived from POLICY.villainLoadDefault); and the page's own `emodel()` (src/shell.html, near 'function emodel()') memoizes ONE profiled model keyed by vpKey() = 'ON|v|q|hash', so every VPIP slider step rebuilds the shadow model (123 villainEq calls + hydrate) and re-solves against a fresh meta.hash. Measured on the same page: ON median 11.1 / p95 15.1 ms; OFF median 1.1 / p95 2.3 ms. The budget is not wrong and the harness is not cold; the page is doing the work the ON default asks for, once per slider step, with a memo that cannot hold two entries.",
+        "",
+        "DO, IN ORDER:",
+        "1. THE FIX - hoist, do not patch. scripts/lib/policy.mjs already exports profiledModel(model, profile), and its header says the page's emodel() is 'a duplicate of this, not a variant of it' (lane M hoisted it at P1 and queued exactly this deletion). Make the page's emodel() delegate to POL.profiledModel (the un-injected-template fallback may keep a minimal builtin only if the page still needs one - measure whether it does), and give the profiled model a PER-VPIP MEMO: bounded (key on POLICY.villainKey, which already carries v|q|measured-identity; capped/LRU in the SIMBOOK idiom, never unbounded - the reachable key space is large), so a slider sweep revisits built models instead of rebuilding them. Decide where the memo lives (policy.mjs, so Node callers and I43 can see it, or the page) by measurement, and record the decision in the code. LOAD-BEARING INVARIANTS that must survive, each already gated: OFF is OBJECT IDENTITY - emodel() === MODEL (I22/I32/I43(a), assert.equal never deepEqual); nothing-moved is also MODEL itself; the shadow wears a different meta.hash (solve/aggressiveSet memos key on its first 8 chars - I43(c)); syncProfileCells()'s `VPM.applied === m` identity check and withVP()'s restore keep working (a pin evaluated under another profile must not thrash the memo). No tier semantics change: I22, I32, I43 green and data/tiers-v3-default.fixture.txt does NOT move (NEVER run freeze-tiers.mjs --force; if a fixture moves, your change is wrong, not the fixture).",
+        "2. BYTES: deleting the page's duplicate SHRINKS the app block, which sits ~300 B under its 360 KB ceiling (scripts/lib/variant.mjs budgets.app; `node scripts/build.mjs --check` prints the split). Do NOT raise that ceiling - the raise-vs-shrink decision is P3's (METHODOLOGY section 9.11 is owed that paragraph then, not now). Report app-block bytes before and after, and the headroom.",
+        "3. RE-MEASURE, then pin as a MEASUREMENT: rebuild, then run `node smoke.mjs` at least five times; the harness must be able to measure the layout-inclusive sweep in BOTH profile states on the same page - the load default (ON) and OFF (toggle through the page's own handle: window.__rundown exposes vpTrigger/emodel/vpKey and setV; drive the same control the user does, e.g. the #v1point button or the profile toggle, not S.vp directly if a render path depends on the toggle's side effects). Report median/p95/worst per run per state. Note what the per-VPIP memo does to the sweep: the first visit to each v is a build and every revisit a hit, so report the cold (first-visit) and warm (revisit) figures separately, and pin the row on the sweep as smoke actually runs it - a slider drag visits each v once, so the cold cost is what a user feels; do not pre-warm the memo to make the number smaller.",
+        "4. PIN TWO ROWS: the existing OFF row keeps its 4.0 ms anchor (it IS the S-E measurement, so smoke must now run it with the profile OFF - measuring what it was anchored on), and a NEW ON-default row with its OWN budget = worst observed p95 over your runs + the same ~48% measured+headroom rule the OFF row and the byte budgets use. The ON row is a measurement with its own anchor line, NEVER a widened 4.0; if the fixed ON p95 lands inside 4.0 anyway, it still gets its own measured+headroom figure, and you say so. Gate both on p95, not worst, as the file already argues. Name the new budget constant beside MORPH_LAYOUT_BUDGET_MS with its anchor in the same comment style.",
+        "5. CORRECT THE NOTE: replace smoke.mjs's 'cold sweep' paragraph with the measured cause (pre-flip vs post-flip page; the one-entry memo keyed by VPIP; the ON/OFF figures before and after the hoist) and the two-row pinning; keep the S-E anchor history intact. docs/refutations/P1.md is an immutable record - do not edit it; instead add a `> **Measured (P2 pre-stage).**` block beneath the smoke-budget text in docs/V3-PLAN.md (section 9 / the S-E annotation in section 1 - wherever the 4.0 ms row is specified) per the idiom, and bring docs/METHODOLOGY.md into agreement wherever it describes the morph budget or the page-side emodel duplicate (grep 'morph', 'emodel', 'profiledModel').",
+        "6. Confirm test/ui-rail.test.mjs's __measureMorph assertion still holds, then run `node browsers.mjs` (SF/SS must stay green).",
+        "7. Run the three checks green (`node scripts/verify.mjs` incl. I22/I32/I33/I43; `node --test test/*.test.mjs`; `node scripts/build.mjs --check` for every built variant) AND `node smoke.mjs` green on EVERY row, both morph rows included. Do NOT commit - the milestone boundary commits.",
+        "Return JSON: done (true only with the three checks AND smoke green with both morph rows pinned), summary (MUST include: the emodel decision and where the per-VPIP memo lives and its bound; ON and OFF median/p95 before and after over >= 5 runs each, cold and warm; the two pinned budgets with their arithmetic; app-block bytes before/after and headroom; browsers.mjs status; every file touched), newConstants (the new ON-row smoke budget, with its anchor), blockers."
+      ].join("\n")
+    }
+  ];
+  const preStage = [];
+  for (const step of P2_PRE_STAGE) {
+    log("P2 pre-stage serial step: " + step.label);
+    const order = step.effort === "max"
+      ? await fableWorkOrder(state, "P2 pre-stage", step.label, step.prompt)
+      : "";
+    const r = await agent(HOUSE + "\n\n" + step.prompt + order, {
+      label: step.label, phase: "P2 pre-stage", schema: stepSchema,
+      model: "opus", effort: step.effort
+    });
+    if (!r || !r.done) {
+      state.blockers.push("P2 pre-stage step failed: " + step.label + (r ? " - " + r.summary + " " + r.blockers.join("; ") : " (agent died)"));
+      state.notes.push("P2 pre-stage aborted at " + step.label + "; no fan-out");
+      return closeMilestone(state, "P2 verify + commit", [], "v3 P2 (partial, red)", "");
+    }
+    if (r.blockers.length) state.blockers.push(...r.blockers);
+    preStage.push({ step: step.label, summary: r.summary, newConstants: r.newConstants || [] });
+    state.notes.push(step.label + ": " + r.summary.slice(0, 400));
+  }
+  // The lanes' worktrees are cut from HEAD, and the pre-stage is UNCOMMITTED on the main tree by
+  // design (no commit inside the stage), so the hand-off carries the amended contract in words and
+  // tells each lane how to build against it without dragging the main tree's work into its branch.
+  const preNote = [
+    "",
+    "",
+    "PRE-STAGE HAND-OFF. The P2 pre-stage ran on the MAIN tree before you were spawned, and its work is UNCOMMITTED there (the milestone boundary commits). Your worktree was cut from HEAD, so it PREDATES the pre-stage. Its two steps reported (JSON):",
+    JSON.stringify(preStage, null, 2),
+    "Consequences for you: (1) THE FROZEN INTERFACE IS THE AMENDED ONE - payoff(cells, potSize, spr, opts) -> { ev, se, source, supported, potMult, invShare }; `opts.ip` is in every payoff memo key by contract (I33 gates it); supported:false carries the card-removal clause; the monotonicity clause is rewritten to S-B's measured inversion band. Build your new files against THAT contract. So that your worktree's tests exercise the amended stub rather than the four-key one, first run `git worktree list` (the main tree is the first line) and diff its scripts/lib/payoff.mjs, scripts/gates/payoff.mjs, test/payoff.test.mjs and test/ui-payoff-mirror.test.mjs against yours; if yours predate the amendment, COPY the main tree's versions into your worktree - but NEVER `git add` or commit those copies: they are the main tree's uncommitted work and land through the milestone commit. Your branch adds NEW files only (stage them by path, never `git add -A`), or the integration merge collides with the main tree's uncommitted amendment. (2) The morph re-anchor touched src/shell.html, scripts/lib/policy.mjs and smoke.mjs - none of which you may touch; nothing in it concerns your files.",
+    "Under S-B Grade " + band + " the plan's Measured blocks (sections 3.2, 6, 14.1) bind: no estimator form won; at most form 1 (pairwise checkdown + fitted realization curve) as a flag-DISABLED prototype, never wired into payoff(); form 2 is not built; no estimator constant enters `constants` live; the stack-off knob is never created. S-A's anchors are measured, not chosen: epsilon = 5e-5 bb, iteration cap 2,000, two-seed clause 0.15% of pot, 12.5k-25k boards suffice, the 3/9/27/81 pot-limit ladder is an arithmetic identity with zero new constants, and I35's cap-list clause bounds the omissions (no limp, no sixth raise, no postflop). S-A's sampling-measure bug (redraw-on-collision biases equity; one draw per cell per board with a sit-out on collision is the correct measure, validated against the shipped eq column) applies to any payoff sampler."
+  ].join("\n");
+
+  phase("P2 chain fan-out");
+
   const p2Specs = [
     {
       id: "payoff-model",
@@ -701,7 +791,7 @@ async function runP2(state) {
   // I33 interface (plan section 3.2 - disjoint new files, one isolated worktree each).
   const pair = (await parallel(p2Specs.map(function (s) {
     return function () {
-      return agent(HOUSE + "\n\n" + s.prompt + "\n\nReturn JSON: lane (" + JSON.stringify(s.id) + "), branch, filesTouched, gatesAdded, newConstants (with one-line anchors), summary, blockers.", {
+      return agent(HOUSE + "\n\n" + s.prompt + preNote + "\n\nReturn JSON: lane (" + JSON.stringify(s.id) + "), branch, filesTouched, gatesAdded, newConstants (with one-line anchors), summary, blockers.", {
         label: "p2-" + s.id, phase: "P2 chain fan-out",
         schema: laneSchema, model: "opus", effort: "xhigh", isolation: "worktree"
       });
@@ -746,8 +836,8 @@ async function runP2(state) {
 
   return closeMilestone(
     state, "P2 verify + commit", ["I22", "I32", "I33", "I35"],
-    "v3 P2: payoff estimator (payoff-model.mjs) + solver engine (cfr.mjs) built in parallel against the frozen payoff interface; I35",
-    "Grade band for this build was " + band + " - if B or C, confirm every model-sourced EV surface is estimate-badged (Grade C: stub still live)."
+    "v3 P2: I33 amendment ceremony (potMult/invShare, ip-in-every-memo-key, card-removal clause) + morph re-anchor at the pre-stage; payoff-model.mjs prototype + solver engine (cfr.mjs) built in parallel against the amended frozen payoff interface; I35",
+    "Grade band for this build was " + band + " - if B or C, confirm every model-sourced EV surface is estimate-badged (Grade C: stub still live, payoff() serving source:'checkdown'). Also confirm the P2 pre-stage landed: I33's detail line reports the six-key return (potMult/invShare), the ip-memo clause and the card-removal clause; and run `node smoke.mjs` and paste its two slider-morph rows (OFF at 4.0 ms and the ON-default row with its own measured budget) into detail - smoke is not in the GREEN trio (package.json), so a red smoke row is reported in detail, not as a failing gate, but it MUST be reported."
   );
 }
 
