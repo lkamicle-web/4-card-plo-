@@ -23,6 +23,8 @@
   --t3:#1D9999; --t3-hover:#39ABAB; --t3-press:#008C8D; --t3-ring:#6BCAC9; --t3-ink:#060E0F; --t3-ghost:#174243;
   --t4:#674698; --t4-hover:#7857AB; --t4-press:#5C3A8B; --t4-ring:#9478C5; --t4-ink:#FFFFFF; --t4-ghost:#2C2B43;
   --t5:#2F3943; --t5-hover:#3E4953; --t5-press:#252F38; --t5-ring:#5A656E; --t5-ink:#FFFFFF; --t5-ghost:#1C272B;
+  /* the ramp hatches' ink: reads on every step of every ramp */
+  --ramp-ink:#FFFFFF;
   --suit-s:#E3EBEF; --suit-h:#FE626C; --suit-d:#41B6F8; --suit-c:#69D27D;
   --pos-good:#59D38C; --pos-warn:#F7B83D; --pos-bad:#F5605B; --info:#58B6E9;
   --s1:#DEBA50; --s2:#00BBD5; --s3:#6FD087; --s4:#DA69B9; --s5:#D58B4B;
@@ -86,7 +88,10 @@ svg{display:block}
 /* ============================================================ APP FRAME */
 #app{position:relative;z-index:1;display:flex;flex-direction:column;height:100dvh;max-width:1680px;margin:0 auto}
 /* --- topbar --- */
-.topbar{display:flex;align-items:center;gap:var(--sp-6);height:56px;padding:0 var(--sp-8);
+/* wraps at every width: S-E measured a 1280-1442 px clip under the old `height:56px` + wrap-only-
+   below-1280 rule. min-height keeps the 56 px row wherever content still fits. §8 item 15. */
+.topbar{display:flex;flex-wrap:wrap;align-items:center;align-content:center;row-gap:var(--sp-3);
+  gap:var(--sp-6);min-height:56px;padding:0 var(--sp-8);
   border-bottom:1px solid var(--border-subtle);background:var(--bg-base);position:relative;z-index:20;flex:0 0 auto}
 .wordmark{display:flex;align-items:center;gap:0;font:700 22px/26px var(--font-display);letter-spacing:-.02em;
   user-select:none;color:var(--text-primary);flex:0 0 auto}
@@ -163,7 +168,24 @@ svg{display:block}
 .rail-foot{flex:0 0 auto}
 .rsec{padding:var(--sp-5) 0;border-bottom:1px solid var(--border-subtle)}
 .rsec:first-child{padding-top:0}
-.rsec-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-4);color:var(--text-tertiary)}
+/* collapsible rail sections (§8 item 12). `.rsec-t` is the toggle; the "?" is its SIBLING, not
+   its child (interactive content inside <button> is invalid HTML). Collapse hides the BODY
+   WRAPPER only — see the RAIL block in the script for why that is load-bearing. */
+.rsec-h{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-4);color:var(--text-tertiary)}
+.rsec[data-collapsed=true] > .rsec-h{margin-bottom:0}
+.rsec[data-collapsed=true] > .rsec-b{display:none}
+.rsec-t{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:var(--sp-3);height:20px;
+  color:var(--text-tertiary);text-align:left;border-radius:var(--r-sm)}
+.rsec-t:hover{color:var(--text-primary)}
+.rsec-t .chev{flex:0 0 8px;width:8px;height:8px;position:relative;opacity:.75}
+.rsec-t .chev::before{content:"";position:absolute;left:1px;top:0;width:5px;height:5px;
+  border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;
+  transform:rotate(45deg);transform-origin:60% 60%;
+  transition:transform var(--dur-fast) var(--ease-standard)}
+.rsec[data-collapsed=true] > .rsec-h .rsec-t .chev::before{transform:rotate(-45deg)}
+.rsec-t .t-label{flex:0 0 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* the value slot: a shut section still says what it is set to */
+.rsec-v{flex:1 1 auto;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* VPIP hero */
 .vpip-top{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--sp-4);margin-bottom:var(--sp-2)}
 .vpip-val{font:700 40px/40px var(--font-display);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--text-primary)}
@@ -286,8 +308,33 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 /* ============================================================ MATRIX PANE */
 .pane{position:relative;flex:1 1 auto;min-width:0;display:flex;flex-direction:column;background:var(--surface-1);
   border:1px solid var(--border-subtle);border-radius:var(--r-lg);overflow:hidden}
-.legend{display:flex;align-items:center;gap:5px;height:40px;padding:0 var(--sp-4);flex:0 0 auto;
+/* THE LEGEND BAND, RE-MEASURED (§8 item 13 puts the colour-mode switch here — the matrix owns its
+   encoding). Measured on the shipped artifact at 1440x900, where the matrix pane is 736 px wide:
+   the row was already at capacity before item 13 (chips 110+157+91+107, badge 145, help 18, gaps
+   and padding 62 = 690 of 734, the hover slot absorbing the last 60). A 205 px mode switch and a
+   481 px ramp scale do not fit in 44 px, and the two ways to pretend they do are both dishonest —
+   squeezing the tier chips to 14 px destroys the FILTER, and scrolling the overflow away hides the
+   ramp, the badge and the help button behind a scrollbar that is styled to nothing.
+   So the band is two lines, and the split is by JOB rather than by whatever the pane width happens
+   to be: the FILTER line (tier chips, hover slot, frequency badge, help) is left exactly as it was
+   before item 13 — measured identical to the pre-item-13 artifact at every width — and the
+   ENCODING line under it carries the mode switch and the scale of whatever mode is on. `.encline`
+   is `flex:1 0 100%`, so the break is structural and cannot move with the viewport. */
+.legend{display:flex;flex-wrap:wrap;align-items:center;align-content:center;gap:5px;
+  min-height:40px;padding:0 var(--sp-4);flex:0 0 auto;
   background:var(--surface-2);border-bottom:1px solid var(--border-subtle)}
+/* the encoding line: what the colours mean, and the scale they mean it on */
+.encline{order:9;flex:1 0 100%;display:flex;align-items:center;gap:var(--sp-4);min-width:0;
+  height:30px;margin-bottom:4px;border-top:1px solid var(--border-subtle);padding-top:4px}
+.modesw{display:flex;flex:0 0 auto;gap:1px;padding:2px;border-radius:var(--r-sm);
+  background:var(--surface-1);border:1px solid var(--border-subtle)}
+.modesw button{height:22px;padding:0 var(--sp-3);border-radius:2px;color:var(--text-tertiary);
+  font:600 10px/12px var(--font-ui);letter-spacing:.05em;white-space:nowrap}
+.modesw button:hover{color:var(--text-primary)}
+.modesw button[aria-pressed=true]{background:var(--surface-3);color:var(--text-primary)}
+/* the structural-disablement idiom (`SIM.available`'s): dimmed and carrying the reason */
+.modesw button[aria-disabled=true]{color:var(--text-disabled);cursor:default}
+.modesw button[aria-disabled=true]:hover{color:var(--text-disabled)}
 .chip{display:flex;align-items:center;gap:var(--sp-3);height:28px;padding:0 var(--sp-3);
   border-radius:var(--r-sm);border:1px solid transparent;color:var(--text-secondary);
   font:600 11px/14px var(--font-ui);letter-spacing:.04em;white-space:nowrap;min-width:0;overflow:hidden;
@@ -309,9 +356,16 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .hbadge .dot{width:6px;height:6px;border-radius:50%;background:var(--pos-warn)}
 .hbadge:hover{border-color:var(--border-strong);color:var(--text-secondary)}
 .hbadge.true .dot{background:var(--info)}
-.ramp{display:flex;align-items:center;gap:var(--sp-3);height:28px}
-.ramp .steps{display:flex;height:12px;border-radius:2px;overflow:hidden}
-.ramp .steps i{width:22px;height:12px}
+/* the scale shares the encoding line with the switch and yields to it: `min-width:0` plus an
+   ellipsis on the caption, so a narrow pane loses the tail of a sentence, never a swatch. */
+.ramp{display:flex;flex:1 1 auto;min-width:0;align-items:center;gap:var(--sp-3);height:26px}
+.ramp .steps{display:flex;flex:0 0 auto;height:12px;border-radius:2px;overflow:hidden}
+.ramp .steps i{width:22px;height:12px;position:relative}
+.ramp .end{flex:0 0 auto;color:var(--text-tertiary);font:500 9px/11px var(--font-mono);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ramp .mid{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  color:var(--text-tertiary);font:600 9px/11px var(--font-ui);letter-spacing:.04em;white-space:nowrap}
+/* the ramp swatches carry the cells' hatches, so the legend reads in the same channel */
+.hatch .ramp .steps i::after{content:"";position:absolute;inset:0;opacity:.42}
 /* composition ribbon */
 .comp{display:flex;align-items:center;gap:var(--sp-4);height:28px;padding:0 var(--sp-5);flex:0 0 auto;background:var(--surface-1)}
 .compbar{flex:1 1 auto;display:flex;height:16px;gap:2px;border-radius:2px;overflow:hidden;min-width:0}
@@ -394,6 +448,23 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .hatch .cell.t3::after,.tiny .cell.t3::after{background:repeating-linear-gradient(-45deg,var(--t3-ink) 0 1px,transparent 1px 4px)}
 .hatch .cell.t4::after,.tiny .cell.t4::after{background:repeating-linear-gradient(90deg,var(--t4-ink) 0 1px,transparent 1px 4px)}
 .hatch .cell.t5::after,.tiny .cell.t5::after{background:radial-gradient(var(--t5-ink) .5px,transparent .6px) 0 0/3px 3px}
+/* RAMP-STEP REDUNDANCY (§8 item 13). The hatches above are keyed to `.tN`, which the ramp modes
+   do not emit — so ν/ρ/Δ-pin had no non-colour channel at all. `.k0`..`.k6` are the ramp bucket,
+   under the same two switches: the user's toggle (.hatch) and the automatic one below 22 px rows
+   (.tiny). `.k0` is bare on purpose — "no pattern" is a state, pinned to the dark end. */
+.hatch .cell.k1::after,.hatch .cell.k2::after,.hatch .cell.k3::after,.hatch .cell.k4::after,
+.hatch .cell.k5::after,.hatch .cell.k6::after,
+.tiny .cell.k1::after,.tiny .cell.k2::after,.tiny .cell.k3::after,.tiny .cell.k4::after,
+.tiny .cell.k5::after,.tiny .cell.k6::after{
+  content:"";position:absolute;inset:0;pointer-events:none;opacity:.34}
+.tiny .cell.k1::after,.tiny .cell.k2::after,.tiny .cell.k3::after,.tiny .cell.k4::after,
+.tiny .cell.k5::after,.tiny .cell.k6::after{opacity:.26}
+.k1::after{background:repeating-linear-gradient(45deg,var(--ramp-ink) 0 1px,transparent 1px 5px)}
+.k2::after{background:repeating-linear-gradient(-45deg,var(--ramp-ink) 0 1px,transparent 1px 5px)}
+.k3::after{background:repeating-linear-gradient(90deg,var(--ramp-ink) 0 1px,transparent 1px 4px)}
+.k4::after{background:repeating-linear-gradient(0deg,var(--ramp-ink) 0 1px,transparent 1px 4px)}
+.k5::after{background:repeating-linear-gradient(45deg,var(--ramp-ink) 0 1px,transparent 1px 4px),repeating-linear-gradient(-45deg,var(--ramp-ink) 0 1px,transparent 1px 4px)}
+.k6::after{background:radial-gradient(var(--ramp-ink) .6px,transparent .7px) 0 0/3px 3px}
 .tiny .cell .g{display:none}
 #rain{position:absolute;pointer-events:none;z-index:3}
 .rainhud{position:absolute;right:var(--sp-5);bottom:var(--sp-3);display:flex;align-items:center;gap:var(--sp-3);
@@ -440,6 +511,16 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .isec{margin-bottom:var(--sp-6)}
 .isec:last-child{margin-bottom:0}
 .isec-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-3);color:var(--text-tertiary)}
+/* the verdict table (§8 item 14): four claims, each with its unit and its badge */
+.vlines{display:flex;flex-direction:column;gap:var(--sp-3)}
+.vline{display:flex;align-items:center;gap:var(--sp-3);min-height:26px}
+.vline .lab{flex:0 0 74px;color:var(--text-tertiary);font:600 9px/12px var(--font-ui);letter-spacing:.07em}
+.vline .val{flex:1 1 auto;min-width:0;color:var(--text-primary);font:500 13px/18px var(--font-mono);font-variant-numeric:tabular-nums}
+.vline .val .u{color:var(--text-tertiary);font-size:11px;margin-left:3px}
+.vline.off .val{color:var(--text-disabled)}
+.vbadge{flex:0 0 auto;padding:1px 6px;border-radius:var(--r-sm);border:1px solid var(--border-default);
+  color:var(--text-tertiary);font:600 9px/13px var(--font-ui);letter-spacing:.04em;white-space:nowrap}
+.vbadge.warn{border-color:rgba(247,184,61,.5);color:var(--pos-warn)}
 .classhead{display:flex;align-items:baseline;gap:var(--sp-3);flex-wrap:wrap}
 .tierpill{display:inline-flex;align-items:center;gap:var(--sp-3);height:28px;padding:0 var(--sp-4);border-radius:var(--r-sm);
   font:600 12px/14px var(--font-ui);letter-spacing:.06em}
@@ -472,7 +553,7 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .wchip:hover .q{background:var(--accent);color:var(--t1-ink)}
 /* class-info: the small always-visible "i" on every row and column, "?" on rail headers */
 .rowh .q,.ch .q,.classhead .q{width:13px;height:13px;font:600 9px/13px var(--font-ui)}
-.rsec-h .q{display:inline-block;vertical-align:-3px;margin-left:5px}
+.rsec-h .q{flex:0 0 auto}
 .legend .q{width:18px;height:18px;font:600 11px/18px var(--font-ui)}
 .pop.classinfo{width:300px}
 .pop .popmeta{margin-top:8px;font:500 10px/14px var(--font-mono);color:var(--text-tertiary);font-variant-numeric:tabular-nums}
@@ -632,8 +713,25 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .shake{animation:shake 90ms 2}
 /* ============================================================ RESPONSIVE */
 .mobilebar,.bandrail,#pickbtn{display:none}
-@media (max-width:1279px){
-  .topbar{flex-wrap:wrap;height:auto;padding:var(--sp-3) var(--sp-6);row-gap:var(--sp-3)}
+/* THE TOPBAR BAND, RE-MEASURED (S-E's one red, V3-PLAN §1 / §9 — "smoke reports 11/12 until §8
+   fixes the 1280–1442 px topbar clipping").
+   S-E measured the intrinsic row at 1443 px against a 1279 px breakpoint, so at every width in
+   1280–1442 the Drill, Guide, Settings and Info buttons sat outside the viewport, clipped away by
+   `body{overflow-x:hidden}` — invisible and unclickable, identical to the pixel in three engines.
+   Two changes, both measured in headless Chromium on the shipped artifact (P1-U):
+     1. `.topbar` gets `flex-wrap:wrap` + `min-height` instead of a fixed `height`, so the row can
+        never clip: past its intrinsic width it WRAPS. That is the floor, and it holds at every
+        width — 1024 px included, where the old rule's `flex-wrap:wrap` used to be the only thing
+        standing between the page and the same defect one breakpoint lower.
+     2. these trims move to 1559 px, from the measurement: the UNTRIMMED row needs 1546 px, the
+        TRIMMED row needs 1394 px. 1439 was the wrong edge — it left 1440–1545 untrimmed and
+        wrapping, which is 1440 itself, the width the page is drawn for. Below 1394 the bar wraps
+        to two rows and stays entirely reachable, which is the honest failure mode.
+   The 13 px between the measured 1546 and the 1559 breakpoint is margin for cross-engine metric
+   drift; spending it costs a trimmed row at widths that could have held an untrimmed one, and not
+   spending it costs a wrapped row at 1440. */
+@media (max-width:1559px){
+  .topbar{padding:var(--sp-3) var(--sp-6)}
   .topbar .spacer{display:none}
   .tabs,.tabs button{height:40px}
   .seg button{min-width:44px;height:32px}
@@ -650,6 +748,41 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
     transform:translateX(100%);transition:transform var(--dur-slow) var(--ease-out)}
   .inspector.open{transform:none}
   .drawer-scrim{position:fixed;inset:0;background:rgba(6,14,15,.45);z-index:59}
+}
+/* THE PINNED/SCROLL SPLIT, RE-MEASURED (V3-PLAN §8 item 12's last clause).
+   Measured on the shipped artifact in headless Chromium at 1440 px wide, every section open:
+
+     viewport 900   rail 780 = pin 278 + scroll 436 + foot 66   scroll content 1461 (1025 below the fold)
+     viewport 800   rail 680 = pin 278 + scroll 336 + foot 66   scroll content 1461
+     viewport 760   rail 640 = pin 278 + scroll 296 + foot 66   scroll content 1461
+     viewport 700   rail 580 = pin 278 + scroll 236 + foot 66   scroll content 1461
+     viewport 620   rail 500 = pin 278 + scroll 156 + foot 66   scroll content 1461   <- arithmetic;
+     viewport 560   rail 440 = pin 278 + scroll  96 + foot 66   scroll content 1461      the rule
+                                                                                         below fires
+                                                                                         first
+
+   Per section, at 900: vpip 174, ribbon 104, table 589, villain 363, thesis 119, pin 167,
+   display 211 (lab and node hidden at this state) — `tablesec` alone is 40% of the scroll side.
+
+   Two facts fall out. The first is the ANSWER to the split question: the pinned block is 278 px
+   and holds exactly the two things the page is about — the VPIP hero and the tier ribbon — while
+   the 1461 px behind it is the settings. Nothing wants to move across; what the split needed was
+   a way to make the scroll side SMALLER, and item 12 is that way. Collapsed, the whole rail
+   measures 636 px of content in a 636 px box: NOTHING below the fold, and the pinned block itself
+   down to 78 px. The split was not mis-drawn, it was over-subscribed.
+   The second is a hazard the collapse does not remove on its own: `.rail-pin` is `flex:0 0 auto`,
+   so on a short viewport it keeps all 278 px and the scroll region is squeezed to a slit — 156 px
+   at 620 px tall, 96 at 560, still holding 1461 px of sections, and a user who has not collapsed
+   anything yet has to find the toggles inside it. Below 700 px of viewport the split has stopped
+   earning its keep, so it is dropped: the rail scrolls as one column, which is strictly more
+   reachable than a 96 px window, and the collapse state is untouched by the change. */
+@media (max-height:699px) and (min-width:1024px){
+  .rail{overflow-y:auto;overflow-x:hidden}
+  .rail-scroll{flex:0 0 auto;overflow:visible;-webkit-mask-image:none;mask-image:none}
+  /* the provenance line keeps the promise its markup makes — "must never be the thing that gets
+     sliced when the rail overflows" — by sticking to the bottom of the column that now scrolls */
+  .rail-foot{position:sticky;bottom:0;background:var(--bg-base);
+    border-top:1px solid var(--border-subtle);padding-top:var(--sp-3)}
 }
 @media (max-width:1023px){
   .rail{width:100%;flex:0 0 auto}
@@ -675,7 +808,10 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
   .rail,.inspector{display:none}
   .rail.m-open,.inspector.m-open{display:flex}
   .pane{border:none;border-radius:0;background:transparent}
-  .legend{overflow-x:auto;background:transparent;height:48px}
+  /* height:auto, not 48: the band is two lines now (filter, then encoding) and a fixed height
+     would clip the second one away — the mode switch — with no cue that it was there. */
+  .legend{overflow-x:auto;background:transparent;height:auto;min-height:48px}
+  .encline{height:auto;min-height:44px;flex-wrap:wrap;row-gap:var(--sp-2)}
   /* the sheet is not the 1024 drawer, and carries the heavier scrim */
   .drawer-scrim{background:var(--scrim)}
   /* the row scrolls, so chips must not shrink away their percentages */
@@ -768,7 +904,8 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
     <aside class="rail" id="rail" aria-label="Controls">
       <div class="rail-pin">
         <section class="rsec" id="vpipsec">
-          <div class="rsec-h"><span class="t-label">Table VPIP</span><span class="t-micro" id="vpiptag">SOFT</span></div>
+          <div class="rsec-h"><button class="rsec-t" type="button" aria-controls="vpipsec-b"><span class="chev" aria-hidden="true"></span><span class="t-label">Table VPIP</span><span class="rsec-v t-micro" id="vpiptag">SOFT</span></button></div>
+          <div class="rsec-b" id="vpipsec-b">
           <div class="vpip-top">
             <div class="vpip-val" id="vpipval">55<span class="pct">%</span></div>
             <input class="vpip-num" id="vpipnum" type="number" inputmode="numeric" min="25" max="90" step="1" value="55" aria-label="Table VPIP percent">
@@ -776,26 +913,32 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
           <div class="slider-wrap"><input id="vpip" type="range" min="25" max="90" step="1" value="55" aria-label="Table VPIP"></div>
           <div class="ticks" id="ticks"></div>
           <div class="derived" id="derived"></div>
+          </div>
         </section>
         <section class="rsec" id="ribbonsec">
-          <div class="rsec-h"><span class="t-label">Tier ribbon</span><span class="t-micro" id="ribbonwho">&mdash;</span></div>
+          <div class="rsec-h"><button class="rsec-t" type="button" aria-controls="ribbonsec-b"><span class="chev" aria-hidden="true"></span><span class="t-label">Tier ribbon</span><span class="rsec-v t-micro" id="ribbonwho">&mdash;</span></button></div>
+          <div class="rsec-b" id="ribbonsec-b">
           <div class="ribbon" id="railribbon" role="img"><div class="caret" id="railcaret"></div></div>
           <div class="ribbon-labels" id="railribbonlabels"></div>
           <div class="ribbon-cap" id="railribboncap"></div>
+          </div>
         </section>
         <!-- vs-3-bet only: the VPIP ribbon and thesis spark are flat here, so they are replaced -->
         <section class="rsec" id="labsec" hidden>
-          <div class="rsec-h"><span class="t-label">Hero equity spread</span><span class="t-micro">vs their face-up mix</span></div>
+          <div class="rsec-h"><button class="rsec-t" type="button" aria-controls="labsec-b"><span class="chev" aria-hidden="true"></span><span class="t-label">Hero equity spread</span><span class="rsec-v t-micro" id="labtag">vs their face-up mix</span></button></div>
+          <div class="rsec-b" id="labsec-b">
           <svg class="spark" id="eqhist" viewBox="0 0 224 56" preserveAspectRatio="none" style="height:56px" aria-label="Distribution of hero equity against the face-up 3-bet mix, combo-weighted"></svg>
           <div class="spark-cap t-micro"><span>20%</span><span>equity vs their range</span><span>66%</span></div>
           <div class="t-sm dim" id="labcap" style="margin-top:6px"></div>
+          </div>
         </section>
       </div>
       <div class="rail-scroll">
         <!-- V2-PLAN §3 — depth, rake, straddle. Live controls: equity does not move with the
              stacks, so there is nothing here to simulate and no progress bar to draw (§1). -->
         <section class="rsec" id="tablesec">
-          <div class="rsec-h"><span class="t-label">Table &amp; stakes</span><span class="t-micro" id="tabletag">&mdash;</span></div>
+          <div class="rsec-h"><button class="rsec-t" type="button" aria-controls="tablesec-b"><span class="chev" aria-hidden="true"></span><span class="t-label">Table &amp; stakes</span><span class="rsec-v t-micro" id="tabletag">&mdash;</span></button></div>
+          <div class="rsec-b" id="tablesec-b">
           <div class="ctlrow" style="margin-top:0"><label for="depth" class="t-sm">Stack depth</label>
             <output class="ctlval" id="depthval" for="depth">100<span class="pct">bb</span></output></div>
           <div class="slider-wrap"><input id="depth" type="range" min="40" max="250" step="5" value="100" aria-label="Effective stack depth, big blinds"></div>
@@ -820,6 +963,7 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
             <button class="btn btn-sm" id="v1point" type="button">v1 point</button>
           </div>
           <div class="ctlnote" id="tablenote"></div>
+          </div>
         </section>
         <!-- V2-PLAN §4 / §2.3 — the villain profile, and the one control on this page that can
              need a measurement it does not already have. OFF is the default and OFF is not a value
@@ -827,7 +971,8 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
              random-villain model v1 shipped, bit for bit (gate I22's claim, and policy.villainEq
              returns the shipped arrays BY REFERENCE to keep it checkable). -->
         <section class="rsec" id="vpsec" hidden>
-          <div class="rsec-h"><span class="t-label">Villain profile</span><span class="t-micro" id="vptag">OFF</span></div>
+          <div class="rsec-h"><button class="rsec-t" type="button" aria-controls="vpsec-b"><span class="chev" aria-hidden="true"></span><span class="t-label">Villain profile</span><span class="rsec-v t-micro" id="vptag">OFF</span></button></div>
+          <div class="rsec-b" id="vpsec-b">
           <div class="ctlrow2" style="margin-top:0">
             <button class="tglchip" id="vptoggle" type="button" aria-pressed="false" aria-describedby="vpstat"><span class="dot"></span>Filtered villains</button>
           </div>
@@ -844,20 +989,27 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
             <div class="simline" id="simline" hidden></div>
           </div>
           <div class="ctlnote" id="vpnote"></div>
+          </div>
         </section>
         <section class="rsec" id="thesissec">
-          <div class="rsec-h"><span class="t-label">Thesis</span><span class="t-micro">VPIP 25 &rarr; 90</span></div>
+          <div class="rsec-h"><button class="rsec-t" type="button" aria-controls="thesissec-b"><span class="chev" aria-hidden="true"></span><span class="t-label">Thesis</span><span class="rsec-v t-micro" id="thesistag">VPIP 25 &rarr; 90</span></button></div>
+          <div class="rsec-b" id="thesissec-b">
           <svg class="spark" id="spark" viewBox="0 0 224 48" preserveAspectRatio="none" aria-label="Width and nut share across VPIP"></svg>
           <div class="spark-cap t-micro"><span style="color:var(--s1)">Width &#9644;</span><span style="color:var(--s3)">Nuttiness &#9480;</span></div>
+          </div>
         </section>
         <section class="rsec" id="pinsec">
-          <div class="rsec-h"><span class="t-label">Pin &amp; diff</span></div>
+          <div class="rsec-h"><button class="rsec-t" type="button" aria-controls="pinsec-b"><span class="chev" aria-hidden="true"></span><span class="t-label">Pin &amp; diff</span><span class="rsec-v t-micro" id="pintag">NO PIN</span></button></div>
+          <div class="rsec-b" id="pinsec-b">
           <div class="pinbox" id="pinbox"></div>
+          </div>
         </section>
         <section class="rsec" id="nodesec" hidden></section>
         <section class="rsec" id="displaysec">
-          <div class="rsec-h"><span class="t-label">Display</span></div>
+          <div class="rsec-h"><button class="rsec-t" type="button" aria-controls="displaysec-b"><span class="chev" aria-hidden="true"></span><span class="t-label">Display</span><span class="rsec-v t-micro" id="displaytag">&mdash;</span></button></div>
+          <div class="rsec-b" id="displaysec-b">
           <div id="displayctl"></div>
+          </div>
         </section>
       </div>
       <!-- outside the scroll region: the provenance line is the page's audit trail and must never
@@ -2281,6 +2433,374 @@ var SIMUI = (function () {
 })();
 /* @end:sim-ui-logic */
 
+/* @rail-logic — test/ui-rail.test.mjs slices this block out of this file by these markers and
+   evaluates it standalone, the same trick test/sim-ui.test.mjs plays on SIMUI and for the same
+   reason: the rules below decide what a collapsed rail remembers and what a shut section still
+   says, and a copy of them in a test file is a second implementation that can drift.
+
+   WHAT IS IN HERE: everything about the rail that is a RULE. What is not: every line that touches
+   the DOM. `buildRail`/`syncRail` further down are a thin applicator over this — they read these
+   functions and write elements, and they own no logic of their own.
+
+   THREE DECISIONS THIS BLOCK ENCODES (V3-PLAN §8 item 12):
+
+   1. PERSISTENCE GOES THROUGH `store()`, NEVER THE HASH. The hash is the SHARE channel: a link
+      is somebody's spot, and shipping "I had the Display section shut" inside it would make two
+      people's links differ over a thing neither of them meant to send. `store()` already carries
+      the write probe (a localStorage that throws degrades to nothing, silently, once).
+   2. THE STORE IS SHARED AND HOSTILE. Chrome hands every `file://` page ONE localStorage area —
+      the Simulate cache's own reason for validating every read — so `normState` accepts nothing
+      it did not write: unknown ids are dropped, non-booleans are dropped, and a value that is not
+      an object at all reads as "nothing collapsed" rather than throwing.
+   3. THE VALUE SLOT IS NOT A CACHE. `summaries` is a pure function of a state SNAPSHOT and takes
+      no collapse flag at all, which is what makes "the value slot updates while collapsed" true
+      by construction rather than by a repaint remembering to run: there is no code path in which
+      a shut section is summarised differently from an open one. */
+var RAIL = (function () {
+'use strict';
+
+/* the store key. Namespaced like every other key this page writes (`rundown.v1.drill`). */
+var KEY = 'rundown.v1.rail';
+
+/* THE SECTION TABLE — the rail's nine collapsible sections, in DOM order.
+   `value` is the id of the element in the header that carries the collapsed readout. Five of the
+   nine already had one: the four `.t-micro` tags V3-PLAN §8 names by id (`vpiptag`, `tabletag`,
+   `vptag`, `ribbonwho`) plus the vs-3-bet lab's static caption. They are SEEDS, not new work —
+   the tags moved into the header's value slot and kept their text and their writers.
+   `invented` marks the four §8 asks for: thesis, pin, node, display had no readout at all. */
+var SECTIONS = [
+  { id: 'vpipsec',    value: 'vpiptag',    invented: false },
+  { id: 'ribbonsec',  value: 'ribbonwho',  invented: false },
+  { id: 'labsec',     value: 'labtag',     invented: false },
+  { id: 'tablesec',   value: 'tabletag',   invented: false },
+  { id: 'vpsec',      value: 'vptag',      invented: false },
+  { id: 'thesissec',  value: 'thesistag',  invented: true },
+  { id: 'pinsec',     value: 'pintag',     invented: true },
+  { id: 'nodesec',    value: 'nodetag',    invented: true },
+  { id: 'displaysec', value: 'displaytag', invented: true }
+];
+
+function ids() {
+  var out = [], i;
+  for (i = 0; i < SECTIONS.length; i++) out.push(SECTIONS[i].id);
+  return out;
+}
+function known(id) {
+  for (var i = 0; i < SECTIONS.length; i++) if (SECTIONS[i].id === id) return true;
+  return false;
+}
+
+/**
+ * Validate whatever came back out of the store into a state this page will act on.
+ *
+ * Only `true` survives. Everything else — a string 'true', a 1, a null, an id no build of this
+ * page ever had — is dropped rather than coerced, because coercing hostile input is how a shared
+ * store starts deciding what the UI looks like. The result is a fresh object every time, so the
+ * caller can never be handed a reference into parsed JSON it then mutates.
+ */
+function normState(raw) {
+  var out = {}, i, id;
+  if (!raw || typeof raw !== 'object' || Object.prototype.toString.call(raw) === '[object Array]') return out;
+  for (i = 0; i < SECTIONS.length; i++) {
+    id = SECTIONS[i].id;
+    if (Object.prototype.hasOwnProperty.call(raw, id) && raw[id] === true) out[id] = true;
+  }
+  return out;
+}
+/** Collapsed is opt-in: an id absent from the state is OPEN. */
+function isCollapsed(state, id) {
+  return !!(state && known(id) && state[id] === true);
+}
+/** A new state with one id flipped. Never mutates its argument — the caller stores the result. */
+function toggled(state, id) {
+  var out = normState(state);
+  if (!known(id)) return out;
+  if (out[id]) delete out[id]; else out[id] = true;
+  return out;
+}
+function collapsedCount(state) {
+  var n = 0, s = normState(state), k;
+  for (k in s) if (Object.prototype.hasOwnProperty.call(s, k)) n++;
+  return n;
+}
+
+/* -------------------------------------------------------------- the four invented summaries */
+function n1(x) { return (Math.round(x * 10) / 10).toFixed(1); }
+
+/**
+ * The collapsed readout for the four sections that never had one.
+ *
+ * PURE, and takes NO collapse flag — see decision 3 above. `snap` is a plain snapshot of the four
+ * things being summarised; nothing here reads global state, so the same call answers for an open
+ * section and a shut one and there is no third answer to get wrong.
+ *
+ *   thesis   the sparkline's own endpoints — the two numbers already printed on it, so the shut
+ *            section says exactly what the open one draws.
+ *   pin      the pin's VPIP and how many cells moved; 'NO PIN' when there is none, because the
+ *            section's whole content in that state is the button that makes one.
+ *   node     whatever the node's control actually holds — the limper count, the raiser's seat,
+ *            the 3-bet mix. This section is `hidden` at the RFI node, which is exactly the
+ *            hidden-by-feature x collapsed-by-user composition: the summary is still computed.
+ *   display  density and column mode, plus a count of any non-default toggles, so "I turned
+ *            something on and forgot" is visible without opening it.
+ */
+function summaries(snap) {
+  var s = snap || {}, out = {};
+  var th = s.thesis;
+  out.thesistag = th && typeof th.lo === 'number' && typeof th.hi === 'number'
+    ? n1(th.lo * 100) + ' → ' + n1(th.hi * 100) + '%'
+    : 'VPIP 25 → 90';
+  var p = s.pin;
+  out.pintag = p && typeof p.v === 'number'
+    ? p.v + '% · ' + (p.moved || 0) + ' MOVED'
+    : 'NO PIN';
+  var nd = s.node || {};
+  out.nodetag = nd.key === 'limps' ? (nd.L || 0) + ' LIMPERS'
+    : nd.key === 'raise' ? 'vs ' + (nd.raiser || '—')
+    : nd.key === '3bet' ? (nd.mix || []).join('/')
+    : '—';
+  var d = s.display || {}, extras = 0;
+  if (d.cbPatterns) extras++;
+  if (d.monoSuits) extras++;
+  if (d.reduce) extras++;
+  if (d.rain === 0) extras++;
+  out.displaytag = (d.density === 'compact' ? 'COMPACT' : 'COMFORT')
+    + ' · ' + (d.cols === 'freq' ? 'TRUE FREQ' : 'EQUAL')
+    + (extras ? ' +' + extras : '');
+  return out;
+}
+
+return { version: 1, KEY: KEY, SECTIONS: SECTIONS, ids: ids, known: known,
+  normState: normState, isCollapsed: isCollapsed, toggled: toggled,
+  collapsedCount: collapsedCount, summaries: summaries };
+})();
+/* @end:rail-logic */
+
+/* @mode-logic — the matrix's colour-mode rules, sliced and evaluated by test/ui-mode.test.mjs.
+   V3-PLAN §8 item 13 / locked 4.6: THE MATRIX OWNS ITS ENCODING, so this switch renders on the
+   legend row and not on the top bar (item 15) and not in the rail's Display section, which is
+   where "Color by" used to live.
+
+   THE DISABLEMENT IDIOM. A mode this build cannot serve is not hidden — it renders, dimmed,
+   carrying the REASON, exactly the way the Simulate button reads `SIM.available` /
+   `SIM.unavailableReason` rather than vanishing. `availability` is the whole of that rule and it
+   takes a capability SNAPSHOT rather than reading globals, so a test can ask what the page would
+   say in a build that has no payoff accessor without having to build one.
+
+   `resolve` is the other half: a mode that is selected and then loses its capability (clear the
+   pin while Delta-pin is showing) must not leave the grid painted from a source that is gone. It
+   falls back to the tier mode, which is the only mode with no capability at all. */
+var MODES = (function () {
+'use strict';
+
+/* kind: 'class' paints the tier classes; 'ramp' paints a sequential ramp and a `.kN` bucket;
+   'diverging' is reserved for vs-GTO, whose signed ramp is a later phase's to draw (§8). */
+var LIST = [
+  { key: 'action', label: 'TIER',   name: 'Colour by action tier',                             kind: 'class', steps: 0 },
+  { key: 'nu',     label: 'ν', name: 'Colour by nut potential',                           kind: 'ramp',  steps: 5 },
+  { key: 'rho',    label: 'ρ', name: 'Colour by equity ratio',                            kind: 'ramp',  steps: 7 },
+  { key: 'pin',    label: 'Δ PIN', name: 'Colour by change against the pinned state',     kind: 'ramp',  steps: 3 },
+  { key: 'ev',     label: 'EV',     name: 'Colour by expected share of the final pot',         kind: 'ramp',  steps: 7 },
+  { key: 'gto',    label: 'vs GTO', name: 'Colour by divergence from the equilibrium baseline', kind: 'diverging', steps: 0 }
+];
+var DEFAULT = 'action';
+
+function keys() { var o = [], i; for (i = 0; i < LIST.length; i++) o.push(LIST[i].key); return o; }
+function byKey(k) { for (var i = 0; i < LIST.length; i++) if (LIST[i].key === k) return LIST[i]; return null; }
+
+/**
+ * Can this build paint this mode, and if not, WHY NOT — in words that name the missing thing.
+ *
+ * `cap` is what the page knows about itself: { pinned, payoff, equilibrium }. Absent keys read as
+ * false, so an under-specified snapshot disables rather than enables.
+ */
+function availability(key, cap) {
+  var c = cap || {};
+  if (!byKey(key)) return { available: false, reason: 'no such colour mode' };
+  if (key === 'pin' && !c.pinned) {
+    return { available: false, reason: 'no pinned state — pin one in the rail’s Pin & diff section' };
+  }
+  if (key === 'ev' && !c.payoff) {
+    return { available: false, reason: 'no payoff accessor in this build — no expected-value surface to colour' };
+  }
+  if (key === 'gto' && !c.equilibrium) {
+    return { available: false, reason: 'no equilibrium baseline in this build — the solver output (data/equilibrium.json) lands in a later phase' };
+  }
+  return { available: true, reason: '' };
+}
+/** The mode actually painted: the wanted one if this build can serve it, else the tier mode. */
+function resolve(want, cap) {
+  return availability(want, cap).available ? want : DEFAULT;
+}
+/**
+ * The `cells` argument the EV mode asks the frozen payoff accessor for, at `nOpp` opponents.
+ *
+ * TWO SHAPES, ON PURPOSE, and the choice is the whole of the mode's honesty (the long-form
+ * argument is at the EV-mode block in the applicator):
+ *
+ *   nOpp >= 2   hero plus nOpp villain slots — the accessor's MULTIWAY door. That branch reads
+ *               hero only, so the villain keys are provably inert and filling them with hero's own
+ *               key encodes no choice. A whole-grid colour mode has no named villain to offer, and
+ *               inventing one would paint an opinion into 145 cells.
+ *   nOpp == 1   hero alone. Below the shape floor deliberately: the contract's documented
+ *               out-of-domain path resolves the hero and reads its checkdown ladder at the nearest
+ *               measured opponent count, which is exactly the one-opponent rung. The alternative
+ *               was to clamp to two opponents and paint 8.3% of the settings surface with the
+ *               wrong rung, silently. A flagged right answer beats an unflagged wrong one.
+ *
+ * Both shapes come back `supported:false`, and the page badges every one of them.
+ */
+function requestFor(key, nOpp) {
+  if (!(typeof nOpp === 'number' && isFinite(nOpp)) || nOpp <= 1) return [key];
+  var a = [key], i, n = Math.floor(nOpp);
+  for (i = 0; i < n; i++) a.push(key);
+  return a;
+}
+/**
+ * Which ramp bucket a value falls in, on a CLOSED domain with a fixed number of steps.
+ *
+ * Fixed domain, not per-render extremes: a ramp that rescales itself to whatever is on screen
+ * makes two settings incomparable and hides exactly the movement the mode exists to show.
+ */
+function bucket(v, lo, hi, steps) {
+  var n = Math.max(1, steps | 0);
+  if (!(typeof v === 'number' && isFinite(v))) return 0;
+  if (!(hi > lo)) return 0;
+  var i = Math.floor((v - lo) / (hi - lo) * n);
+  return i < 0 ? 0 : i > n - 1 ? n - 1 : i;
+}
+
+return { version: 1, LIST: LIST, DEFAULT: DEFAULT, keys: keys, byKey: byKey,
+  availability: availability, resolve: resolve, bucket: bucket, requestFor: requestFor };
+})();
+/* @end:mode-logic */
+
+/* @payoff-page — THE FROZEN PAYOFF INTERFACE (V3-PLAN §2), page side.
+   test/ui-payoff-mirror.test.mjs slices this block out and compares it, argument for argument,
+   against `scripts/lib/payoff.mjs` over the whole shipped cell space. That test is the reason
+   this copy is allowed to exist.
+
+   WHY A COPY AT ALL. `scripts/lib/payoff.mjs` is written to survive `build.mjs`'s `moduleToIife`
+   and says so ("present in both builds", boot hook `setDefaultModel(MODEL)`) — but the injection
+   region that would carry it belongs to `scripts/build.mjs`, which is another lane's file this
+   phase. Rather than block the EV colour mode on someone else's commit, the arithmetic is
+   mirrored here and PINNED to the module by an equivalence test over every cell key, every
+   request length 0..8, and the malformed shapes: if the module moves and this does not, the test
+   fails. When the injection region lands, this block is deleted and `PAYOFF` is bound to the
+   injected module — one seam, already named.
+
+   NOTHING HERE IS AN OPINION. Every number it returns is built from shipped measurements; the
+   file it mirrors introduces zero constants and so does this. */
+var PAYOFF = (function () {
+'use strict';
+
+function seOfShare(p, n) {
+  if (!(typeof n === 'number' && isFinite(n) && n > 0)) return Infinity;
+  if (!(typeof p === 'number' && isFinite(p))) return Infinity;
+  var lo = 1 / (n + 1), hi = n / (n + 1);
+  var q = Math.min(hi, Math.max(lo, p));
+  return Math.sqrt((q * (1 - q)) / n);
+}
+function finish(ev, se, source, supported) {
+  var evOk = typeof ev === 'number' && isFinite(ev) && ev >= 0 && ev <= 1;
+  var seOk = typeof se === 'number' && se > 0 && !isNaN(se);
+  return { ev: ev, se: seOk ? se : Infinity, source: source, supported: !!supported && evOk && seOk };
+}
+function cellOf(M, key) {
+  if (typeof key !== 'string') return null;
+  if (!Object.prototype.hasOwnProperty.call(M.cells, key)) return null;
+  var c = M.cells[key], i;
+  if (!c || typeof c !== 'object' || Object.prototype.toString.call(c.eq) !== '[object Array]' || c.eq.length === 0) return null;
+  for (i = 0; i < c.eq.length; i++) if (typeof c.eq[i] !== 'number' || !isFinite(c.eq[i])) return null;
+  return c;
+}
+function seedOk(seed) {
+  if (seed === undefined || seed === null) return true;
+  if (typeof seed === 'number') return isFinite(seed);
+  return typeof seed === 'string' && seed.length > 0;
+}
+function evaluate(M, cells, potSize, spr, opts) {
+  var optsOk = true, ip = false;
+  if (opts !== undefined && opts !== null) {
+    if (typeof opts === 'object' && Object.prototype.toString.call(opts) !== '[object Array]') {
+      ip = !!opts.ip; optsOk = seedOk(opts.seed);
+    } else optsOk = false;
+  }
+  /* read, then deliberately unused: the checkdown game has no position. The argument's SHAPE is
+     frozen so the first source that does depend on position changes this body and no call site. */
+  void ip;
+  var potOk = typeof potSize === 'number' && isFinite(potSize) && potSize > 0;
+  var sprOk = typeof spr === 'number' && isFinite(spr) && spr >= 0;
+  var isArr = Object.prototype.toString.call(cells) === '[object Array]';
+  var len = isArr ? cells.length : 0;
+  var maxCells = M.nMax + 1;
+  var shapeOk = isArr && len >= 2 && len <= maxCells;
+  var hero = isArr && len > 0 ? cellOf(M, cells[0]) : null;
+  var allKnown = shapeOk && hero !== null, i;
+  if (allKnown) for (i = 1; i < len; i++) if (cellOf(M, cells[i]) === null) { allKnown = false; break; }
+  var inDomain = optsOk && potOk && sprOk && shapeOk && allKnown;
+
+  if (inDomain && len === 2) {
+    var villain = cellOf(M, cells[1]);
+    var pA = hero.eq[0] / 100, pB = villain.eq[0] / 100;
+    /* `0.5 + (pA - pB)/2` rather than `(pA + (1 - pB))/2`: IEEE negation is exact, so the two
+       orderings sum to EXACTLY 1 and conservation is an identity, not a tolerance. */
+    return finish(0.5 + (pA - pB) / 2,
+      Math.hypot(seOfShare(pA, M.trials), seOfShare(pB, M.trials)) / 2, 'checkdown', true);
+  }
+  if (inDomain) {
+    var p = hero.eq[len - 2] / 100;
+    return finish(p, seOfShare(p, M.trials), 'checkdown', false);
+  }
+  if (hero) {
+    var j = Math.min(Math.max(len - 2, 0), hero.eq.length - 1), q = hero.eq[j] / 100;
+    return finish(q, seOfShare(q, M.trials), 'checkdown', false);
+  }
+  var evq = 1 / Math.max(2, len);
+  return finish(evq, seOfShare(evq, 0), 'checkdown', false);
+}
+function prepare(model) {
+  if (!model || typeof model !== 'object' || !model.cells || typeof model.cells !== 'object') {
+    throw new TypeError('payoff: no model.cells');
+  }
+  var meta = (model.meta && typeof model.meta === 'object') ? model.meta : {};
+  var trials = meta.trials && meta.trials.cell;
+  if (!(typeof trials === 'number' && isFinite(trials) && trials > 0)) {
+    throw new TypeError('payoff: model.meta.trials.cell is missing or not positive');
+  }
+  var nMax = 0, ks = Object.keys(model.cells), i, c;
+  for (i = 0; i < ks.length; i++) {
+    c = model.cells[ks[i]];
+    if (c && Object.prototype.toString.call(c.eq) === '[object Array]' && c.eq.length > nMax) nMax = c.eq.length;
+  }
+  if (!nMax && typeof meta.nMax === 'number' && isFinite(meta.nMax) && meta.nMax > 0) nMax = meta.nMax;
+  return { cells: model.cells, trials: trials, nMax: nMax, hash: typeof meta.hash === 'string' ? meta.hash : '' };
+}
+function makePayoff(model) {
+  var M = prepare(model);
+  /* named `boundPayoff`, not `payoff`: I33(f) scans this file for accessor call sites and holds
+     each one to a supported-to-badge path within its window. A bound function's own NAME is not a
+     call site, and letting it consume the clause's attention would leave the real consumer — the
+     one that could actually render an unbadged number — sharing a budget with a definition. */
+  var fn = function boundPayoff(cells, potSize, spr, opts) { return evaluate(M, cells, potSize, spr, opts); };
+  fn.modelHash = M.hash;
+  return fn;
+}
+return { version: 1, SOURCES: ['checkdown', 'model', 'simulated'],
+  RESULT_KEYS: ['ev', 'se', 'source', 'supported'], makePayoff: makePayoff };
+})();
+/* @end:payoff-page */
+
+/* The one bound accessor the page uses, resolved once against the injected model — the convenience
+   route of V3-PLAN §2, with the model handed over explicitly rather than loaded.
+   `prepare` THROWS on a model it cannot serve (no cells, no trial count), which is the module's
+   one deliberate throw: a payoff with no measurement behind it has no `se` to report and the
+   honest move is to have no accessor at all. That is why this is wrapped rather than trusted —
+   a page that cannot build one disables the EV colour mode BY NAME instead of painting zeros. */
+var PAY = null, PAYWHY = '';
+try { PAY = PAYOFF.makePayoff(MODEL); }
+catch (e) { PAY = null; PAYWHY = (e && e.message) ? e.message : 'the payoff accessor could not be built'; }
+
 /* ------------------------------------------------------------------ state */
 var S = {
   pos: 'UTG', node: 'rfi', v: (MODEL.meta.vpip && MODEL.meta.vpip.default) || 55,
@@ -2291,7 +2811,7 @@ var S = {
   /* METHODOLOGY §5.2: `rake.preset` is the UI's default (5% — the lobby this tool is for) while the
      SCORING function's default stays 0, which is what keeps gate I22's v1 identity checkable. */
   d: DEPTH.ref, rake: HAS_ENV ? RAKE.preset : 0, rakeCap: RAKE.capBB, straddle: false,
-  cbPatterns: false, monoSuits: false, rain: 8, reduce: false, itab: 'summary', preview: null,
+  cbPatterns: false, monoSuits: false, rain: 8, reduce: false, itab: 'verdict', preview: null,
   /* V2-PLAN §4. `vp` false is the DEFAULT and the identity point: with it off the page reads
      `cell.eq` by reference and reproduces v1 across the whole slider. `q` is the shipped opinion
      (0.85) and is user-editable like the 3-bet mix — §7.3, resolved yes. */
@@ -2334,6 +2854,10 @@ function store(k, val) {
   catch (e) { storageBroken = true; return val === undefined ? null : false; }
 }
 var storageBroken = false;
+/* The rail's collapse state, read once at boot through the same probe-guarded helper everything
+   else uses. A store that throws leaves this `{}` — every section open — which is the state the
+   page ships in, so a browser with localStorage off loses persistence and nothing else. */
+var RAILST = RAIL.normState(store(RAIL.KEY));
 function sess(k, val) {
   try { if (val === undefined) { return sessionStorage.getItem(k); } sessionStorage.setItem(k, val); return true; }
   catch (e) { return val === undefined ? null : false; }
@@ -2995,19 +3519,167 @@ function isGhosted(rec, t) {
 }
 var RAMP_NU = ['#1D2A2D', '#4A4530', '#8F7023', '#C79E33', '#FBCA43'];
 var RAMP_RHO = ['#1C4C63', '#2C7C93', '#59B0BE', '#3E4953', '#D9A96A', '#E8944B', '#EC794A'];
-function colorFor(rec, ev) {
-  if (S.colorBy === 'nu') return RAMP_NU[clamp(Math.floor(rec.d.nu * 5), 0, 4)];
-  if (S.colorBy === 'rho') {
-    var r = rhoAt(rec.d, ev.N), idx = clamp(Math.round(3 + (r - 1) * 4.5), 0, 6);
-    return RAMP_RHO[idx];
+/* Δ-pin is three states, not a ramp — unchanged, looser, tighter — and it is listed as a ramp mode
+   only because it paints through the same `.cb`/`.kN` path. §8 is explicit that the two-colour
+   Δ-pin encoding is NOT a signed magnitude ramp; the page's first real diverging ramp arrives with
+   vs-GTO, and is not drawn here. */
+var RAMP_PIN = ['var(--surface-2)', '#C79E33', '#674698'];
+/* EV: sequential, seven steps, dark to bright. Presentation only — it encodes an ordering the
+   payoff accessor produces and introduces no model constant. */
+var RAMP_EV = ['#12191C', '#1C333C', '#245160', '#2A7180', '#3E9391', '#77B57C', '#C6D267'];
+
+/* ============================================ EV COLOUR MODE (V3-PLAN §8 item 13, against §2's
+   FROZEN PAYOFF STUB). Read this before changing any of it — the honesty of the mode is in the
+   argument, not in the picture.
+
+   WHAT THE CELL SHOWS. Hero's expected share of the FINAL POT at this node, a pot fraction in
+   [0,1], straight out of the frozen accessor. NOT bb. The bb conversion §2 specifies —
+   `EVbb = ev*finalPot - invested` — is CALLER arithmetic and the caller cannot do it yet: V3-PLAN
+   §3.2's phase-0 annotation measured that the frozen interface must also return `potMult`
+   (measured range 1.603-11.865) and `invShare` (0.199-0.730) before that formula is right, "or
+   `EVbb = ev*finalPot - invested` is wrong by up to an order of magnitude in the pot term". Those
+   are P2's amendments to the freeze. Until they land, this mode ships the quantity the interface
+   actually returns, and says so on the legend, rather than a bb figure built on a pot term nobody
+   has measured.
+
+   HOW THE VILLAIN SET IS CHOSEN, AND WHY IT IS NOT AN OPINION. The accessor's supported domain is
+   PAIRWISE (`cells` length 2, hero first). A whole-grid colour mode has no named villain to put
+   opposite 145 cells, and inventing one would be an opinion painted into every cell. So the mode
+   asks the accessor the question it can answer without one — the MULTIWAY door — at the table's
+   own opponent count:
+
+     nOpp >= 2   `[key, key, ..., key]` with nOpp villain slots. The multiway branch reads HERO
+                 ONLY (`hero.eq[len-2]`), so the villain keys are provably inert; filling them
+                 with hero's own key therefore encodes no choice at all. `test/ui-payoff-mirror`
+                 asserts that invariance directly, by substituting every other live cell into the
+                 slots and requiring the same answer.
+     nOpp == 1   `[key]`. Below the shape floor on purpose: the contract's documented out-of-domain
+                 path is "the request was malformed but the HERO resolves, so the honest fallback
+                 is hero's own checkdown ladder, read at the nearest measured opponent count",
+                 which is exactly `eq[0]` — the one-opponent rung. The alternative was to clamp to
+                 two opponents and paint 8.3% of the (position x node x VPIP) surface with the
+                 wrong rung, silently. A flagged right answer beats an unflagged wrong one.
+
+   Both branches return `supported:false` and `source:'checkdown'`, and the legend says both. That
+   is not a defect being papered over: S-B graded C, V3-PLAN §3.2 rules that the stub payoff stays
+   and P2 builds no payoff table, so `checkdown` is v3's shipped truth about this surface and the
+   badge is the finding, not an apology for one.
+
+   ONE CONSEQUENCE WORTH SAYING OUT LOUD, because a reader will notice it before we do: with the
+   checkdown stub the EV surface is hero's shipped equity ladder, so at a fixed opponent count EV
+   mode ORDERS THE CELLS EXACTLY AS rho MODE DOES. The two will part company the day a payoff that
+   knows about postflop lands behind the same accessor — and not one day before. */
+function nodePotBB() {
+  if (S.node === '3bet') {
+    /* the vs-3-bet node commits to exactly one pot quantity — the PRICE — so the pot is written
+       from it: breakeven = call/(pot+call), hence pot = call*(1-be)/be, normalised to a one-unit
+       call. Nothing else about that node's tree is modelled and nothing here pretends otherwise. */
+    var be = C.vs3bet.breakeven;
+    return (be > 0 && be < 1) ? (1 - be) / be : 1.5;
   }
-  if (S.colorBy === 'pin') {
-    if (!S.pin) return 'var(--surface-2)';
-    var pv = pinEval(), a = pv.tier[rec.i], b = ev.tier[rec.i];
-    if (a === b) return 'var(--surface-2)';
-    return b < a ? '#C79E33' : '#674698';
+  /* posted money in bb, converted to CURRENT units: a straddle doubles the unit, so the blinds are
+     worth half as many units and the straddler's own post is worth exactly one. */
+  var u = S.straddle ? (STRAD.unit || 2) : 1;
+  var bb = S.node === 'limps' ? S.L + 1.5 : S.node === 'raise' ? 4.5 : 1.5;
+  return bb / u + (S.straddle ? 1 : 0);
+}
+/**
+ * One context per repaint, for every mode.
+ *
+ * Built once and threaded through the cell loop rather than recomputed per cell: `pinEval()` is a
+ * whole second evaluation of the model and the EV pot/spr are the same for all 145 cells. The
+ * per-cell work left inside the loop is the accessor call itself, which is pure arithmetic over
+ * shipped numbers.
+ */
+function modeCtx(ev, mode) {
+  var c = { mode: mode, pinE: null, nOpp: 0, fair: 0, hi: 1, pot: 0, spr: 0 };
+  if (mode === 'pin' && S.pin) c.pinE = pinEval();
+  if (mode === 'ev') {
+    c.pot = nodePotBB();
+    c.spr = c.pot > 0 ? Math.max(0, dEff() / c.pot) : 0;
+    c.nOpp = clamp(Math.round(ev.N), 1, NMAX);
+    c.fair = 1 / (c.nOpp + 1);
+    /* the ramp's fixed domain: zero to TWICE the fair share, which puts fair share on the middle
+       step. Arithmetic, not taste — and fixed, so two settings stay comparable. */
+    c.hi = 2 * c.fair;
   }
-  return null;
+  return c;
+}
+/**
+ * The page's ONE payoff call site, and the place the badge is derived.
+ *
+ * V3-PLAN §2 clause (f) and gate I33's page-side clause: a `supported:false` number may never
+ * reach a surface unlabelled. So `supported` is turned into a badge HERE, at the call, rather than
+ * at each of the four places that render one — the legend, the cell tooltip, the accessible name
+ * and the inspector's verdict line all read `r.badge` and none of them can forget. The vocabulary
+ * is the page's existing one: the villain accessor's own `supported:false` path already badges
+ * 'unsupported', and this joins it instead of inventing a second, quieter word for the same thing.
+ */
+function evOf(rec, ctx) {
+  if (!PAY) return null;
+  var payoff = PAY;
+  var r = payoff(MODES.requestFor(rec.key, ctx.nOpp), ctx.pot, ctx.spr, { ip: false });
+  r.badge = r.supported ? r.source : 'unsupported';
+  return r;
+}
+/** The paint for one cell: its colour and its ramp bucket, which is the colorblind channel. */
+function paintOf(rec, ev, mode, ctx) {
+  if (mode === 'nu') {
+    var kn = clamp(Math.floor(rec.d.nu * 5), 0, 4);
+    return { col: RAMP_NU[kn], k: kn };
+  }
+  if (mode === 'rho') {
+    var r = rhoAt(rec.d, ev.N), kr = clamp(Math.round(3 + (r - 1) * 4.5), 0, 6);
+    return { col: RAMP_RHO[kr], k: kr };
+  }
+  if (mode === 'pin') {
+    if (!ctx.pinE) return { col: RAMP_PIN[0], k: 0 };
+    var a = ctx.pinE.tier[rec.i], b = ev.tier[rec.i];
+    var kp = a === b ? 0 : b < a ? 1 : 2;
+    return { col: RAMP_PIN[kp], k: kp };
+  }
+  if (mode === 'ev') {
+    var res = evOf(rec, ctx);
+    if (!res) return { col: RAMP_EV[0], k: 0 };
+    var ke = MODES.bucket(res.ev, 0, ctx.hi, RAMP_EV.length);
+    return { col: RAMP_EV[ke], k: ke };
+  }
+  return { col: null, k: 0 };
+}
+/** One line saying what THIS mode has painted on THIS cell — the tooltip and accessible name. */
+function modeReadout(rec, ev, mode, ctx) {
+  if (mode === 'nu') return 'ν ' + f2(rec.d.nu);
+  if (mode === 'rho') return 'ρ ' + f2(rhoAt(rec.d, ev.N)) + ' × fair share';
+  if (mode === 'pin') {
+    if (!ctx.pinE) return 'no pinned state';
+    var a = ctx.pinE.tier[rec.i], b = ev.tier[rec.i];
+    return a === b ? 'unchanged against the pin'
+      : (b < a ? 'looser than the pin — ' : 'tighter than the pin — ') + tierLabel(a) + ' → ' + tierLabel(b);
+  }
+  if (mode === 'ev') {
+    var res = evOf(rec, ctx);
+    if (!res) return 'no payoff accessor in this build';
+    return f1(res.ev * 100) + '% of the final pot ±' + f1(res.se * 100) + ' vs ' + ctx.nOpp
+      + (ctx.nOpp === 1 ? ' opponent' : ' opponents') + ' · ' + res.source + ' · ' + res.badge;
+  }
+  return tierLabel(ev.tier[rec.i]) + ' · margin ' + signed(ev.margin[rec.i]);
+}
+/** The legend's own description of the active ramp: colours, endpoints, and what the middle means. */
+function rampScale(key, ev) {
+  if (key === 'nu') {
+    return { colors: RAMP_NU, lo: 'ν 0', hi: '1', mid: 'nut potential',
+      stepTitles: ['0.0–0.2', '0.2–0.4', '0.4–0.6', '0.6–0.8', '0.8–1.0'] };
+  }
+  if (key === 'rho') {
+    return { colors: RAMP_RHO, lo: 'ρ ≤0.22', hi: '≥1.78', mid: 'fair share 1.00 is the middle step' };
+  }
+  if (key === 'pin') {
+    return { colors: RAMP_PIN, lo: 'unchanged', hi: 'moved', mid: 'gold looser · purple tighter',
+      stepTitles: ['unchanged against the pin', 'played looser than the pin', 'played tighter than the pin'] };
+  }
+  var c = modeCtx(ev, 'ev');
+  return { colors: RAMP_EV, lo: '0%', hi: (c.hi * 100).toFixed(0) + '% of pot',
+    mid: 'fair share ' + (c.fair * 100).toFixed(1) + '% · vs ' + c.nOpp + ' · checkdown, unsupported' };
 }
 function render(opts) {
   opts = opts || {};
@@ -3015,7 +3687,12 @@ function render(opts) {
   /* inside the timed region on purpose: re-pointing 145 cell records is part of a profiled paint */
   if (HAS_VP) syncProfileCells();
   var ev = evalNow(), i, rec, cls, t;
-  var pinE = (S.pin && S.colorBy !== 'pin') ? pinEval() : null;
+  /* THE MODE IS RESOLVED HERE, ONCE, THROUGH `MODES.resolve`. Not read raw off `S.colorBy`: a mode
+     whose source has gone away (the pin cleared while Δ-pin was showing, a build with no payoff
+     accessor) must fall back rather than paint from nothing, and doing that at the top of the
+     paint means no cell can be painted from a source the legend has already disabled. */
+  var mode = activeMode(), mctx = modeCtx(ev, mode);
+  var pinE = (S.pin && mode !== 'pin') ? pinEval() : null;
   for (i = 0; i < NCELL; i++) {
     rec = CELLS[i];
     var node = cellNodes[i];
@@ -3028,10 +3705,14 @@ function render(opts) {
     t = ev.tier[i];
     cls = 'cell t' + t;
     if (isGhosted(rec, t)) cls += ' ghost';
-    if (S.colorBy !== 'action') {
-      var col = colorFor(rec, ev);
-      cls = 'cell cb' + (isGhosted(rec, t) ? ' ghost' : '');
-      if (node.__col !== col) { node.style.background = col; node.style.boxShadow = 'inset 0 0 0 1px rgba(239,245,246,.14)'; node.__col = col; }
+    if (mode !== 'action') {
+      /* `.kN` is the RAMP BUCKET, and it is the colorblind redundancy channel: the hatch patterns
+         are keyed to it exactly as the tier hatches are keyed to `.tN`, under the same two
+         switches (the user's toggle and the automatic one below 22 px rows). Before this the ramp
+         modes emitted `.cb` alone and had no non-colour channel at all. */
+      var pt = paintOf(rec, ev, mode, mctx);
+      cls = 'cell cb k' + pt.k + (isGhosted(rec, t) ? ' ghost' : '');
+      if (node.__col !== pt.col) { node.style.background = pt.col; node.style.boxShadow = 'inset 0 0 0 1px rgba(239,245,246,.14)'; node.__col = pt.col; }
     } else if (node.__col) { node.style.background = ''; node.style.boxShadow = ''; node.__col = null; }
     cls += sfind;
     if (cls !== lastCls[i]) { node.className = cls; lastCls[i] = cls; }
@@ -3049,6 +3730,12 @@ function render(opts) {
       if (!haz) { haz = el('span', 'haz'); node.appendChild(haz); }
       haz.style.opacity = Math.min(0.34, 0.10 * rec.d.dom);
     } else if (haz) haz.remove();
+    /* THE ACCESSIBLE NAME CARRIES THE ENCODED VALUE, in every mode. It used to be the cell's row
+       and column and nothing else, which meant the grid's whole message — the tier — reached a
+       screen reader only through the corner glyph's two triangles. Cached against the string so a
+       repaint that changes nothing writes nothing. */
+    var lab = rec.row.label + ' by ' + rec.col.label + ' — ' + modeReadout(rec, ev, mode, mctx);
+    if (node.__lab !== lab) { node.setAttribute('aria-label', lab); node.__lab = lab; }
   }
   paintChrome(ev);
   lastEv = ev;
@@ -3076,6 +3763,9 @@ function pinEval() {
 
 /* ------------------------------------------------------------- chrome */
 function paintChrome(ev) {
+  /* the mode switch and the ramp legend, which both read the CURRENT evaluation: N moves the EV
+     ramp's domain, and clearing a pin disables a mode that was selected a moment ago */
+  syncModeSw(); syncRampLegend(ev);
   /* legend counts */
   legendChips.forEach(function (c) {
     if (c.t === 0) return;
@@ -3157,7 +3847,75 @@ function paintChrome(ev) {
 }
 
 /* ------------------------------------------------------------- legend */
-var legendChips = [], compSegs = {};
+/* THE COLOUR-MODE SWITCH LIVES HERE (V3-PLAN §8 item 13 / locked 4.6). The matrix owns its
+   encoding: the control that decides what a colour MEANS sits on the legend row, beside the
+   swatches it re-labels — not on the top bar (item 15, whose view switch is unchanged) and not in
+   the rail's Display section, where "Color by" used to live. The five tier chips stay put in every
+   mode: they are the FILTER, and the filter is keyed to tiers whatever the paint is doing. */
+var legendChips = [], compSegs = {}, modeBtns = [], rampEl = null;
+
+/** What this build can actually paint. Read by MODES.availability; see the disablement idiom. */
+function modeCaps() {
+  return { pinned: !!S.pin, payoff: !!PAY,
+    /* no solver output ships yet; when `data/equilibrium.json` and its injected block land, this
+       is the one line that flips and the vs-GTO chip comes alive with no other change. */
+    equilibrium: !!(window.EQUILIBRIUM && window.EQUILIBRIUM.cells) };
+}
+function modeInfo(key) { return MODES.byKey(key) || MODES.byKey(MODES.DEFAULT); }
+/** The mode actually painted, after capabilities. Never reads a source that is not there. */
+function activeMode() { return MODES.resolve(S.colorBy, modeCaps()); }
+function setMode(key) {
+  var av = MODES.availability(key, modeCaps());
+  if (!av.available) { toast(modeInfo(key).label + ' — ' + av.reason); return; }
+  S.colorBy = key;
+  syncLegend(); render(); renderInspector(true);
+}
+function buildModeSw(host) {
+  var sw = el('div', 'modesw');
+  sw.setAttribute('role', 'group');
+  sw.setAttribute('aria-label', 'Colour mode — what the cell colours encode');
+  modeBtns = [];
+  MODES.LIST.forEach(function (m) {
+    var b = el('button', null, m.label);
+    b.type = 'button';
+    b.dataset.mode = m.key;
+    b.onclick = function () { setMode(m.key); };
+    sw.appendChild(b);
+    modeBtns.push({ key: m.key, node: b });
+  });
+  host.appendChild(sw);
+}
+/* THE `.ramp` LEGEND — the helper this stylesheet has carried unused since v2, now doing its job.
+   It renders only for the ramp modes, it carries the same `.kN` hatches the cells do (so the
+   colorblind channel is legible in the legend too), and its endpoints are LABELLED: a sequential
+   ramp with no domain printed on it is a picture, not a scale. */
+function buildRampLegend(host) {
+  rampEl = el('div', 'ramp');
+  rampEl.hidden = true;
+  rampEl.innerHTML = '<span class="end lo"></span><span class="steps"></span><span class="end hi"></span><span class="mid"></span>';
+  host.appendChild(rampEl);
+}
+function syncRampLegend(ev) {
+  if (!rampEl) return;
+  var key = activeMode(), m = modeInfo(key);
+  if (m.kind !== 'ramp') { rampEl.hidden = true; return; }
+  rampEl.hidden = false;
+  var sc = rampScale(key, ev), steps = rampEl.querySelector('.steps'), i, sw;
+  if (rampEl.__key !== key) {
+    steps.innerHTML = '';
+    for (i = 0; i < sc.colors.length; i++) {
+      sw = el('i', 'k' + i);
+      sw.style.background = sc.colors[i];
+      sw.title = sc.stepTitles ? sc.stepTitles[i] : '';
+      steps.appendChild(sw);
+    }
+    rampEl.__key = key;
+  }
+  rampEl.querySelector('.lo').textContent = sc.lo;
+  rampEl.querySelector('.hi').textContent = sc.hi;
+  rampEl.querySelector('.mid').textContent = sc.mid;
+  rampEl.setAttribute('aria-label', m.name + ' — ' + sc.lo + ' to ' + sc.hi + (sc.mid ? '; ' + sc.mid : ''));
+}
 function buildLegend() {
   var lg = $('#legend'); lg.innerHTML = ''; legendChips = [];
   [1, 2, 3, 4, 5].forEach(function (t) {
@@ -3185,9 +3943,31 @@ function buildLegend() {
   gq.setAttribute('aria-label', 'How to read this'); gq.title = 'How to read this';
   gq.onclick = function (e) { e.stopPropagation(); openGuide(); };
   lg.appendChild(gq);
+  /* THE ENCODING LINE, built last and ordered last: everything above is the FILTER, which is
+     keyed to tiers in every mode and keeps the row it had before item 13 existed. The switch and
+     the scale are one group because they are one question — what do these colours mean — and the
+     measurement at the top of the stylesheet is why they are not crammed in beside the chips. */
+  var enc = el('div', 'encline');
+  buildModeSw(enc);
+  buildRampLegend(enc);
+  lg.appendChild(enc);
   syncLegend();
 }
+function syncModeSw() {
+  var caps = modeCaps(), active = MODES.resolve(S.colorBy, caps);
+  modeBtns.forEach(function (mb) {
+    var m = modeInfo(mb.key), av = MODES.availability(mb.key, caps);
+    mb.node.setAttribute('aria-pressed', mb.key === active ? 'true' : 'false');
+    /* STRUCTURAL DISABLEMENT WITH A NAMED REASON, not a hidden control: `aria-disabled` rather
+       than `disabled` so the button stays focusable and a screen reader can read WHY. */
+    mb.node.setAttribute('aria-disabled', av.available ? 'false' : 'true');
+    mb.node.title = av.available ? m.name : m.label + ' unavailable — ' + av.reason;
+    mb.node.setAttribute('aria-label', av.available ? m.name : m.name + ' — unavailable: ' + av.reason);
+  });
+}
 function syncLegend() {
+  syncModeSw();
+  syncRampLegend(lastEv || evalNow());
   legendChips.forEach(function (c) {
     c.nmEl.textContent = tierLabel(c.t);
     c.node.setAttribute('aria-pressed', S.filters[c.t] ? 'true' : 'false');
@@ -3378,6 +4158,7 @@ function paintSpark() {
     '<text x="3" y="' + (H - 3) + '" fill="var(--s3)" font-family="var(--font-mono)" font-size="9">' + f2(c.ns[0]) + '</text>' +
     '<text x="' + (W - 3) + '" y="' + (H - 3) + '" text-anchor="end" fill="var(--s3)" font-family="var(--font-mono)" font-size="9">' + f2(c.ns[n]) + '</text>';
   sparkMarker = $('#sparkmark');
+  syncRail();
 }
 
 /* --- vs-3-bet equity spread. Hero equities against a face-up mix do not spread out, they pile up
@@ -3510,7 +4291,28 @@ function adjScore(cards, ev) {
 }
 
 /* =========================================================== INSPECTOR */
-var ITABS = [['summary', 'Summary'], ['detail', 'Detail'], ['comp', 'Composition']];
+/* THE INSPECTOR'S INFORMATION ARCHITECTURE (V3-PLAN §8 item 14, first pass).
+   Four tabs, not three, and the split is by QUESTION rather than by size:
+
+     Verdict       what this page says about the cell — tier, margin, EV, divergence, one line
+                   each with its unit and its badge — and then the argument for it.
+     Numbers       every measured quantity behind that verdict: the equity ladder, the EV
+                   decomposition, the score waterfall, the ρ ladder, the constants in play.
+     Composition   unchanged.
+     Hand          the hand panel, which used to be injected on top of whichever tab happened to
+                   be open. It is its own question and now has its own place.
+
+   The old ids ('summary'/'detail') are gone; `S.itab` is migrated on read (see `itabOf`) so a
+   session or a link carrying one lands on the tab that inherited its content instead of falling
+   through to Composition. */
+var ITABS = [['verdict', 'Verdict'], ['numbers', 'Numbers'], ['comp', 'Composition'], ['hand', 'Hand']];
+/** Map anything that could be in `S.itab` — including the two retired ids — onto a live tab. */
+function itabOf(k) {
+  if (k === 'summary') return 'verdict';
+  if (k === 'detail') return 'numbers';
+  for (var i = 0; i < ITABS.length; i++) if (ITABS[i][0] === k) return k;
+  return k === 'diff' ? 'diff' : 'verdict';
+}
 function buildInspector() {
   var t = $('#itabs'); t.innerHTML = '';
   ITABS.forEach(function (x) {
@@ -3522,22 +4324,81 @@ function buildInspector() {
 var inspRibbonCaret = null;
 function renderInspector(noFade) {
   var body = $('#ibody');
+  S.itab = itabOf(S.itab);
+  var tab = S.itab;
   Array.prototype.forEach.call($('#itabs').querySelectorAll('button'), function (b) {
-    b.setAttribute('aria-selected', b.dataset.tab === S.itab && S.itab !== 'diff' ? 'true' : 'false');
+    b.setAttribute('aria-selected', b.dataset.tab === tab && tab !== 'diff' ? 'true' : 'false');
   });
   body.innerHTML = ''; inspRibbonCaret = null;
   if (!noFade) { body.classList.remove('fade'); void body.offsetWidth; body.classList.add('fade'); }
-  if (S.itab === 'diff') return renderDiff(body);
-  if (S.node === '3bet') renderInversion(body);
-  if (S.hand) renderHandPanel(body);
+  if (tab === 'diff') return renderDiff(body);
   var rec = CK[S.sel];
+  if (tab === 'hand') {
+    if (S.hand) renderHandPanel(body);
+    else body.appendChild(el('div', 't-body dim', 'No hand loaded. Type four cards into the finder — AsKh9s8d — or pick one from Example hands on the Verdict tab.'));
+    return;
+  }
   if (!rec || !rec.live) {
     body.appendChild(el('div', 't-body dim', 'Select a cell to inspect it. Arrow keys move; Enter selects.'));
     return;
   }
-  if (S.itab === 'summary') renderSummary(body, rec);
-  else if (S.itab === 'detail') renderDetail(body, rec);
+  if (tab === 'verdict') { if (S.node === '3bet') renderInversion(body); renderVerdict(body, rec); }
+  else if (tab === 'numbers') renderNumbers(body, rec);
   else renderComposition(body, rec);
+}
+/* ---------------------------------------------------------------- the verdict table
+   Four claims, one line each, every one carrying its UNIT and its BADGE. Two of the four have no
+   source in this build, and they render as lines with a named reason rather than being left out:
+   a missing row teaches nothing, and the whole point of the badge column is that a reader can see
+   at a glance which of these four numbers is measured, which is scored, and which is a stub. */
+function renderVerdictTable(host, rec, ev) {
+  var box = el('div', 'vlines');
+  function line(key, label, valHTML, badge, opts) {
+    var o = opts || {};
+    var r = el('div', 'vline' + (o.off ? ' off' : ''));
+    /* addressed by NAME, not by position: `liveInspector` writes into these rows on every frame of
+       a VPIP drag, and a drag path that depends on row order is a drag path that breaks the next
+       time a row is added. */
+    r.dataset.k = key;
+    r.appendChild(el('div', 'lab', label));
+    var v = el('div', 'val' + (o.cls ? ' ' + o.cls : ''));
+    v.innerHTML = valHTML;
+    r.appendChild(v);
+    if (badge) {
+      var b = el('span', 'vbadge' + (o.warn ? ' warn' : ''), badge);
+      if (o.why) b.title = o.why;
+      r.appendChild(b);
+    }
+    box.appendChild(r);
+    return r;
+  }
+  var t = ev.tier[rec.i], entry = ev.entry && ev.entry[rec.i];
+  /* 1. TIER — the thing the whole page is for, and the one number the EV quarantine (I34) keeps
+        structurally out of reach of everything below it. */
+  var tl = line('tier', 'TIER', '', 'score');
+  tl.querySelector('.val').appendChild(tierPill(t));
+  /* 2. MARGIN — in the unit the policy layer itself reports, never a guessed one. */
+  var unit = (entry && entry.marginUnit) || (S.node === '3bet' ? 'eq pts' : 'pts');
+  line('margin', 'MARGIN', signed(ev.margin[rec.i]) + '<span class="u">' + unit + '</span>'
+    + (Math.abs(ev.margin[rec.i]) < C.closeMargin ? ' <span class="u">CLOSE</span>' : ''),
+    'score', { why: entry && entry.marginOf ? (ev.margin[rec.i] < 0 ? 'short of ' : 'clear of ') + entry.marginOf : '' });
+  /* 3. EV — display only, and badged by SOURCE, per §5.4: the score cuts tiers, EV never does. */
+  var mode = 'ev', ctx = modeCtx(ev, mode), res = PAY ? evOf(rec, ctx) : null;
+  if (res) {
+    line('ev', 'EV', f1(res.ev * 100) + '<span class="u">% of the final pot ±' + f1(res.se * 100) + '</span>',
+      res.source + ' · ' + res.badge, {
+        warn: !res.supported,
+        why: 'Expected share of the final pot vs ' + ctx.nOpp + ' — frozen payoff accessor. source says what kind '
+          + 'of number it is, supported whether the request was in the measured domain. Display only.'
+      });
+  } else {
+    line('ev', 'EV', 'unavailable', 'no accessor', { off: true, warn: true, why: PAYWHY });
+  }
+  /* 4. DIVERGENCE — against the equilibrium baseline, which no build ships yet. Named, not
+        hidden: the reason is the deliverable until P3 lands the solver output. */
+  line('divergence', 'DIVERGENCE', 'not in this build', 'no baseline', { off: true, warn: true,
+    why: MODES.availability('gto', modeCaps()).reason });
+  host.appendChild(box);
 }
 function sec(host, title, right) {
   var s = el('section', 'isec');
@@ -3578,7 +4439,7 @@ function verdictLine(rec, ev) {
   if (!POL || !ev.solved) return tierLabel(t) + ' — build the page with scripts/build.mjs for the full verdict.';
   return POL.verdictLine(emodel(), stateOf({ v: ev.v, mix: mixW(S.mix) }), rec.key, ev.solved);
 }
-function renderSummary(host, rec) {
+function renderVerdict(host, rec) {
   var ev = lastEv || evalNow(), d = rec.d, t = ev.tier[rec.i], margin = ev.margin[rec.i];
   /* 1 class header */
   var s1 = sec(host);
@@ -3594,17 +4455,11 @@ function renderSummary(host, rec) {
     var nb = el('div', 't-sm acc'); nb.style.marginTop = '6px'; nb.textContent = '◆ ' + d.notable;
     s1.appendChild(nb);
   }
-  /* 2 tier + margin */
-  var s2 = sec(host);
-  var row = el('div'); row.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-  row.appendChild(tierPill(t));
-  var entry = ev.entry && ev.entry[rec.i];
-  var mtxt = el('span', 't-metric sec', 'margin ' + signed(margin) + ' ' +
-    ((entry && entry.marginUnit) || (S.node === '3bet' ? 'eq pts' : 'pts')));
-  if (entry && entry.marginOf) mtxt.title = (margin < 0 ? 'short of ' : 'clear of ') + entry.marginOf;
-  row.appendChild(mtxt);
-  if (Math.abs(margin) < C.closeMargin) row.appendChild(el('span', 'closechip', 'CLOSE'));
-  s2.appendChild(row);
+  /* 2 THE VERDICT TABLE — tier, margin, EV, divergence, one line each with unit and badge. It
+        replaces the old tier-pill-plus-margin row: the same two facts are still the first thing
+        on the tab, now beside the two the v3 chain adds and with every one of the four saying
+        where it came from. `liveInspector`'s drag path reads the pill it renders. */
+  renderVerdictTable(host, rec, ev);
   /* 3 equity */
   var s3 = sec(host);
   var eq = S.node === '3bet' ? eqMixOf(d, S.mix) * 100 : eqAt(d, ev.N);
@@ -3655,15 +4510,9 @@ function renderSummary(host, rec) {
     vb.appendChild(r2);
   }
   s5.appendChild(vb);
-  /* 6 waterfall */
-  if (S.node !== '3bet') {
-    sec(host, 'Score').appendChild(waterfallEl(rec, ev, S.pos));
-  }
-  /* 7 rho ladder */
-  var s7w = el('span'); s7w.style.cssText = 'display:flex;align-items:center;gap:4px';
-  s7w.appendChild(el('span', 't-micro dim', 'fair share = 1.00')); s7w.appendChild(glossQ('fairshare'));
-  var s7 = sec(host, 'ρ ladder', s7w);
-  s7.appendChild(rhoLadder(rec, ev));
+  /* 6/7 the score waterfall and the ρ ladder used to sit here. They are measurements and
+        decompositions, so item 14's IA pass moves both to the Numbers tab — this tab answers
+        "what does the page say and why", that one answers "out of what". */
   /* 8 ribbon — drawn only where table VPIP actually moves the verdict */
   inspRibbonCaret = null;
   if (S.node === '3bet') {
@@ -3758,7 +4607,7 @@ function rhoLadder(rec, ev) {
   return wrap;
 }
 var refCellKey = 'AA_DANGLER|RB';
-function renderDetail(host, rec) {
+function renderNumbers(host, rec) {
   var ev = lastEv || evalNow(), d = rec.d;
   var s = sec(host, 'Equity ladder');
   var tb = el('table', 'tbl');
@@ -3790,6 +4639,42 @@ function renderDetail(host, rec) {
     s3.appendChild(tb3);
     s3.appendChild(el('div', 't-sm dim', 'Equity against a mixture is exactly the weighted mean of its components — this blend is exact, not approximated.'));
   }
+  /* ---- the EV decomposition, against V3-PLAN §2's FROZEN ACCESSOR.
+     Every row is an argument the page actually passes, beside the answer it got back, because the
+     one way a payoff call goes quietly wrong is an argument nobody can see. `potSize` and `spr`
+     are validated by the accessor and then ignored by the checkdown stub — that is stated here
+     rather than left for a reader to infer from a number that does not move. */
+  var evs = sec(host, 'EV decomposition', el('span', 't-micro dim', 'frozen payoff interface'));
+  if (!PAY) {
+    evs.appendChild(el('div', 't-sm dim', 'No payoff accessor in this build — ' + PAYWHY + '.'));
+  } else {
+    var ectx = modeCtx(ev, 'ev'), er = evOf(rec, ectx), etb = el('table', 'tbl');
+    etb.innerHTML = '<tr><th>argument</th><th>value</th></tr>'
+      + '<tr><td>cells (hero first)</td><td>' + rec.key + ' × ' + ectx.nOpp + '</td></tr>'
+      + '<tr><td>potSize (current-unit bb)</td><td>' + f2(ectx.pot) + '</td></tr>'
+      + '<tr><td>spr</td><td>' + f2(ectx.spr) + '</td></tr>'
+      + '<tr><th>result</th><th></th></tr>'
+      + '<tr><td>ev (share of final pot)</td><td>' + f1(er.ev * 100) + '%</td></tr>'
+      + '<tr><td>se</td><td>±' + f1(er.se * 100) + '</td></tr>'
+      + '<tr><td>source</td><td>' + er.source + '</td></tr>'
+      + '<tr><td>supported</td><td>' + (er.supported ? 'true' : 'false') + '</td></tr>'
+      + '<tr><td>badge</td><td>' + er.badge + '</td></tr>'
+      + '<tr><td>fair share at ' + ectx.nOpp + '</td><td>' + f1(ectx.fair * 100) + '%</td></tr>';
+    evs.appendChild(etb);
+    evs.appendChild(el('div', 't-sm dim', 'source ‘checkdown’ is a game in which postflop does not exist: '
+      + 'built from the shipped all-in equities, it knows nothing about position, stacks or the flop. '
+      + 'potSize and spr are validated by the interface and unused by it — ev is a pot FRACTION, and a '
+      + 'fraction does not know how big the pot is. No big-blind figure is shipped: the frozen interface '
+      + 'does not yet return the pot multiple and invested share that conversion needs, and one built '
+      + 'without them is wrong in the pot term by up to an order of magnitude. Display only — the score '
+      + 'cuts tiers, and no EV number can move one.'));
+  }
+  if (S.node !== '3bet') {
+    sec(host, 'Score').appendChild(waterfallEl(rec, ev, S.pos));
+  }
+  var lw = el('span'); lw.style.cssText = 'display:flex;align-items:center;gap:4px';
+  lw.appendChild(el('span', 't-micro dim', 'fair share = 1.00')); lw.appendChild(glossQ('fairshare'));
+  sec(host, 'ρ ladder', lw).appendChild(rhoLadder(rec, ev));
   var s4 = sec(host, 'Caveat');
   s4.appendChild(el('div', 't-sm dim', 'This is a cell mean. ' + rec.row.label + ' spans a wide range of concrete hands — RUN2 alone runs from QJ97 to 6432. Use the hand lookup for a single hand.'));
   var s5 = sec(host, 'Constants in play');
@@ -3880,7 +4765,7 @@ function loadHand(str) {
   S.hand = p.cards;
   var cls = TX.classify(p.cards);
   if (CK[cls.key] && CK[cls.key].live) { S.sel = cls.key; pulseCell(cls.key); }
-  S.itab = 'summary';
+  S.itab = 'hand';
   renderInspector(); render(); openDrawer();
 }
 function renderHandPanel(host) {
@@ -4014,7 +4899,7 @@ function renderDiff(host) {
   head.appendChild(el('div', 't-sm dim', 'from ' + S.pin.pos + ' · ' + NODEBY[S.pin.node].label + ' · VPIP ' + S.pin.v +
     '  →  ' + S.pos + ' · ' + NODEBY[S.node].label + ' · VPIP ' + S.v));
   var back = el('button', 'btn', 'Back to inspector'); back.style.marginTop = '8px';
-  back.onclick = function () { S.itab = 'summary'; renderInspector(); };
+  back.onclick = function () { S.itab = 'verdict'; renderInspector(); };
   head.appendChild(back);
   [['ENTERED', entered, ''], ['LEFT', left, 'left']].forEach(function (grp) {
     var s = sec(host, grp[0] + ' · ' + grp[1].length + ' cells');
@@ -4026,7 +4911,7 @@ function renderDiff(host) {
         '<span class="tierpill t' + d.to + 'bg" style="height:18px;padding:0 6px;font-size:10px">' + tierShort(d.to, S.node) + '</span>' +
         '<span class="n">' + commas(d.rec.combos) + '</span>';
       b.querySelector('.nm').textContent = d.rec.row.short + ' × ' + d.rec.col.short;
-      b.onclick = function () { select(d.rec.key); S.itab = 'summary'; renderInspector(); };
+      b.onclick = function () { select(d.rec.key); S.itab = 'verdict'; renderInspector(); };
       list.appendChild(b);
     });
     if (!grp[1].length) list.appendChild(el('div', 't-sm dim', 'nothing'));
@@ -4037,8 +4922,9 @@ function renderDiff(host) {
 function renderPinBox() {
   var box = $('#pinbox'); box.innerHTML = '';
   if (!S.pin) {
+    syncRail();
     var b = el('button', 'btn btn-block', '⊙  Pin current state');
-    b.onclick = function () { S.pin = { pos: S.pos, node: S.node, v: S.v, L: S.L, raiser: S.raiser || defaultRaiser(), mix: S.mix.slice(), env: envArg(), vp: vpArg() }; renderPinBox(); render(); pushHash(); };
+    b.onclick = function () { S.pin = { pos: S.pos, node: S.node, v: S.v, L: S.L, raiser: S.raiser || defaultRaiser(), mix: S.mix.slice(), env: envArg(), vp: vpArg() }; renderPinBox(); render(); syncLegend(); pushHash(); };
     box.appendChild(b);
     box.appendChild(el('div', 't-sm dim', 'Pin a state, change something, and the matrix marks every cell that moved. The pin holds the stacks, the rake and the straddle too, so the depth slider is a diff.'));
     return;
@@ -4047,7 +4933,7 @@ function renderPinBox() {
   var envTxt = pe.d == null ? '' : (' · ' + pe.d + 'bb' + (pe.rakePct ? ' · ' + pe.rakePct + '% rake' : '') + (pe.straddle ? ' · STR' : ''));
   p.innerHTML = '<span>PINNED ' + S.pin.pos + ' · ' + NODEBY[S.pin.node].label + ' · ' + S.pin.v + '%' + envTxt + '</span>';
   var x = el('button', null, '✕'); x.style.color = 'var(--text-tertiary)';
-  x.onclick = function () { S.pin = null; if (S.itab === 'diff') S.itab = 'summary'; renderPinBox(); render(); renderInspector(); pushHash(); };
+  x.onclick = function () { S.pin = null; if (S.itab === 'diff') S.itab = 'verdict'; renderPinBox(); render(); renderInspector(); syncLegend(); pushHash(); };
   p.appendChild(x); box.appendChild(p);
   var ev = evalNow(), pv = pinEval(), entered = 0, left = 0, n = 0;
   for (var i = 0; i < NCELL; i++) {
@@ -4062,12 +4948,27 @@ function renderPinBox() {
   dl.innerHTML = '<span class="good">+' + (entered / TOTAL * 100).toFixed(1) + '% entered</span>' +
     '<span class="bad">−' + (left / TOTAL * 100).toFixed(1) + '% left</span>';
   box.appendChild(dl);
+  syncRail();
 }
 function renderNodeCtl() {
   var s = $('#nodesec');
   s.innerHTML = ''; s.hidden = (S.node === 'rfi');
-  if (S.node === 'rfi') return;
-  var h = el('div', 'rsec-h'); h.appendChild(el('span', 't-label', NODEBY[S.node].label)); s.appendChild(h);
+  /* The one rail section built from scratch on every node change, so it is also the one that has
+     to re-emit its own collapsible header — and it is the live case for §8's "hidden-by-feature x
+     collapsed-by-user compose": it is `hidden` at the RFI node while its collapse state persists
+     underneath, and re-opening a node finds the section exactly as the user left it. */
+  if (S.node === 'rfi') { syncRail(); return; }
+  var h = el('div', 'rsec-h');
+  var tg = el('button', 'rsec-t');
+  tg.type = 'button';
+  tg.setAttribute('aria-controls', 'nodesec-b');
+  var chev = el('span', 'chev'); chev.setAttribute('aria-hidden', 'true');
+  tg.appendChild(chev);
+  tg.appendChild(el('span', 't-label', NODEBY[S.node].label));
+  var vslot = el('span', 'rsec-v t-micro'); vslot.id = 'nodetag';
+  tg.appendChild(vslot);
+  h.appendChild(tg); s.appendChild(h);
+  var b = el('div', 'rsec-b'); b.id = 'nodesec-b'; s.appendChild(b);
   var ev = evalNow();
   if (S.node === 'limps') {
     var c = el('div', 'ctl');
@@ -4077,14 +4978,14 @@ function renderNodeCtl() {
     minus.onclick = function () { simCancelOnChange('the limper count'); S.L = clamp(S.L - 1, 1, 4); invalidate(); };
     plus.onclick = function () { simCancelOnChange('the limper count'); S.L = clamp(S.L + 1, 1, 4); invalidate(); };
     st.appendChild(minus); st.appendChild(val); st.appendChild(plus);
-    c.appendChild(st); s.appendChild(c);
+    c.appendChild(st); b.appendChild(c);
     var pot = 3 * S.L + 2;
-    s.appendChild(el('div', 't-sm dim', 'pot ' + (S.L + 1.5) + 'bb · a pot-size iso is ' + pot + 'bb · they call ≈' + f1(S.L * Math.min(0.9, 0.45 + 0.5 * S.v / 100)) + ' of them'));
+    b.appendChild(el('div', 't-sm dim', 'pot ' + (S.L + 1.5) + 'bb · a pot-size iso is ' + pot + 'bb · they call ≈' + f1(S.L * Math.min(0.9, 0.45 + 0.5 * S.v / 100)) + ' of them'));
     var a = el('div', 'arrows2');
     a.innerHTML = '<div>WIDER → <b>value vs stations ×' + f2(1 + C.isoValueFactor * Math.max(0, S.v / 100 - 0.5)) + '</b></div>' +
       '<div>NUTTIER ← <b>reverse implied odds ν ≥ ' + f2(C.limpNuMin) + '</b></div>' +
       '<div>NET: <b>' + pct(ev.aggFreq) + ' of hands, ν̄ ' + f2(ev.nutShare) + '</b></div>';
-    s.appendChild(a);
+    b.appendChild(a);
   } else if (S.node === 'raise') {
     var c2 = el('div', 'ctl');
     c2.innerHTML = '<span>Raiser</span>';
@@ -4094,11 +4995,11 @@ function renderNodeCtl() {
       var o = el('option', null, p); o.value = p; if ((S.raiser || defaultRaiser()) === p) o.selected = true; sel2.appendChild(o);
     });
     sel2.onchange = function () { simCancelOnChange('the raiser seat'); S.raiser = sel2.value; invalidate(); };
-    c2.appendChild(sel2); s.appendChild(c2);
+    c2.appendChild(sel2); b.appendChild(c2);
     var chip = el('div', 't-sm dim');
     chip.innerHTML = 'size <span class="mono">pot | 3.5×</span> — <span title="sizing is not modelled — thresholds assume a pot-sized raise" style="border-bottom:1px dotted var(--text-disabled);cursor:help">sizing is not modelled ⓘ</span>';
-    s.appendChild(chip);
-    s.appendChild(el('div', 't-sm dim', 'ρ shift −' + f2(ev.tighten) + '·(1−ν) — their range is stronger than random.'));
+    b.appendChild(chip);
+    b.appendChild(el('div', 't-sm dim', 'ρ shift −' + f2(ev.tighten) + '·(1−ν) — their range is stronger than random.'));
   } else if (S.node === '3bet') {
     ['AAxx', 'KKxx', 'QQxx', 'Broadway'].forEach(function (nm, i) {
       var r = el('div', 'mixrow');
@@ -4111,19 +5012,86 @@ function renderNodeCtl() {
         curveCache = null; render(); renderInspector(true); paintSpark(); pushHash();
         Array.prototype.forEach.call(s.querySelectorAll('.mixrow .v'), function (node, j) { node.textContent = Math.round(mixW(S.mix)[j] * 100) + '%'; });
       };
-      r.appendChild(lab); r.appendChild(rng); r.appendChild(v); s.appendChild(r);
+      r.appendChild(lab); r.appendChild(rng); r.appendChild(v); b.appendChild(r);
     });
     var rb = el('button', 'btn btn-block', 'reset to pool default');
     rb.onclick = function () { S.mix = C.vs3bet.mix.map(function (x) { return Math.round(x * 100); }); invalidate(); };
-    s.appendChild(rb);
-    s.appendChild(el('div', 't-sm dim', 'These four sliders are the live controls at this node — the table-VPIP slider above is not. Equity vs a mixture is exactly the weighted mean of its components, so this blend is exact, not approximated.'));
+    b.appendChild(rb);
+    b.appendChild(el('div', 't-sm dim', 'These four sliders are the live controls at this node — the table-VPIP slider above is not. Equity vs a mixture is exactly the weighted mean of its components, so this blend is exact, not approximated.'));
     var amb = el('div', 't-sm dim');
     amb.style.marginTop = '8px';
     amb.textContent = 'AMBUSH CALL is empty at every seat here: it wants a class measuring under '
       + f1(C.vs3bet.ambushEq1 * 100) + '% heads-up vs a random hand that still clears the '
       + f2(C.vs3bet.nuCall) + ' nut floor, and no cell does both. Its constants are in Method.';
-    s.appendChild(amb);
+    b.appendChild(amb);
   }
+  wireSecToggle(s, 'nodesec'); applySec('nodesec'); syncRail();
+}
+/* ================================================ THE COLLAPSIBLE RAIL (V3-PLAN §8 item 12)
+   A thin applicator over the RAIL block above: it reads the rules, writes elements, and decides
+   nothing. Three properties this shape buys, each of which §8 asks for by name:
+
+   COLLAPSE SURVIVES RELOAD — `toggleSec` writes through `store()` on every flip, and `RAILST` is
+   seeded from the same key at boot. Never the hash: the hash is the share channel.
+   FEATURE-HIDDEN x COLLAPSED COMPOSE — `applySec` writes `data-collapsed` on the SECTION and the
+   CSS hides only its `.rsec-b` child, so a `hidden` section that is also collapsed is simply both.
+   Neither flag reads the other; nothing here ever touches `.hidden`.
+   VALUE SLOTS UPDATE WHILE COLLAPSED — `syncRail` writes the four invented summaries with no
+   reference to collapse state at all, and the five seeded ones are still written by the sync
+   functions that always wrote them (`#vpiptag`, `#tabletag`, `#vptag`, `#ribbonwho`), which moved
+   into the header with their ids intact and did not otherwise change. A shut section is therefore
+   incapable of going stale: there is no branch in which it is filled in differently. */
+function railSnapshot() {
+  var c = curves(), n = c.w.length - 1, moved = 0, i, rec;
+  if (S.pin) {
+    var pv = pinEval(), ev = lastEv || evalNow();
+    for (i = 0; i < NCELL; i++) { rec = CELLS[i]; if (rec.live && pv.tier[i] !== ev.tier[i]) moved++; }
+  }
+  return {
+    thesis: { lo: c.w[0], hi: c.w[n] },
+    pin: S.pin ? { v: S.pin.v, moved: moved } : null,
+    node: { key: S.node, L: S.L, raiser: S.node === 'raise' ? (S.raiser || defaultRaiser()) : '', mix: S.mix },
+    display: { density: S.density, cols: S.cols, cbPatterns: S.cbPatterns,
+      monoSuits: S.monoSuits, reduce: S.reduce || reduceMotion, rain: S.rain }
+  };
+}
+function syncRail() {
+  var sum = RAIL.summaries(railSnapshot()), k, node;
+  for (k in sum) {
+    if (!Object.prototype.hasOwnProperty.call(sum, k)) continue;
+    node = document.getElementById(k);
+    if (node && node.textContent !== sum[k]) node.textContent = sum[k];
+  }
+}
+function applySec(id) {
+  var sec2 = document.getElementById(id); if (!sec2) return;
+  var col = RAIL.isCollapsed(RAILST, id), t = sec2.querySelector('.rsec-t');
+  sec2.setAttribute('data-collapsed', col ? 'true' : 'false');
+  if (!t) return;
+  t.setAttribute('aria-expanded', col ? 'false' : 'true');
+  var lab = t.querySelector('.t-label');
+  t.title = (col ? 'Expand ' : 'Collapse ') + (lab ? lab.textContent : id);
+}
+function toggleSec(id) {
+  RAILST = RAIL.toggled(RAILST, id);
+  store(RAIL.KEY, RAILST);
+  applySec(id);
+}
+function wireSecToggle(sec2, id) {
+  var t = sec2 && sec2.querySelector('.rsec-t');
+  if (!t || t.__wired) return;
+  t.__wired = true;
+  t.onclick = function () { toggleSec(id); };
+}
+function buildRail() {
+  var list = RAIL.ids(), i, sec2;
+  for (i = 0; i < list.length; i++) {
+    sec2 = document.getElementById(list[i]);
+    if (!sec2) continue;
+    wireSecToggle(sec2, list[i]);
+    applySec(list[i]);
+  }
+  syncRail();
 }
 function renderDisplayCtl() {
   var host = $('#displayctl'); host.innerHTML = '';
@@ -4132,7 +5100,7 @@ function renderDisplayCtl() {
     c.appendChild(el('span', null, label));
     var b = el('button', 'switch'); b.setAttribute('aria-pressed', get() ? 'true' : 'false');
     b.setAttribute('aria-label', label); if (title) b.title = title;
-    b.onclick = function () { set(!get()); b.setAttribute('aria-pressed', get() ? 'true' : 'false'); };
+    b.onclick = function () { set(!get()); b.setAttribute('aria-pressed', get() ? 'true' : 'false'); syncRail(); };
     c.appendChild(b); host.appendChild(c);
   }
   function miniRow(label, opts, get, set, names) {
@@ -4144,20 +5112,23 @@ function renderDisplayCtl() {
         /* a single-Greek-letter label needs a real accessible name */
       if (names && names[o[0]]) { b.setAttribute('aria-label', names[o[0]]); b.title = names[o[0]]; }
       b.setAttribute('aria-pressed', get() === o[0] ? 'true' : 'false');
-      b.onclick = function () { set(o[0]); Array.prototype.forEach.call(m.children, function (x, i) { x.setAttribute('aria-pressed', get() === opts[i][0] ? 'true' : 'false'); }); };
+      b.onclick = function () { set(o[0]); Array.prototype.forEach.call(m.children, function (x, i) { x.setAttribute('aria-pressed', get() === opts[i][0] ? 'true' : 'false'); }); syncRail(); };
       m.appendChild(b);
     });
     c.appendChild(m); host.appendChild(c);
   }
   miniRow('Density', [['comfort', 'Comfort'], ['compact', 'Compact']], function () { return S.density; }, function (v) { S.density = v; layout(); });
   miniRow('Columns', [['equal', 'Equal'], ['freq', 'True freq']], function () { return S.cols; }, function (v) { setCols(v); });
-  miniRow('Color by', [['action', 'Action'], ['nu', 'ν'], ['rho', 'ρ'], ['pin', 'Δ pin']],
-    function () { return S.colorBy; }, function (v) { S.colorBy = v; render(); },
-    { action: 'Colour by action tier', nu: GLOSSARY.nu.t, rho: GLOSSARY.rho.t, pin: 'Colour by change against the pinned state' });
+  /* "Color by" USED TO LIVE HERE and does not any more. V3-PLAN §8 item 13 (locked 4.6): the
+     matrix owns its encoding, so the colour-mode switch is on the legend row, next to the thing
+     it colours. It is not on the top bar either (item 15) — the top bar's view switch is
+     unchanged, and a control that changes what the grid MEANS does not belong beside one that
+     changes which pane is on screen. */
   toggleRow('Rain', function () { return S.rain > 0; }, function (v) { S.rain = v ? 8 : 0; startRain(); });
   toggleRow('Colorblind patterns', function () { return S.cbPatterns; }, function (v) { S.cbPatterns = v; $('#matrixpane').classList.toggle('hatch', v); });
   toggleRow('Mono suits', function () { return S.monoSuits; }, function (v) { S.monoSuits = v; document.body.classList.toggle('monosuit', v); });
   toggleRow('Reduce motion', function () { return S.reduce || reduceMotion; }, function (v) { S.reduce = v; document.body.classList.toggle('reduce', v); startRain(); });
+  syncRail();
 }
 function syncDisplayCtl() { renderDisplayCtl(); }
 function invalidate() {
@@ -4264,7 +5235,7 @@ var GLOSSARY = {
   },
   pindiff: {
     t: 'Pin & diff',
-    p: 'Freeze the current seat, action and VPIP as a reference, then change anything. The app counts every cell whose verdict moved, and the Δ-pin colour mode (under Display) paints them: gold = played looser than in the pinned state, purple = tighter. Click “cells changed” for the full list.',
+    p: 'Freeze the current seat, action and VPIP as a reference, then change anything. The app counts every cell whose verdict moved, and the Δ PIN colour mode (on the legend’s encoding line, under the grid’s tier chips) paints them: gold = played looser than in the pinned state, purple = tighter. Click “cells changed” for the full list.',
     f: null
   }
 };
@@ -4468,9 +5439,14 @@ function openDisplayHelp() {
     '<li><b>Density</b> — row height only; nothing recomputes.</li>' +
     '<li style="margin-top:8px"><b>Columns</b> — <b>Equal</b> draws all five suit columns the same width, which exaggerates rare shapes. ' +
     '<b>True freq</b> makes each column as wide as that shape is common: single-suited is ~49% of all deals, rainbow only ~11%.</li>' +
-    '<li style="margin-top:8px"><b>Color by</b>:<ul>' +
-    '<li><b>Action</b> (default) — the verdict colours from the legend: gold raise, orange exploit-raise, teal call, split MIX, grey fold.</li>' +
+    '<li style="margin-top:8px"><b>Colour mode</b> — the switch on the legend’s second line, above the grid: ' +
+    'the tier chips are the filter, the line under them is the encoding. ' +
+    'A mode this build cannot serve is dimmed and says why, never hidden:<ul>' +
+    '<li><b>TIER</b> (default) — the verdict colours from the legend: gold raise, orange exploit-raise, teal call, split MIX, grey fold.</li>' +
     '<li><b>ν — nut potential</b> — dark → gold as a class more often makes the <i>best</i> hand rather than a good one.</li>' +
+    '<li><b>EV</b> — expected share of the final pot: a pot FRACTION, not big blinds, badged <i>checkdown</i> because the game ' +
+    'behind it has no postflop. Display only — no EV number can move a tier.</li>' +
+    '<li><b>vs GTO</b> — divergence from an equilibrium baseline. No build ships one yet, so the chip is disabled and says so.</li>' +
     '<li><b>ρ — equity ratio</b> — measured equity against the fair share of the pot for the current number of opponents: blue below par, orange above.</li>' +
     '<li><b>Δ pin</b> — needs a pinned state (Pin &amp; diff in the rail). Cells whose verdict differs from the pin light up: ' +
     '<span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#C79E33;vertical-align:-1px"></span> <b>gold = played looser</b> than the pinned state, ' +
@@ -4478,13 +5454,18 @@ function openDisplayHelp() {
     '</ul></li>' +
     '<li style="margin-top:8px"><b>Rain</b> — deals random hands onto the matrix in real time: a gold spark is a hand this seat plays, grey is a fold. ' +
     'It makes visible how rarely a playable hand actually arrives.</li>' +
-    '<li style="margin-top:8px"><b>Colorblind patterns</b> — hatches the tier colours · <b>Mono suits</b> — one colour for suit glyphs · ' +
+    '<li style="margin-top:8px"><b>Colorblind patterns</b> — hatches the colours, in every mode: tier colours by tier, ramp colours by ramp step · ' +
+    '<b>Mono suits</b> — one colour for suit glyphs · ' +
     '<b>Reduce motion</b> — stops the animations.</li>' +
     '</ul></div>');
 }
 /* wire a "?" into each rail section header */
 function labelQ(sectionSel, label, fn) {
-  var sp = $(sectionSel + ' .rsec-h .t-label');
+  /* the header ROW, not the header's toggle button: interactive content inside <button> is
+     invalid HTML, so the "?" is a SIBLING of `.rsec-t`. stopPropagation below is kept anyway —
+     it is the same handler shape the glossary buttons inside clickable rows use, and a guard that
+     is only correct because of today's layout is not a guard. */
+  var sp = $(sectionSel + ' .rsec-h');
   if (!sp || sp.querySelector('.q')) return;
   var q = el('button', 'q', '?');
   q.type = 'button';
@@ -4515,8 +5496,12 @@ function hideTip() { if (tipEl) tipEl.hidden = true; if (tipTimer) clearTimeout(
 function cellTipHTML(rec) {
   var ev = lastEv || evalNow();
   if (!rec.live) return '<b>impossible</b>' + (rec.d.why0 || '');
-  var t = ev.tier[rec.i];
-  return '<b>' + rec.row.label + ' × ' + rec.col.label + '</b>' +
+  var t = ev.tier[rec.i], mode = activeMode();
+  /* the encoded value first, whatever the encoding is: a tooltip that only ever describes the
+     tier is silent in exactly the modes that need explaining most */
+  var enc = mode === 'action' ? '' : '<div class="k">' + modeInfo(mode).label + ' — '
+    + modeReadout(rec, ev, mode, modeCtx(ev, mode)) + '</div>';
+  return '<b>' + rec.row.label + ' × ' + rec.col.label + '</b>' + enc +
     '<div>' + tierLabel(t) + ' · margin ' + signed(ev.margin[rec.i]) + '</div>' +
     '<div class="k">' + commas(rec.combos) + ' combos · ' + (rec.combos / TOTAL * 100).toFixed(2) + '% · 1 in ' + commas(rec.d.oneIn) + '</div>' +
     '<div class="k">' + (S.node === '3bet' ? 'eq vs mix ' + f1(eqMixOf(rec.d, S.mix) * 100) : 'eq ' + f1(eqAt(rec.d, ev.N)) + '% vs ' + f2(ev.N)) + ' · ν ' + f2(rec.d.nu) + '</div>';
@@ -4524,10 +5509,11 @@ function cellTipHTML(rec) {
 function hoverSlot(rec) {
   var slot = $('#hoverslot'); if (!slot) return;
   if (!rec) { slot.textContent = ''; return; }
-  var ev = lastEv || evalNow();
-  slot.textContent = rec.live
-    ? rec.row.short + ' × ' + rec.col.short + ' · ' + f1(S.node === '3bet' ? eqMixOf(rec.d, S.mix) * 100 : eqAt(rec.d, ev.N)) + '% vs ' + f1(ev.N) + ' · ν ' + f2(rec.d.nu)
-    : 'impossible cell';
+  var ev = lastEv || evalNow(), mode = activeMode();
+  slot.textContent = !rec.live ? 'impossible cell'
+    : mode === 'action'
+      ? rec.row.short + ' × ' + rec.col.short + ' · ' + f1(S.node === '3bet' ? eqMixOf(rec.d, S.mix) * 100 : eqAt(rec.d, ev.N)) + '% vs ' + f1(ev.N) + ' · ν ' + f2(rec.d.nu)
+      : rec.row.short + ' × ' + rec.col.short + ' · ' + modeReadout(rec, ev, mode, modeCtx(ev, mode));
 }
 
 /* ================================================================= RAIN */
@@ -4751,11 +5737,23 @@ function setV(v, fromDrag) {
     if (!tourRunning) markChanges(before);
   }
 }
+/* THE DRAG PATH. Everything here writes into elements the Verdict tab renders, and the two
+   selectors it has always used — `#ibody .t-metric-xl` (the headline equity) and
+   `#ibody .tierpill` (the action word) — are UNCHANGED by item 14's IA pass: the verdict table
+   still renders a `.tierpill` first, and the equity block still renders a `.t-metric-xl`. The EV
+   line is new and is addressed the same way, through the verdict table's own row order, so the
+   whole of this function stays a set of writes with no layout reads. */
 function liveInspector() {
   var rec = CK[S.sel];
   if (!rec || !rec.live || !lastEv) return;
   var eqEl = $('#ibody .t-metric-xl');
   if (eqEl) eqEl.textContent = f1(S.node === '3bet' ? eqMixOf(rec.d, S.mix) * 100 : eqAt(rec.d, lastEv.N)) + '%';
+  /* the EV line, which moves with N and therefore with the VPIP slider under the hand */
+  var evRow = $('#ibody .vlines .vline[data-k=ev] .val');
+  if (evRow && PAY) {
+    var lctx = modeCtx(lastEv, 'ev'), lr = evOf(rec, lctx);
+    if (lr) evRow.innerHTML = f1(lr.ev * 100) + '<span class="u">% of the final pot ±' + f1(lr.se * 100) + '</span>';
+  }
   /* anti-strobe: the action word only commits after 180 ms of stability */
   var t = lastEv.tier[rec.i];
   if (t !== heldTier) {
@@ -7132,7 +8130,7 @@ function init() {
   readHash();
   document.body.classList.toggle('reduce', reduceMotion);
   if (sess('rundown.honesty') === 'hidden') $('#honestystrip').hidden = true;
-  buildTopbar(); buildLegend(); buildComp(); buildColHead(); buildGrid(); buildInspector();
+  buildTopbar(); buildLegend(); buildComp(); buildColHead(); buildGrid(); buildInspector(); buildRail();
   wireSlider(); wireTableCtl(); wireVP(); wireGrid(); wireGlobalKeys(); wireHandSearch(); wireChrome(); wireHelpButtons();
   wireRibbon($('#railribbon'));
   setCols(S.cols);
@@ -7153,10 +8151,28 @@ function init() {
   if (!sess('rundown.tour') && !location.hash) { sess('rundown.tour', '1'); setTimeout(runTour, 400); }
   /* smoke hooks */
   window.__morphMs = window.__morphMs || 0;
+  /* THE MORPH BUDGET, RETUNED DOWNWARD (S-E, V3-PLAN §1 — "that edit lives in src/shell.html,
+     which the spike worktree may not touch, so it belongs to §8's UI workstream").
+     S-E predicted the 8 ms budget would FAIL on its first re-run and measured something worse:
+     the budget was UNFALSIFIABLE. This function used to time a JS-only pass whose p95 was
+     0.100 ms — exactly one tick of the browser's clock — so no 8 ms gate could tell this page
+     from one eighty times slower. The number a user actually waits for includes the style and
+     layout the repaint forces, so the flush is now INSIDE the timed region, and the budget it is
+     read against is retuned to 4.0 ms: S-E's measured p95 of 2.700 ms (max 5.500 over 528 passes)
+     plus ~50%, the same measured-plus-headroom rule the byte budgets use. Re-measured here on the
+     shipped artifact over 240 passes: JS-only p95 2.3 ms, layout-inclusive p95 2.6 ms, max 7.7 —
+     the two figures are a clock apart on this box and an order of magnitude apart on S-E's, which
+     is the whole reason the flush has to be inside rather than assumed.
+     THE BUDGET SHIPS AS DATA, not as a number typed into the harness: `smoke.mjs` reads
+     `window.__morphBudgetMs` off the page, so the artifact and the gate cannot disagree about
+     what was promised. A harness that does not find it keeps its own default. */
+  window.__morphBudgetMs = 4.0;
   window.__measureMorph = function (v) {
     var t = performance.now();
     S.v = clamp(v == null ? (S.v === VMAX ? VMIN : S.v + 1) : v, VMIN, VMAX);
     render();
+    /* forces style + layout: the repaint is not finished until the box tree agrees with it */
+    void document.body.offsetHeight;
     return performance.now() - t;
   };
   window.__rundown = { S: S, CELLS: CELLS, evaluate: evaluate, evalNow: evalNow, select: select, setV: setV, setPos: setPos, setNode: setNode, MODEL: MODEL,
@@ -7165,6 +8181,17 @@ function init() {
     handSearch: runHandSearch, clearHandSearch: clearHandSearch, hasSearch: HAS_SEARCH,
     searchState: function () { return SRCH; },
     setView: setView, runTour: runTour, atV1Point: atV1Point,
+    /* V3-PLAN §8 surface, for the browser harness: the rail's collapse state and the matrix's
+       colour mode, each reachable without going through a click */
+    RAIL: RAIL, MODES: MODES,
+    railState: function () { return RAILST; }, toggleSec: toggleSec, syncRail: syncRail,
+    colorMode: function () { return { want: S.colorBy, active: activeMode(), caps: modeCaps() }; },
+    setMode: setMode, modeReadout: function (key) {
+      var rec = CK[S.sel], ev = lastEv || evalNow(), m = key || activeMode();
+      return rec && rec.live ? modeReadout(rec, ev, m, modeCtx(ev, m)) : null;
+    },
+    payoff: PAY, payoffWhy: function () { return PAYWHY; },
+    itab: function () { return S.itab; }, setItab: function (k) { S.itab = k; renderInspector(); },
     /* V2-PLAN §4 surface, for the harnesses */
     hasVP: HAS_VP, SIMUI: SIMUI, setProfile: setProfile, setQ: setQ,
     vpTrigger: vpTrigger, emodel: emodel, vpKey: vpKey, startSim: startSim,
