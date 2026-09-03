@@ -1,8 +1,13 @@
-// payoff.mjs — THE PAYOFF INTERFACE, FROZEN (V3-PLAN §2). Gate I33 pins it.
+// payoff.mjs — THE PAYOFF INTERFACE, FROZEN (V3-PLAN §2), AMENDED at the P2 pre-stage. I33 pins it.
 //
-// WHAT THIS IS. One accessor, four arguments, four return keys:
+// WHAT THIS IS. One accessor, four arguments, six return keys:
 //
-//     payoff(cells, potSize, spr, opts) -> { ev, se, source, supported }
+//     payoff(cells, potSize, spr, opts) -> { ev, se, source, supported, potMult, invShare }
+//
+// The four arguments are the ORIGINAL freeze and have not moved. The last two return keys are the
+// P2 pre-stage amendment (V3-PLAN §2's `Amended` block, §3.2's Measured block): spike S-B measured
+// that `EVbb = ev*finalPot - invested` cannot be computed from `ev` alone, and the pot term is
+// wrong by up to an order of magnitude without them. See THE BB CONVERSION below.
 //
 // It is the unlock for the whole v3 chain. The CFR engine, the EV presentation, the absolute-EV
 // cut and the inspector all fan out against THIS SIGNATURE while the thing behind it is still a
@@ -29,7 +34,8 @@
 //   ev        hero's expected share of the final pot, a pot fraction in [0,1]. Unit-pure: the bb
 //             conversion (`EVbb = ev*finalPot - invested`) is CALLER arithmetic, so rake and depth
 //             reach the number through the existing exact machinery (`rakeFraction`, `unitBB`)
-//             instead of being re-modeled in here.
+//             instead of being re-modeled in here. THE BB CONVERSION below states which two of the
+//             three quantities in that expression come back from here and which one does not.
 //   se        one standard error, same unit, NEVER ABSENT and never typed — see THE ERROR BAR.
 //   source    'checkdown' | 'model' | 'simulated'. This is where the honesty lives. `supported`
 //             says whether the REQUEST was in the measured domain; `source` says what kind of
@@ -38,10 +44,52 @@
 //             does not exist. Downstream badges (I35's Grade-C label) key off `source`, NOT off
 //             `supported`, or they will silently upgrade the checkdown game to a solved one.
 //   supported false => `ev` is a fallback and the caller must badge it (§2 clause (f), and the
-//             page's existing `badge: 'unsupported'` idiom is the precedent).
+//             page's existing `badge: 'unsupported'` idiom is the precedent). Amended at the P2
+//             pre-stage with the CARD-REMOVAL clause: see WHAT `supported:false` IS FOR.
+//   potMult   E[final pot] / potSize — the pot MULTIPLIER from the decision node to the end of the
+//             hand, uncalled bets included (S-B's `sumF/deals`, its REF3 pot normalised to 1).
+//             Structurally >= 1: the final pot contains the pot at the node and nobody takes chips
+//             back out. S-B measured 1.603 .. 11.865 across its 300 reference points.
+//   invShare  E[hero's investment AFTER the decision node] / E[final pot], in [0,1]. S-B measured
+//             the same ratio at 0.199 .. 0.730 with the pre-node contribution included; the
+//             difference between the two readings is a normalisation, not a measurement, and THE BB
+//             CONVERSION below is where that is spelled out and converted back.
 //
 // Out-of-domain NEVER throws and NEVER returns an unflagged number. Every exit below returns all
-// four keys.
+// six keys.
+//
+// THE BB CONVERSION, AND WHY FOUR KEYS WERE NOT ENOUGH (amendment (i), P2 pre-stage).
+//
+// §2 froze this file at four keys and left `EVbb = ev*finalPot - invested` to the caller. S-B then
+// measured what a caller cannot do with `ev` alone: over 300 reference points `E[F]/potSize` ranged
+// **1.603 to 11.865** and hero's share of `E[F]` ranged **0.199 to 0.730**. A caller assuming
+// `finalPot == potSize` is wrong in the pot term by up to an order of magnitude — not a rounding
+// error, a different game. So the freeze is amended and the accessor returns S-B's two measured
+// quantities beside `ev`. The caller's arithmetic, in full:
+//
+//     finalPot = potMult * potSize
+//     invested = heroPre + invShare * finalPot
+//     EVbb     = ev * finalPot - invested
+//
+// where `heroPre` is HERO'S OWN CONTRIBUTION TO `potSize` — what he had already put in when this
+// node was reached. It is caller-known, because the caller BUILT the node (it is the blind, the
+// limp, the open, whatever hero paid to get here), and it is deliberately not an argument here.
+//
+// WHICH IS THE FINDING, RECORDED RATHER THAN PATCHED AWAY. S-B's `invShare` is
+// `E[hero invested TOTAL] / E[F]`, and its total includes the PRE-node part, which REF3 supplies by
+// NORMALISATION (`pot = 1`, `c0 = c1 = 0.5` in `playRef`) rather than by measurement — a symmetric
+// split is an assumption about the node, not a property of it. The four frozen arguments carry
+// `potSize` but not hero's share of it, so the pre-node half is not a function of (arguments,
+// model) and cannot honestly come back from here. The POST-node half is, so that is what `invShare`
+// means in this interface:
+//
+//     invShare(this file)  =  S-B's invShare  -  heroPre / finalPot
+//
+// — S-B's own quantity minus its reference normalisation, never a typed split. The conversion back
+// is exact and one line: `total = heroPre/finalPot + invShare` (at REF3's normalisation heroPre is
+// 0.5 and potSize is 1). ARITY STAYS FOUR. If a future source needs `heroPre` for itself — to size
+// a bet against hero's remaining stack, say — it arrives through `opts`, which is the door §2 froze
+// for exactly this; it does not become a fifth argument.
 //
 // THE STUB, AND THE ONE PLACE THIS FILE REFINES §2.
 //
@@ -65,6 +113,32 @@
 // `eq[N-1]` for N opponents, flagged `supported:false`. A number, flagged; never a guess presented
 // as supported.
 //
+// THE STUB'S TWO POT IDENTITIES, which are identities rather than choices. Checkdown means NO
+// BETTING AFTER THE DECISION NODE. So the final pot IS the pot at the node, `F = potSize`, and:
+//
+//     potMult  === 1   exactly, at every spr, on every return this file makes
+//     invShare === 0   exactly — hero invests nothing after a node nobody bets at
+//
+// ZERO NEW CONSTANTS: both fall out of what checkdown IS, and neither is a number anybody picked.
+// `potMult === 1` survives the malformed paths too, because a multiplier is unit-free and no bet is
+// made on a request that was never in the game. I33 asserts both as identities over the whole
+// heads-up sweep, so the first source that MOVES them is measured against a pinned baseline rather
+// than against nobody's expectation.
+//
+// WHAT `supported:false` IS FOR (amendment (iii), P2 pre-stage). §2 wrote it as the multiway door.
+// S-B measured its real domain: CARD-REMOVAL degeneracy. Cells pinning the same ranks make some
+// (cell, cell, board) triples impossible from the observer's seat — `AA_DANGLER|RB` x
+// `AA_BIGPAIR|DS` is degenerate on **12.56%** of street evaluations (four aces, two hands), mean
+// 0.73% over 50 pairs, 4 of 50 over 1%; S-A independently found **43 structurally undealable
+// pairs**, all `AA_*` x `A_BLOCKED`, combo mass 3.6e-5. The failure mode is SILENT — S-B's first
+// implementation dead-carded the range against the opponent's actual hand and collapsed every
+// AA-vs-AA pair to a checkdown with no error raised. The amended clause: any source that evaluates
+// against DEALT BOARDS must surface degeneracy honestly — an undealable or degenerate request comes
+// back `supported:false` (which is what "flagged" means in a six-key return that carries no mass
+// field), never a silent collapse to checkdown. THIS STUB DEALS NOTHING and is exempt by
+// construction: it reads shipped equity ladders, so it answers those pairs `source:'checkdown'`,
+// which is exactly what the exemption is keyed on. I33 clause (h) is the detector.
+//
 // THE ERROR BAR. `se` is the binomial standard error of the share at the trial count that ACTUALLY
 // RAN — `model.meta.trials.cell`, 100,000 for the shipped dataset:
 //
@@ -85,8 +159,22 @@
 //
 // PURITY AND MEMOIZATION. Pure function of (arguments, model). No memo lives here, deliberately:
 // B0 does not need one and a cache is how the `envKey` docstring's trap gets sprung — a key that
-// forgot an argument hands back another environment's answer, silently. When a memo is finally
-// warranted, EVERY argument goes in the key, plus `makePayoff(model).modelHash`.
+// forgot an argument hands back another environment's answer, silently.
+//
+// THE MEMO RULE, AMENDED AND NAMED (amendment (ii), P2 pre-stage). When a memo is finally
+// warranted — here, or in ANY consumer, `cfr.mjs` and `payoff-model.mjs` first and P4's EV cut
+// after them — the key carries EVERY ONE of:
+//
+//     cells,  potSize,  spr,  opts.ip,  opts.seed,  and  makePayoff(model).modelHash
+//
+// `opts.ip` is named separately, beside the model hash, because it is the one an implementer will
+// drop. Today's stub is position-inert, so a keyless memo returns the RIGHT number and no test of
+// VALUES can see the bug. S-B measured what happens the day a source is not inert:
+// `ev(A,B,ip) != ev(A,B,not ip)` BY UP TO **43 POINTS**, while `ev(A,B,ip) + ev(B,A,not ip) = 1`
+// still holds exactly. A memo missing `ip` is therefore wrong by more than the entire error budget
+// — the pre-registered Grade A edge is 2.5 pt — and it is wrong silently. That is the `envKey`
+// docstring's trap in a new place, and I33 clause (g) is the detector that covers this file, the
+// page's mirrored copy, and the consumers before they exist.
 //
 // TWO WAYS IN, and the difference matters. `makePayoff(model)` is the pure route and takes the
 // model as an argument — that is what gates and tests use to fabricate models and prove clauses
@@ -101,8 +189,15 @@
 /** the three legal `source` values, in increasing order of how much postflop they know about */
 export const SOURCES = Object.freeze(['checkdown', 'model', 'simulated']);
 
-/** the four keys of a payoff result, frozen. I33(a) asserts a return carries exactly these. */
-export const RESULT_KEYS = Object.freeze(['ev', 'se', 'source', 'supported']);
+/**
+ * The six keys of a payoff result, frozen. I33(a) asserts a return carries exactly these.
+ *
+ * ORDER IS PART OF THE PIN. `potMult` and `invShare` are APPENDED by the P2 pre-stage amendment,
+ * never interleaved with the original four: `test/ui-payoff-mirror.test.mjs` compares this array
+ * and `Object.keys()` of a return against the page's mirrored copy in ORDER, so a reorder is a red
+ * test rather than a cosmetic diff.
+ */
+export const RESULT_KEYS = Object.freeze(['ev', 'se', 'source', 'supported', 'potMult', 'invShare']);
 
 // ---------------------------------------------------------------------------
 // the arithmetic
@@ -124,18 +219,32 @@ function seOfShare(p, n) {
 }
 
 /**
- * Assemble the return. The four keys, always, in a fixed order.
+ * Assemble the return. The six keys, always, in a fixed order.
  *
- * The one thing this does beyond packing: an `ev` outside [0,1] (or non-finite) can never leave
- * here wearing `supported:true`. That is the "never returns an unflagged number" half of the
- * contract holding even when the MODEL is wrong — a percent/fraction slip, say. The bad number is
- * still returned rather than clamped away, because I33(a) asserts `ev in [0,1]` on every return
- * and a clamp would hide from the gate exactly the bug the gate exists to find.
+ * The one thing this does beyond packing: a value outside its contracted range can never leave here
+ * wearing `supported:true`. That is the "never returns an unflagged number" half of the contract
+ * holding even when the MODEL is wrong — a percent/fraction slip, say. The P2 pre-stage amendment
+ * extends the same idiom to the two new keys, so they cannot be an unflagged number either:
+ * `potMult` must be finite and >= 1 (the final pot CONTAINS the pot at the node — chips do not come
+ * back out) and `invShare` must be finite and in [0,1] (hero cannot invest more after the node than
+ * the whole final pot). Both are structural bounds of the definitions, not constants anybody chose.
+ *
+ * The bad number is still RETURNED rather than clamped away, because I33(a) asserts the ranges on
+ * every return and a clamp would hide from the gate exactly the bug the gate exists to find.
  */
-function finish(ev, se, source, supported) {
+function finish(ev, se, source, supported, potMult, invShare) {
   const evOk = typeof ev === 'number' && Number.isFinite(ev) && ev >= 0 && ev <= 1;
   const seOk = typeof se === 'number' && se > 0 && !Number.isNaN(se);
-  return { ev, se: seOk ? se : Infinity, source, supported: !!supported && evOk && seOk };
+  const pmOk = typeof potMult === 'number' && Number.isFinite(potMult) && potMult >= 1;
+  const isOk = typeof invShare === 'number' && Number.isFinite(invShare) && invShare >= 0 && invShare <= 1;
+  return {
+    ev,
+    se: seOk ? se : Infinity,
+    source,
+    supported: !!supported && evOk && seOk && pmOk && isOk,
+    potMult,
+    invShare,
+  };
 }
 
 /** the cell if it exists AND carries a usable equity ladder, else null. Own properties only —
@@ -170,7 +279,11 @@ function seedOk(seed) {
  * @param {number} potSize  pot at the node, current-unit bb
  * @param {number} spr      effective stack / potSize
  * @param {{ip?: boolean, seed?: number|string}} [opts]
- * @returns {{ev: number, se: number, source: string, supported: boolean}}
+ * @returns {{ev: number, se: number, source: string, supported: boolean,
+ *            potMult: number, invShare: number}}
+ *          `potMult` is E[final pot]/potSize and `invShare` is E[hero's POST-node investment]/E[F];
+ *          under checkdown they are exactly 1 and exactly 0. See THE BB CONVERSION in the header
+ *          for the caller arithmetic they complete, and for the `heroPre` term the caller owns.
  */
 function evaluate(M, cells, potSize, spr, opts) {
   // --- the arguments, validated. Nothing below this block throws.
@@ -216,13 +329,17 @@ function evaluate(M, cells, potSize, spr, opts) {
        identity instead of as a tolerance, which is a much harder thing to break by accident. */
     const ev = 0.5 + (pA - pB) / 2;
     const se = Math.hypot(seOfShare(pA, M.trials), seOfShare(pB, M.trials)) / 2;
-    return finish(ev, se, 'checkdown', true);
+    /* `1, 0` is the checkdown pot geometry, not a pair of chosen numbers: no betting after the
+       decision node means the final pot IS the pot at the node (E[F] = potSize, so the multiplier
+       is 1) and hero invests nothing after it (post-node share 0). Every return below repeats the
+       same two identities for the same reason. */
+    return finish(ev, se, 'checkdown', true, 1, 0);
   }
 
   // --- multiway: the checkdown fallback, flagged. eq[N-1] for N = len-1 opponents.
   if (inDomain) {
     const p = hero.eq[len - 2] / 100;
-    return finish(p, seOfShare(p, M.trials), 'checkdown', false);
+    return finish(p, seOfShare(p, M.trials), 'checkdown', false, 1, 0);
   }
 
   // --- out of domain. A number, always flagged, never an exception.
@@ -231,12 +348,15 @@ function evaluate(M, cells, potSize, spr, opts) {
     // checkdown ladder, read at the nearest measured opponent count.
     const i = Math.min(Math.max(len - 2, 0), hero.eq.length - 1);
     const p = hero.eq[i] / 100;
-    return finish(p, seOfShare(p, M.trials), 'checkdown', false);
+    return finish(p, seOfShare(p, M.trials), 'checkdown', false, 1, 0);
   }
   // nothing resolves: the only defensible number is an equal share of the pot, and no trial
   // produced it, so its error bar is Infinity (n = 0, the shipped seOfTrials(0) convention).
   const ev = 1 / Math.max(2, len);
-  return finish(ev, seOfShare(ev, 0), 'checkdown', false);
+  /* even here: nothing was bet on a request that was never in the game, so the pot geometry is
+     still the checkdown geometry. `se` is Infinity, which is what flags the number; the two pot
+     keys are exact and say so. */
+  return finish(ev, seOfShare(ev, 0), 'checkdown', false, 1, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +398,9 @@ function prepare(model) {
  * Bind the payoff accessor to one model. The pure route.
  *
  * The returned function has arity 4 and the frozen signature; it carries `.modelHash`, which is
- * the other half of any future memo key (§2: "pure function of (args, model hash)").
+ * ONE component of any future memo key (§2: "pure function of (args, model hash)"). The others are
+ * `cells`, `potSize`, `spr`, `opts.seed` and — named separately because it is the one that gets
+ * dropped — `opts.ip`. See THE MEMO RULE in the header; I33(g) is the detector.
  */
 export function makePayoff(model) {
   const M = prepare(model);
@@ -322,7 +444,11 @@ function defaultModel() {
  * @param {number} potSize  pot at the decision node, current-unit bb
  * @param {number} spr      effective stack / potSize
  * @param {{ip?: boolean, seed?: number|string}} [opts]
- * @returns {{ev: number, se: number, source: string, supported: boolean}}
+ * @returns {{ev: number, se: number, source: string, supported: boolean,
+ *            potMult: number, invShare: number}}
+ *          six keys since the P2 pre-stage amendment: `EVbb = ev*finalPot - invested` with
+ *          `finalPot = potMult*potSize` and `invested = heroPre + invShare*finalPot`, where
+ *          `heroPre` — hero's own contribution to `potSize` — is the caller's, not this file's.
  */
 export function payoff(cells, potSize, spr, opts) {
   return evaluate(defaultModel(), cells, potSize, spr, opts);

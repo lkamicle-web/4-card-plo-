@@ -109,11 +109,24 @@ export const CATALOG = [
     prediction: 'expected falsified at least once: I32 fires during I43\'s OFF-path refactor.',
   },
   {
-    id: 'I33', status: 'live', runner: 'verify', phase: 'P0', plan: '§2, §7.2',
-    claim: 'the payoff interface contract, clauses (a)-(f), plus the separate monotonicity clause.',
-    fails: 'a consumer reading a payoff table directly, or an unflagged out-of-domain number.',
-    prediction: 'monotonicity expected falsified at spr >= 4 — S-B measured it: 1.7% of pairs at '
-      + 'spr 1, 20.5% OOP at spr 10.',
+    id: 'I33', status: 'live', runner: 'verify', phase: 'P0', plan: '§2 (incl. its Amended block), §7.2',
+    claim: 'the payoff interface contract, clauses (a)-(h), plus the separate monotonicity clause. '
+      + 'AMENDED at the P2 pre-stage, in the open and with the gate rewritten in the same step: (a) '
+      + 'the return is SIX keys — potMult (E[F]/potSize, S-B measured 1.603-11.865) and invShare '
+      + '(post-node, S-B measured 0.199-0.730 with its REF3 pre-node normalisation included) '
+      + 'appended, because EVbb = ev*finalPot - invested cannot be done from ev alone — with the '
+      + 'checkdown identities potMult === 1 and invShare === 0 asserted by Object.is; (g) NEW: '
+      + 'opts.ip in EVERY payoff memo key, beside the model hash, comment-stripped text scan over '
+      + 'scripts/ + src/ plus the page\'s @payoff-page block, with a dynamic aliasing probe beside '
+      + 'it; (h) NEW: the card-removal clause — supported:false\'s real domain is shared-rank '
+      + 'degeneracy, and a dealt-board source must flag it rather than collapse to checkdown.',
+    fails: 'a consumer reading a payoff table directly; an unflagged out-of-domain number; a payoff '
+      + 'memo key without ip; a dealt-board source answering a degenerate pair supported:true.',
+    prediction: 'monotonicity FALSIFIED (phase 0, S-B): 1.7% of pairs at spr 1, 8.1% at spr 4, '
+      + '15.9% IP / 20.5% OOP at spr 10, worst 9.1 pt less checkdown equity for 20.0 pt more ev. '
+      + 'The clause is rewritten to the measurement, not deleted: checkdown must still show ZERO '
+      + 'inversions, and any other source at spr >= 4 must show inversions > 0 — zero is the new '
+      + 'failure. No upper bound is asserted; the band is reported.',
   },
   {
     id: 'I34', status: 'reserved', runner: 'verify', phase: 'P4', plan: '§5.4, §7.2',
@@ -124,7 +137,7 @@ export const CATALOG = [
     fails: 'memo aliasing, or a flag check below the cache key.',
   },
   {
-    id: 'I35', status: 'reserved', runner: 'verify', phase: 'P3', plan: '§3.3, §6, §7.2',
+    id: 'I35', status: 'live', runner: 'verify', phase: 'P2', plan: '§3.2, §3.3, §6, §7.2',
     claim: 'solver quality: exploitability <= epsilon; strategies sum to 1; two independent seeds '
       + 'reach the same HU value within tolerance; 6-max scoped to fixed-point-only claims. Two '
       + 'disclosure clauses with teeth: the on-screen cap/sizing list must match the solver\'s '
@@ -135,7 +148,15 @@ export const CATALOG = [
       + 'rather than off `source` (the §2 phase-0 annotation names that trap).',
     note: 'S-B graded C, so the checkdown-label clause is load-bearing rather than defensive. '
       + 'S-A measured the anchors: epsilon = 5e-5 bb out-of-sample, two-seed spread gate at 0.15% '
-      + 'of pot against 0.035% measured.',
+      + 'of pot against 0.035% measured. WENT LIVE IN P2 (scripts/gates/solver.mjs), one phase '
+      + 'earlier than this entry reserved it, because the solver engine is §3.2\'s deliverable and '
+      + 'a gate written after the code it gates is a gate written to pass. The solver-quality and '
+      + '6-max clauses run against the engine every run; the two DISCLOSURE clauses have no shipped '
+      + 'surface to read until P3 emits data/equilibrium.json, so they run over zero units and say '
+      + 'so, with their detectors armed against fabricated violators exactly as I33(g) shipped '
+      + 'before payoff.mjs had a memo. 6-max is DEFERRED on a measured domain finding rather than '
+      + 'on budget (S-A cleared the budget criterion by 5,400x), and the deferral is itself gated: '
+      + 'clause (d) re-measures the three facts that justify it and fails if any stops holding.',
   },
   {
     id: 'I36', status: 'reserved', runner: 'verify', phase: 'P3', plan: '§3.3, §7.2',

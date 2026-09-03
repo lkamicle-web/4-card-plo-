@@ -43,13 +43,17 @@ const mirror = PAYOFF.makePayoff(MODEL);
 const module_ = makePayoff(MODEL);
 const KEYS = Object.keys(MODEL.cells);
 
-/** Bit-for-bit, not tolerance: the page and the gate must agree to the last ulp or they disagree. */
+/** Bit-for-bit, not tolerance: the page and the gate must agree to the last ulp or they disagree.
+ *  Six keys since the P2 pre-stage amendment — and the key-ORDER assertion below is why `potMult`
+ *  and `invShare` had to be APPENDED to RESULT_KEYS rather than interleaved. */
 function same(x, y, what) {
   assert.deepEqual(Object.keys(x), Object.keys(y), `${what}: key order differs`);
   assert.ok(Object.is(x.ev, y.ev), `${what}: ev ${x.ev} vs ${y.ev}`);
   assert.ok(Object.is(x.se, y.se), `${what}: se ${x.se} vs ${y.se}`);
   assert.equal(x.source, y.source, `${what}: source`);
   assert.equal(x.supported, y.supported, `${what}: supported`);
+  assert.ok(Object.is(x.potMult, y.potMult), `${what}: potMult ${x.potMult} vs ${y.potMult}`);
+  assert.ok(Object.is(x.invShare, y.invShare), `${what}: invShare ${x.invShare} vs ${y.invShare}`);
 }
 const both = (cells, pot, spr, opts, what) =>
   same(mirror(cells, pot, spr, opts), module_(cells, pot, spr, opts), what);
@@ -71,6 +75,8 @@ test('the block is self-contained — it can only be sliced out if it reaches fo
 test('the surface it exports is the module’s surface', () => {
   assert.deepEqual(PAYOFF.SOURCES, [...SOURCES]);
   assert.deepEqual(PAYOFF.RESULT_KEYS, [...RESULT_KEYS]);
+  assert.deepEqual([...RESULT_KEYS], ['ev', 'se', 'source', 'supported', 'potMult', 'invShare'],
+    'the amended six, in order: a reorder is a red test here, not a cosmetic diff');
   assert.equal(typeof PAYOFF.makePayoff, 'function');
   assert.equal(mirror.length, module_.length, 'arity is part of the freeze (I33(a))');
   assert.equal(mirror.modelHash, module_.modelHash);
@@ -150,6 +156,24 @@ test('every malformed request agrees too — that is where a mirror actually dri
   for (const s of badSprs) for (const o of badOpts) {
     both([hero, hero], 3, s, o, `spr=${String(s)} opts=${JSON.stringify(o)}`);
     both([hero, hero, hero], 3, s, o, `mw spr=${String(s)} opts=${JSON.stringify(o)}`);
+  }
+});
+
+test('the page copy carries the amended pot geometry, and it is the same identity', () => {
+  // The two keys the P2 pre-stage amendment added are what make `EVbb = ev*finalPot - invested`
+  // computable at all. Under checkdown they are identities — no betting after the decision node —
+  // so the page must report them exactly, not approximately, or the two copies have diverged in
+  // the one place a caller would never look.
+  for (const spr of [0, 1, 4, 13, 400]) {
+    const r = mirror([KEYS[0], KEYS[1]], 3, spr, { ip: true });
+    assert.ok(Object.is(r.potMult, 1), `potMult must be exactly 1 at spr ${spr}`);
+    assert.ok(Object.is(r.invShare, 0), `invShare must be exactly 0 at spr ${spr}`);
+  }
+  // and on a malformed request, where the page is likeliest to have forgotten a return site
+  for (const cells of [null, [], [KEYS[0]], ['NOPE', 'ALSO_NOPE'], [KEYS[0], 7]]) {
+    const r = mirror(cells, 3, 4, { ip: false });
+    assert.deepEqual(Object.keys(r), [...RESULT_KEYS], 'every exit packs all six, in order');
+    assert.ok(Object.is(r.potMult, 1) && Object.is(r.invShare, 0));
   }
 });
 

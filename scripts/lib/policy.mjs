@@ -988,6 +988,52 @@ export function villainKey(profile, model) {
   return `ON|${p.v}|${p.q}|${m}`;
 }
 
+/* THE PER-PROFILE SHADOW MEMO (P2 pre-stage, the slider-morph re-anchor).
+ *
+ * WHY IT IS HERE AND NOT IN THE PAGE. Before this the page carried its own copy of the construction
+ * below and its own memo, and that memo held ONE entry keyed by the profile — so with the villain
+ * profile on by load default (barrier B1) every VPIP slider step rebuilt the shadow from scratch.
+ * The page's copy is now deleted and `src/shell.html`'s `emodel()` delegates here, which leaves
+ * exactly one construction in the repository and exactly one place to memoise it. Two measurements
+ * decided that it is THIS place rather than a second page-side book:
+ *
+ *   BYTES. `app` (markup + CSS + minified app JS) was 83 B under its 360 KB ceiling at the time of
+ *   the hoist and the ceiling is not this step's to raise (P3 owns that decision). A memo written
+ *   here lands in the MODEL-CODE block, which had 4.8 KB of its 50 KB ceiling free, and deleting
+ *   the page's duplicate gives `app` back about a kilobyte instead of spending more of it.
+ *
+ *   REACH. `scripts/lib/tier-fixture-v3.mjs` hand-rolls this same per-VPIP cache (its `shadows`
+ *   Map, "built ONCE PER VPIP ... the difference between a sweep that takes seconds and one that
+ *   takes minutes") and gate I43(d) builds one shadow per lattice point. Both now get it for free,
+ *   and neither has to know that it needed it.
+ *
+ * WHAT IT IS WORTH, MEASURED, and this is the honest half of the story: building a shadow costs
+ * 0.1-0.9 ms, so the memo takes about 0.3 ms off a slider step that measured ~11 ms with the
+ * profile on. It is not what makes the morph fast — the ribbon's 66-point re-solve behind
+ * `src/shell.html`'s curve book is — and smoke.mjs's two morph rows carry that measurement.
+ *
+ * BOUNDED, IN THE `SIMBOOK` IDIOM, because the reachable key space is not small: `villainKey` spans
+ * 66 table-VPIP values times every discipline the q editor can reach times a measurement identity
+ * per Simulate run, and a shadow is ~123 copied cells. An unbounded book would be a leak with a
+ * cache's name on it. `SHADOW_CAP` is 24 — the same entry cap `SIMBOOK` runs on the page, and
+ * comfortably above the 14 distinct VPIP values smoke's layout sweep visits. It is a cache size and
+ * NOT a model constant: it cannot move a number, only how often one is recomputed, which is why it
+ * is not in `constants` and why it sits beside `MEMO_CAP` rather than in §6's anchor table.
+ *
+ * KEYED BY THE MODEL OBJECT, through a WeakMap, because `villainKey` says nothing about WHICH model
+ * was profiled: a gate that loads two models in one process must not be handed the other one's
+ * shadow. The entry also remembers the `measured` object it was built from and is rejected if that
+ * identity moved, so a re-measurement at settings whose hash is unchanged can never be served a
+ * stale shadow — the `validate`-on-read discipline `SIMBOOK` runs, for the same reason.
+ *
+ * ITS CONTRACT IS `solve`'s CONTRACT: a caller that MUTATES a model in place gets a stale answer,
+ * here and out of `SOLVE_MEMO` both, because both key on identities the mutation does not touch.
+ * Nothing in this repository mutates a loaded model, and a caller that wants to should build a new
+ * object rather than ask either memo to notice.
+ */
+const SHADOW_CAP = 24;
+const SHADOWS = new WeakMap();
+
 /**
  * THE PROFILE-ON MACHINERY (V3-PLAN item 8). `villainEq` answers one cell at a time; the scoring
  * pipeline wants a MODEL. So the profile is expressed as a SHADOW MODEL — the same object graph
@@ -997,7 +1043,9 @@ export function villainKey(profile, model) {
  * axis reached tiers through a path no gate could see: `scripts/lib/tier-fixture-v2.mjs` records
  * exactly that, "the villain profile reaches tiers through `villainEq`, which the page calls and
  * `solve` does not". Hoisting it here is what makes I43 possible at all, and it is the only reason
- * the hoist happened — the page's copy is a duplicate of this, not a variant of it.
+ * the hoist happened — the page's copy was a duplicate of this, not a variant of it. THE PAGE'S
+ * COPY IS NOW GONE (P2 pre-stage): `src/shell.html`'s `emodel()` calls this function, so the
+ * duplicate the P1 hoist queued for deletion has been deleted and there is one construction left.
  *
  * THREE THINGS ARE LOAD-BEARING.
  *
@@ -1025,8 +1073,22 @@ export function villainKey(profile, model) {
 export function profiledModel(model, profile) {
   const key = villainKey(profile, model);
   if (key === 'OFF') return model;
-  hydrate(model);
   const p = villainProfileOf(profile, model);
+  let book = SHADOWS.get(model);
+  if (!book) { book = new Map(); SHADOWS.set(model, book); }
+  const hit = book.get(key);
+  if (hit) {
+    if (hit.measured === p.measured) { book.delete(key); book.set(key, hit); return hit.model; }
+    book.delete(key);
+  }
+  const built = profiledModelUncached(model, p, key);
+  if (book.size >= SHADOW_CAP) book.delete(book.keys().next().value);
+  book.set(key, { measured: p.measured, model: built });
+  return built;
+}
+
+function profiledModelUncached(model, p, key) {
+  hydrate(model);
   const cells = {};
   let moved = 0;
   for (const k of Object.keys(model.cells)) {

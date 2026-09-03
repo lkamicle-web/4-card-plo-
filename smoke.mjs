@@ -12,7 +12,8 @@
  *   3. 145 .cell nodes, displayed combos sum to exactly 270,725
  *   4. every cell carries a defined tier class across 6 positions × 4 nodes
  *      × VPIP {25, 55, 85}
- *   5. the slider morph, measured twice — JS-only and layout-inclusive (§ below)
+ *   5. the slider morph: the retained floor check, then the layout-inclusive
+ *      sweep run TWICE, once in each villain-profile state (§ below)
  *   6. a copied link reopens the same spot
  *   7. THE PER-VARIANT MANIFEST, at runtime (§ below)
  *   8. no horizontal page scroll at 1440 / 1360 / 1280 / 1024 / 390
@@ -38,7 +39,8 @@
  * means the lite manifest can never be checked against the full page.
  *
  * ---------------------------------------------------------------------------
- * THE MORPH BUDGET — measured twice, on purpose (docs/spikes/S-E.md §3)
+ * THE MORPH BUDGET — three checks, two of them the same sweep in the two
+ * villain-profile states (docs/spikes/S-E.md §3)
  *
  * The 8 ms budget was predicted to fail on its first re-run under Playwright.
  * It does not, and at the time this was written the reason was that
@@ -75,8 +77,11 @@
  *                       quotes a figure beside it. It is pinned against silent
  *                       edits by test/ui-rail.test.mjs, not by a page-side
  *                       twin: unlike the layout budget it has none.
- *   layout-inclusive,   the honest one, and the one that can fire. Anchored:
- *   4.0 ms              S-E measured p95 2.7 ms over 528 samples. Re-measured
+ *   layout-inclusive,   the honest one, and the one that can fire. IT NOW RUNS
+ *   PROFILE OFF,        WITH THE VILLAIN PROFILE OFF, because that is the state
+ *   4.0 ms              it was anchored on and the page no longer loads into it
+ *                       (see the two-row note below). Anchored:
+ *                       S-E measured p95 2.7 ms over 528 samples. Re-measured
  *                       here over five independent 112-sample runs WITH THE
  *                       FIRST-RUN TOUR SUPPRESSED (see below — the earlier
  *                       readings had a VPIP animation running under them, so
@@ -89,25 +94,77 @@
  *                       and a budget that gates it would be measuring this
  *                       machine's load rather than this page's render.
  *
- *                       REPORTED AND NOT REPRODUCED HERE (P1 red team,
- *                       docs/refutations/P1.md). One refuter ran this harness
- *                       unmodified at HEAD seven times on an Apple M5 Pro and
- *                       failed this budget every time — median 11.1-11.6 ms,
- *                       p95 13.7-17.2 — and diagnosed it as a COLD sweep: the
- *                       same 112 samples run twice in one page give p95
- *                       16.8-17.1 on the first pass and 1.7-2.4 on the second,
- *                       and a 3 s idle after `__ready` alone gives p95 2.30,
- *                       which reproduces the anchor. `__ready === true` fires
- *                       while post-load work is still in flight and the sweep
- *                       starts timing immediately. If that reproduces, the fix
- *                       is a warm-up here — discard one sweep, or wait for idle
- *                       — and NOT a bigger number: raising 4.0 to cover a
- *                       cold start would be tolerance-widening around a harness
- *                       bug, and would turn a render budget into a cold-start
- *                       detector still wearing a render-budget label. It could
- *                       not be reproduced in the session that recorded this:
- *                       Playwright is not installed there, so smoke cannot run
- *                       at all, which is the same gap the line below names.
+ *                       Re-measured AFTER the P2 pre-stage, with the sweep now
+ *                       explicitly driven into the OFF state through the page's
+ *                       own toggle, eleven runs: median 0.90-1.10 ms, p95
+ *                       1.60-2.00. The anchor holds and 4.0 is not re-derived.
+ *   layout-inclusive,   THE STATE THE PAGE ACTUALLY LOADS INTO, and a separate
+ *   PROFILE ON,         measurement rather than a widened 4.0. Anchored on
+ *   16 ms               nothing but this page: eleven runs of the same
+ *                       112-sample sweep gave p95 10.50 / 10.50 / 10.60 /
+ *                       10.60 / 10.60 / 10.60 / 10.70 / 10.70 / 10.70 / 10.80 /
+ *                       10.80 ms, median 1.20-1.30. 16 = the worst observed p95
+ *                       (10.80) + ~48% = 15.98 — the same measured+headroom rule
+ *                       the OFF row and the byte budgets use. Gated on p95 for
+ *                       the same reason the OFF row is.
+ *                       It is NOT 4.0 with more slack: 4.0 is a measurement of
+ *                       a different state, and quoting it here would be
+ *                       tolerance-widening wearing an anchor's clothes.
+ *                       The two halves are reported apart, because they are
+ *                       different quantities: the FIRST visit to each VPIP is
+ *                       10.6-10.9 median / 10.9-11.3 p95, and every revisit is
+ *                       1.10-1.20 median / 1.8-2.1 p95. p95 over the whole sweep is
+ *                       therefore a cold number by construction (14 of 112
+ *                       samples are first visits, and they are the slowest 14),
+ *                       WHICH IS THE INTENDED READING: a drag visits each VPIP
+ *                       once, so the cold cost is what a user feels. The memo is
+ *                       not pre-warmed to make this figure smaller.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THERE ARE TWO ROWS, AND WHAT WAS ACTUALLY WRONG (P2 pre-stage, measured)
+ *
+ * This file used to carry a P1 red-team note diagnosing a failing layout row as
+ * a COLD SWEEP — `__ready` firing while post-load work was still in flight, with
+ * a warm-up here as the prescribed fix. THAT ACCOUNT IS WITHDRAWN. It was
+ * measured on a PRE-FLIP page, where the villain profile was off by default, and
+ * it is correct about that page and wrong about this one. The refutation record
+ * (docs/refutations/P1.md) is immutable and still says what it said; this is the
+ * correction, and it belongs here because this is the file that acted on it.
+ *
+ * WHAT THE FLIP DID. Barrier B1 made the villain profile ON the load default
+ * (`src/shell.html`, `VP_DEFAULT`, derived from `POLICY.villainLoadDefault`).
+ * The page's `curveKey` carries `vpKey()`, and the profile's v IS the table VPIP
+ * slider — so with the profile on, every slider step asks for a ribbon the page
+ * has not got, and the ribbon is 66 solved VPIP points. With the profile OFF,
+ * `vpKey()` is the constant 'OFF', `curveKey` does not mention the slider at
+ * all, and the same sweep is free. The 4.0 ms row was measuring the free case
+ * and being read as though it measured the shipping one.
+ *
+ * WHAT WAS FIXED, AND WHAT WAS NOT. Two memos held exactly one entry each: the
+ * page's `emodel()` shadow-model slot, and its `curveCache`. Both are now
+ * bounded books — the shadow one inside `POLICY.profiledModel`, where the
+ * construction lives after the P1 hoist, and the curve one in the page. Measured
+ * on this box with this harness, five runs each, before and after:
+ *
+ *                       BEFORE (HEAD, 5 runs)      AFTER (11 runs)
+ *   profile ON          median 10.60-10.80         median 1.20-1.30
+ *                       p95    12.10-16.30         p95    10.50-10.80
+ *                       revisits are NOT cheaper   revisits 1.1-1.2 / p95 1.8-2.1
+ *   profile OFF         median 0.90-1.00           median 0.90-1.10
+ *                       p95    1.50-1.70           p95    1.60-2.00
+ *
+ * The FIRST visit to each VPIP did not move and was never going to: 10.8 median
+ * before, 10.7 after. Caching cannot make the first answer cheaper, and the 66
+ * solves behind it are work the profile genuinely asks for. So the ON row is
+ * pinned at 16 ms — a measurement of the page as it ships, cold visits included
+ * — and the claim it makes is not "the morph is fast under ON" but "the morph
+ * under ON is this, and it will be noticed when it changes".
+ *
+ * TWO ROWS RATHER THAN ONE, because one row cannot say both things: a single
+ * budget would either be 4.0 and permanently red, or 16 and blind to a
+ * regression in the state S-E measured. Each row asserts the profile state it
+ * claims to have measured, from `vpKey()` on the page, so a toggle that stopped
+ * working fails the row instead of quietly measuring OFF twice.
  *
  * ---------------------------------------------------------------------------
  * BROWSERS. Headless, and every context is a throwaway profile Playwright
@@ -141,7 +198,8 @@ const positional = argv.filter((a) => !a.startsWith('--'))[0];
 const SHOTS = flag('shots', null);
 const ROUND = flag('round', '1');
 const MORPH_BUDGET_MS = 8;          // a floor check, anchored to nothing; see the header
-const MORPH_LAYOUT_BUDGET_MS = 4;   // layout-inclusive; S-E §3's measurement + ~48%
+const MORPH_LAYOUT_BUDGET_MS = 4;   // layout-inclusive, PROFILE OFF; S-E §3's measurement + ~48%
+const MORPH_LAYOUT_ON_BUDGET_MS = 16;  // layout-inclusive, PROFILE ON (the B1 load default); measured + ~48%
 const TOTAL_COMBOS = 270725;
 const WIDTHS = [1440, 1360, 1280, 1024, 390];
 
@@ -331,23 +389,67 @@ check(morph.p95 < MORPH_BUDGET_MS, `slider-morph short sweep p95 < ${MORPH_BUDGE
   + 'This is a FLOOR CHECK and the budget below is the live one: 8 is anchored to nothing, the slack '
   + 'printed here is the only non-stale statement about it, and both sweeps time the same '
   + 'layout-inclusive quantity now that __measureMorph flushes inside the timed region');
-const morphL = stats(await page.evaluate(() => {
-  const R = window.__rundown;
-  const out = [];
-  for (let round = 0; round < 8; round++) {
-    for (let v = 25; v <= 90; v += 5) {
-      const t0 = performance.now();
-      R.setV(v);
-      void document.documentElement.offsetHeight;   // force style + layout
-      out.push(performance.now() - t0);
+/* THE LAYOUT-INCLUSIVE SWEEP, RUN ONCE IN EACH PROFILE STATE. One function, so the two rows differ
+   in nothing but the state of the page under them: 8 rounds over VPIP 25-90 by 5, 112 samples, the
+   flush forced from out here. The rounds are kept apart in the return value because the two halves
+   are different quantities — round 0 is the FIRST visit to each VPIP and every later round is a
+   revisit, which is the whole of what the profiled page's caches can and cannot do for a user. */
+const layoutSweep = async () => {
+  const rows = await page.evaluate(() => {
+    const R = window.__rundown;
+    const out = [];
+    for (let round = 0; round < 8; round++) {
+      for (let v = 25; v <= 90; v += 5) {
+        const t0 = performance.now();
+        R.setV(v);
+        void document.documentElement.offsetHeight;   // force style + layout
+        out.push({ round, ms: performance.now() - t0 });
+      }
     }
-  }
-  return out;
-}));
+    return out;
+  });
+  const all = stats(rows.map((r) => r.ms));
+  all.cold = stats(rows.filter((r) => r.round === 0).map((r) => r.ms));
+  all.warm = stats(rows.filter((r) => r.round > 0).map((r) => r.ms));
+  return all;
+};
+const line = (s) => `median ${s.median.toFixed(2)} ms · p95 ${s.p95.toFixed(2)} ms · worst ${s.max.toFixed(2)} ms`;
+const splits = (s) => `first visit to each VPIP ${line(s.cold)} over ${s.cold.n}; revisits ${line(s.warm)} over ${s.warm.n}`;
+/* Which state each sweep ran in, taken from the page rather than assumed. A toggle that silently
+   stopped working would otherwise measure the same state twice and report two green rows for it —
+   which is exactly how the row below came to be anchored on a number the shipping page no longer
+   loads into. `vpKey()` is 'OFF' when the profile is off and 'ON|v|q|measured' when it is on. */
+const vpState = () => page.evaluate(() => window.__rundown.vpKey());
+/* Through the control a user clicks, never by writing S.vp: the toggle cancels a running
+   measurement, re-solves, repaints the ribbon and rewrites the hash, and a sweep that skipped all
+   of that would be timing a page no user can reach. */
+const toggleVP = () => page.evaluate(() => {
+  const b = document.getElementById('vptoggle');
+  if (b) b.click();
+});
+
+const onKey = await vpState();
+const morphOn = await layoutSweep();
+check(onKey !== 'OFF' && morphOn.p95 < MORPH_LAYOUT_ON_BUDGET_MS,
+  `slider-morph incl. layout, villain profile ON, p95 < ${MORPH_LAYOUT_ON_BUDGET_MS} ms`,
+  `${line(morphOn)} over ${morphOn.n} passes · profile key at entry ${onKey} · ${splits(morphOn)} `
+  + `(anchor: measured on this page after the P2 pre-stage hoist; budget = worst observed p95 + ~48%. `
+  + `THE COLD HALF IS THE POINT — a drag visits each VPIP once, so the first-visit figure is what a `
+  + `user feels, and the memo is deliberately not pre-warmed here)`);
+if (onKey === 'OFF') {
+  console.log('  ..    the page did not load with the villain profile on, so the row above measured the '
+    + 'wrong state — barrier B1 made ON the load default (src/shell.html, VP_DEFAULT)');
+}
+
+await toggleVP();
+const offKey = await vpState();
+const morphL = await layoutSweep();
+check(offKey === 'OFF' && morphL.p95 < MORPH_LAYOUT_BUDGET_MS,
+  `slider-morph incl. layout, villain profile OFF, p95 < ${MORPH_LAYOUT_BUDGET_MS} ms`,
+  `${line(morphL)} over ${morphL.n} passes · profile key at entry ${offKey} · ${splits(morphL)} `
+  + `(anchor: S-E §3 measured p95 2.7 ms with the profile off; budget = measured + ~48%)`);
+await toggleVP();                                   // back to the state the page ships in
 await page.evaluate(() => window.__rundown.setV(55));
-check(morphL.p95 < MORPH_LAYOUT_BUDGET_MS, `slider-morph incl. layout p95 < ${MORPH_LAYOUT_BUDGET_MS} ms`,
-  `median ${morphL.median.toFixed(2)} ms · p95 ${morphL.p95.toFixed(2)} ms · worst ${morphL.max.toFixed(2)} ms `
-  + `over ${morphL.n} passes (anchor: S-E §3 measured p95 2.7 ms; budget = measured + ~48%)`);
 
 /* provenance of the model + policy --------------------------------------- */
 const src = await page.evaluate(() => ({

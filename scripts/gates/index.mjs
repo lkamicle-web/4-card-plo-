@@ -35,6 +35,7 @@ import * as measurement from './measurement.mjs';
 import * as depth from './depth.mjs';
 import * as env from './env.mjs';
 import * as couplings from './couplings.mjs';
+import * as solver from './solver.mjs';
 import * as variants from './variants.mjs';
 import { CATALOG } from './reserved.mjs';
 
@@ -49,6 +50,7 @@ export const REGISTRY = [
   depth,         // I23 I27 I28                the depth axis
   env,           // I26 I29 I30 I31            straddle + rake
   couplings,     // I41 I42 I43 I44            the v3 axes (P1 lane M)
+  solver,        // I35                        the CFR+ engine (P2 lane cfr)
   variants,      // D10 D11                    the dual build, read off the artifacts on disk
 ];
 
@@ -88,6 +90,12 @@ export const EXPECTED_IDS = [
   // thing reviewers diff, and appending keeps the pre-existing 46 lines a strict prefix of the new
   // report exactly as the registry split itself was gated on.
   'I41', 'I42', 'I43', 'I44',
+  // P2 lane cfr (V3-PLAN §3.2, the solver engine). Appended after lane M for the same prefix
+  // argument the list has used twice already: 52 stays a strict prefix of 53, so the P1 report
+  // diffs against this one as one added row rather than as a re-ordering. It sits BEFORE D10/D11
+  // because those two stay last by the rule stated above — their family is the only one whose
+  // inputs are produced by a step outside the runner.
+  'I35',
   // P1 lane I (V3-PLAN §5.3, item 16). Last, for the reason given above the list.
   'D10', 'D11',
 ];

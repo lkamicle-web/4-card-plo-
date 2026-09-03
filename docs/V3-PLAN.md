@@ -280,6 +280,34 @@ is retuned to the measurement and pinned, not quietly widened.
 > to the pixel in Chromium, Firefox and WebKit. 1280×800 and 1366×768 are both inside the band.
 > Memo: [`docs/spikes/S-E.md`](spikes/S-E.md).
 
+> **Measured (P2 pre-stage).** *The 4.0 ms row above is correct and was being read against the
+> wrong page.* It was measured with the **villain profile off**; barrier **B1** made *on* the load
+> default, and `smoke.mjs` went red on that one row at HEAD — p95 12.1–16.3 ms, median ~10.7 over
+> five runs. **The P1 red team's "cold sweep" diagnosis is withdrawn**: it was taken on a pre-flip
+> page, where it is right, and it does not describe this one. The cause, measured by instrumenting
+> `POLICY.solve` from the harness, is that the ribbon **is** profile-dependent — `curveKey` carries
+> `vpKey()`, and the profile's *v* **is** the table-VPIP slider — so with the profile on every
+> slider step asks for a curve the page has not got and re-solves all 66 VPIP points, **70 solves a
+> step**; with it off `vpKey()` is the constant `'OFF'`, `curveKey` never mentions the slider, and
+> the same sweep is free. Two one-entry memos were what turned that into a permanent cost. Both are
+> now **bounded books**: the shadow model's inside `POLICY.profiledModel` (where the P1 hoist put
+> the construction, so `tier-fixture-v3` and I43 get it too), the curve's in the page. The page's
+> duplicate `emodel()` construction — the deletion the P1 hoist queued — is **gone**, which is where
+> the ~0.8 KB this cost the `app` block came from. After: profile-on median **1.20–1.30 ms**, p95
+> **10.50–10.80** over eleven runs; profile-off unchanged at median ~1.0, p95 1.6–2.0. **The first
+> visit to each VPIP did not move and could not** — 10.8 median before, 10.7 after — because caching
+> cannot make a first answer cheaper and those 66 solves are work the profile genuinely asks for.
+> **So the row is split in two rather than widened.** The 4.0 ms budget keeps its S-E anchor and
+> `smoke.mjs` now drives the page **into the OFF state through its own toggle** to measure what that
+> number was measured on; a **second row, 16 ms**, is pinned on the shipping default — worst observed
+> p95 10.80 + ~48% = 15.98, the same measured+headroom rule the byte budgets use.
+> **16 is not 4.0 with slack**: it is a measurement of a different state, and it is gated on p95 for
+> the reason the OFF row is. Each row asserts the profile state it claims to have measured, from
+> `vpKey()`, so a toggle that stops working fails a row instead of quietly measuring OFF twice.
+> **Not raised, and left to P3:** the `app` byte ceiling (360 KB; headroom went 83 B → 901 B on the
+> deletion, so this step gave bytes back rather than asking for them — METHODOLOGY §9.11 is owed
+> that paragraph when P3 makes the raise-vs-shrink decision).
+
 **Phase 0 also (the B0 deliverables, on the main tree, serial):**
 
 1. Freeze `data/tiers-v2.fixture.txt` (gate **I32**), with I22 still green beside it — succession
@@ -354,6 +382,86 @@ prediction is that high-cooler hands break this at spr ≥ 4, and that break is 
 *working* (realization is exactly what checkdown equity doesn't measure). When it fails, rewrite
 the clause to the measurement per house style.
 
+> **Amended (P2 pre-stage).** *The freeze above is kept as written; this is the ceremony that
+> changes it, done once, in the open, with gate I33 rewritten in the same step.* §3.2's Measured
+> block named three amendments the freeze needs before P2 consumes it, each measured by spike S-B.
+> All three are now in `scripts/lib/payoff.mjs`'s header contract, in I33's clause text, and in the
+> page's mirrored `@payoff-page` copy. **Zero new constants.**
+>
+> **(i) `payoff()` returns SIX keys, not four:** `potMult` and `invShare` are appended after
+> `supported` (appended, never interleaved — `test/ui-payoff-mirror.test.mjs` pins key ORDER).
+> `EVbb = ev·finalPot − invested` is caller arithmetic that cannot be done from `ev` alone: S-B
+> measured `E[F]/potSize` at **1.603–11.865** and hero's share of `E[F]` at **0.199–0.730** over 300
+> points, so a caller assuming `finalPot = potSize` is wrong in the pot term by up to an order of
+> magnitude. The caller's arithmetic in full is `finalPot = potMult·potSize`,
+> `invested = heroPre + invShare·finalPot`, `EVbb = ev·finalPot − invested`. **The stub's two
+> values are identities, not choices:** checkdown means no betting after the decision node, so
+> `E[F] = potSize` and `potMult === 1` exactly at every spr, and hero invests nothing after the node
+> so `invShare === 0` exactly. I33 asserts both by `Object.is` over the named paths and all 15,006
+> ordered heads-up pairs, so the first source that MOVES them is measured against a pinned baseline.
+> **The finding from (i), recorded rather than patched away:** S-B's `invShare` is
+> `E[hero invested TOTAL]/E[F]`, and its *total* includes a pre-node part that REF3 supplies by
+> NORMALISATION (`pot = 1`, `c0 = c1 = 0.5` in `playRef`) rather than by measurement — a symmetric
+> split is an assumption about the node, not a property of it. The four frozen arguments carry
+> `potSize` but **not hero's share of it**, so the pre-node half is not a function of (arguments,
+> model) and cannot honestly be returned. This interface therefore returns the **post-node** half,
+> `invShare = E[hero's investment AFTER the node]/E[F]` — S-B's own quantity minus its reference
+> normalisation, never a typed split — and the caller owes the `heroPre` term, which it knows
+> because it built the node. Conversion back to S-B's reading is exact:
+> `total = heroPre/finalPot + invShare`. **The signature's arity stays four**; if a future source
+> needs `heroPre` for itself, `opts` is the door §2 froze for exactly that.
+>
+> **(ii) `opts.ip` enters EVERY memo key**, named beside `cells`, `potSize`, `spr`, `opts.seed` and
+> the model hash. `payoff.mjs` deliberately has no memo, so this is an amendment to the CONTRACT and
+> its gate: **I33 clause (g)** is a comment-stripped text scan (the `payoff.mjs` header is a thousand
+> words *about* memo keys and would otherwise clear the clause by discussing it), scoped by filename
+> over `scripts/` and `src/` on its own `/payoff|cfr|solver|equilib|ev-cut/` — **not** clause (e)'s
+> `CONSUMER`, which demands the file *import* `payoff.mjs` and which `payoff.mjs` can never satisfy —
+> plus the shell's `@payoff-page` block named explicitly. It is armed against a fabricated memoizing
+> wrapper that omits `ip` and cleared by one that includes it, and it will cover P2's `cfr.mjs` /
+> `payoff-model.mjs` and P4's EV cut the day they appear. A dynamic aliasing probe runs beside it
+> (a keyless memo hands the same OBJECT back for `ip` on and off), with its own limit stated: a memo
+> that CLONES its cached value evades the probe, so the text clause is the load-bearing one. The
+> anchor: S-B measured `ev(A,B,ip) ≠ ev(A,B,¬ip)` **by up to 43 pt** while `ev(A,B,ip) +
+> ev(B,A,¬ip) = 1` holds exactly, so a keyless memo is wrong by more than the whole error budget
+> (the Grade A edge is 2.5 pt) and wrong silently — the `envKey` docstring's trap in a new place.
+>
+> **(iii) `supported:false` gains the CARD-REMOVAL clause.** Its real domain is shared-rank
+> degeneracy, not multiway: cells pinning the same ranks make some (cell, cell, board) triples
+> impossible from the observer's seat. `AA_DANGLER|RB` × `AA_BIGPAIR|DS` is degenerate on **12.56%**
+> of street evaluations, mean **0.73%** over 50 pairs, **4/50 over 1%**; S-A independently found
+> **43 structurally undealable pairs**, all `AA_*` × `A_BLOCKED`, combo mass 3.6e-5. The failure mode
+> is SILENT — S-B's first implementation dead-carded the range against the opponent's actual hand and
+> collapsed every AA-vs-AA pair to a checkdown with no error raised. **The clause:** any source that
+> evaluates against DEALT BOARDS must surface degeneracy honestly — an undealable or degenerate
+> request returns `supported:false`, which is what "flagged" MEANS in a six-key return carrying no
+> mass field, never a silent collapse to checkdown. The stub deals nothing and is **exempt by
+> construction**, keyed on the shipped `source` datum and checked rather than assumed. **I33 clause
+> (h)** pins the two families structurally over the live cells (504 ordered pairs of 123 cells) and is
+> armed against a fabricated collapser — the checkdown answer relabelled `'simulated'`, still
+> `supported:true` — which it must catch on *every* degenerate pair, while the honest form clears and
+> neither fires on a non-degenerate control.
+>
+> **The monotonicity clause, rewritten to the measurement per house style — not deleted, not
+> widened.** §3.2's Measured block records the falsification: inversions on **1.7% of pairs at
+> spr 1, 8.1% at spr 4, 15.9% IP / 20.5% OOP at spr 10**, worst case **9.1 pt LESS** checkdown equity
+> for **20.0 pt MORE** ev. The clause is now two assertions split by `source`: **`checkdown` must
+> show ZERO inversions** — the stub is strictly increasing in hero's checkdown equity by
+> construction, and that half stays asserted because it is what catches the stub quietly ceasing to
+> be the stub — while **any non-checkdown source at spr ≥ 4 must show inversions > 0**, since
+> realization is exactly what checkdown equity does not measure and a source reproducing the
+> checkdown ORDER perfectly is not modelling it. **Zero inversions from a source claiming to model
+> realization is the new failure.** No upper bound is asserted and spr 1's 1.7% is not a floor: S-B's
+> band is *reported* in the gate's detail line, never used as a tolerance, because 50 pairs cannot
+> license one. Armed both ways — the stub relabelled `'model'` is flagged; a `'model'` that actually
+> perturbs the order at spr ≥ 4 clears.
+>
+> **Untouched by the ceremony:** the four arguments, the `source` enum, clauses (b), (d), (e) and
+> (f), I22/I32/I43 and the tier fixtures (`payoff.mjs` is not on the tier path). Clause (c) gains one
+> zero-constant half — at spr 0 the effective stack is empty, so **no source** may report
+> `potMult ≠ 1` or `invShare ≠ 0` there (S-B verified the companion half: spr 0 reproduces checkdown
+> equity with delta exactly 0).
+
 ---
 
 ## 3. Post-spike phase structure
@@ -421,6 +529,87 @@ monotonicity clause; S-B's error bound out-of-sample.
 > (AA_DANGLER|RB × AA_BIGPAIR|DS is degenerate on **12.56%** of street evaluations), whose failure
 > mode is silent — the first spike implementation collapsed every AA-vs-AA pair to a checkdown with
 > no error raised.
+
+
+> **Measured (P2 lane cfr) — the solver engine is built; 6-max is deferred on a DOMAIN finding, not
+> on budget.** *This block records what `scripts/lib/cfr.mjs` and gate I35 actually do; where it and
+> the paragraph above disagree, this is the later measurement.* **CFR+ per S-A** — alternating
+> updates, regret matching+, linear averaging, exact best-response exploitability — over the capped
+> heads-up tree at **both depths** (T100 and T40, one terminal pot apart). **The tree is DERIVED, so
+> the sizing set ships zero new constants exactly as §6's measured block promised:**
+> `potLimitLadder` recomputes 3 / 9 / 27 / 81 from the blinds and the pot-limit rule, I35 re-derives
+> it independently, and `test/cfr.test.mjs` a third time, so a sizing that is **not** the pot-limit
+> maximum fails a gate — misstate the rule and four assertions go at once; move the big blind and six
+> do. *(Corrected by the P2 red team, `docs/refutations/P2.md`: this line said "a typed sizing
+> therefore fails a gate", and a typed `[3, 9, 27, 81]` in fact passes. Three agreeing derivations
+> cannot tell a derivation from a table that is right, and for an identity they do not need to — the
+> claim is about the values.)* S-A's structural counts fall out
+> rather than being asserted in: 5 nodes, 9 terminals, 615 infosets, 1,599 slots (SB 861 / BB 738).
+> **B2 held:** every payoff arrives through the frozen accessor, using **all six keys** —
+> `EVbb = ev·potMult·potSize − (heroPre + invShare·potMult·potSize)` is what the terminals evaluate,
+> not the checkdown shortcut it collapses to, so P3's marriage is a change of argument rather than a
+> rewrite of every terminal. I33 clause (e) now has its **first real consumer** and passes on it.
+>
+> **The anchors held on the stub, with room.** ε ≤ **5e-5 bb** at the **2,000**-iteration cap:
+> measured worst **7.8e-6** over three seeds × two depths, with ε first crossing 5e-5 at iteration
+> **332** (T100) / **316** (T40) against S-A's 456 — the same cap, a larger margin. §6's "ε ≤ the
+> payoff's own `se`" is now an **assertion** rather than a sentence: I35 reads the accessor's `se`
+> back and converts it at the tightest pot (1.52e-3 bb), so a quieter payoff forces ε **down**.
+> Simplex error **2.2e-16** — one ulp — against the arithmetic accumulation bound `N·EPSILON`.
+>
+> **The two-seed clause needed splitting, and the split is the finding.** S-A defines it across
+> independent *payoff samples*; under a checkdown source the accessor is **seed-inert**, so that
+> reading is vacuous today. It is kept, *checked* rather than assumed (the two matrices are compared
+> bit-for-bit), and **armed** with a fabricated seed-sensitive source that moves the value 7.6e-2 bb
+> — so it has teeth the day a source is `'simulated'`. Beside it runs a second, non-vacuous axis:
+> the **initial strategy** (the simplex point used while regrets are all-zero), spread **0.0004%** /
+> **0.0006%** of pot against the 0.15% gate. *A note on what did not work, because it will be
+> re-invented:* seeding the initial **regrets** is not the same perturbation — CFR+ regrets here live
+> on the scale of the chance measure (q ≈ 1/123), so simplex-sized initial regrets are a large wrong
+> prior that linear averaging carries past the cap (measured ε **2.1e-2**, four orders of magnitude
+> worse). Perturbing a *distribution* is scale-free; perturbing a *magnitude* is not.
+>
+> **SIX-MAX IS DEFERRED, AND THE REASON IS NOT THE ONE §3.3 ANTICIPATED.** §3.3 greenlights 6-max
+> MCCFR on one criterion — S-A inside half its wall-time budget — and S-A cleared it by **5,400×**.
+> That criterion is met and the deferral does not rest on it. It rests on the **payoff's domain**,
+> measured live by I35 every run over 24 six-handed tuples: **0 of 144** multiway returns are
+> `supported`; the six shares miss 1 by up to **0.445**, so there is no constant-sum game to solve;
+> and hero's share is **bit-identical across disjoint opponent sets**, because the multiway door
+> returns equity against *random* opponents and therefore contains no opponent's cards at all. MCCFR
+> on those payoffs would converge, correctly and fast, to the equilibrium of a game in which the
+> other five players' hands do not exist — not a weaker baseline, a different question. **The
+> deferral is gated by its own evidence:** if any of the three facts flips, I35 **fails** and the
+> decision is re-made rather than inherited. §5.7's labeling is untouched and P3 still owns the
+> on-screen "the baseline is HU" caveat.
+>
+> **The Grade-C finding reproduces on the projection stub, which is why the label is load-bearing.**
+> Value to SB **−0.0816 bb** (T100) and **−0.0798** (T40) — **BB-positive at both depths**, SB opening
+> 99.4% while BB folds **0.0001%** against a 3bb open. S-A's real pairwise matrix gave −0.1418 and
+> 0.16%; the numbers differ because the stub is a different payoff, the *direction* is the same, and
+> it is the direction the label is about. **A property of the stub worth recording before P3 reads
+> anything into a solved strategy:** the projection is **exactly separable** —
+> `ev(A,B) − 0.5 = (a_A − a_B)/2` to **1.1e-16** — so its equilibrium is a pure threshold in the
+> shipped equity ladder and *cannot* express blockers, card removal, or any pairwise structure. The
+> checkdown equilibrium's shape is an artifact of that; only a real payoff can falsify it.
+>
+> **I35 went live in P2, one phase before §7.2 reserved it**, because §3.2's deliverable is the
+> solver and a gate written after its subject is a gate written to pass. Its solver-quality and
+> 6-max clauses run against the engine; the two **disclosure** clauses have no shipped surface until
+> P3 emits `data/equilibrium.json`, so they run over **zero units and report the count** rather than
+> passing quietly, with their detectors armed against fabricated violators — I33(g)'s idiom, one
+> phase earlier. The `supported`-keyed label is the armed violator and it is the *real* trap: all
+> 15,129 heads-up returns **are** `supported:true`, so keying the caveat off `supported` renders
+> nothing at all over a checkdown game.
+>
+> **Handed to P3, explicitly.** (1) The solver constants live in `cfr.mjs`'s `CONSTANTS` export with
+> their anchors; P2 does **not** regenerate the model, so **P3 must stamp them into
+> `model.constants`** at the same regeneration that emits `data/equilibrium.json` — I35's
+> `constantsBlockProblems` is armed and will compare the two copies the moment one exists.
+> (2) `CAPS.omitted` is the shipped datum the on-screen cap list must match. (3) Adding I35 to the
+> enforced set moved `model.gates` and `meta.hash` by exactly one stamped row and nothing else —
+> `cells`, `constants`, `order` and `benchmarks` are byte-identical, I22/I32 green, no fixture
+> touched.
+
 
 ### 3.3 P3 — equilibrium baseline
 

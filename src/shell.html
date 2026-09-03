@@ -2690,8 +2690,15 @@ return { version: 1, LIST: LIST, DEFAULT: DEFAULT, keys: keys, byKey: byKey,
    fails. When the injection region lands, this block is deleted and `PAYOFF` is bound to the
    injected module — one seam, already named.
 
+   AMENDED AT THE P2 PRE-STAGE, in step with the module: six return keys, not four. `potMult`
+   (E[final pot]/potSize) and `invShare` (E[hero's POST-node investment]/E[final pot]) are what let
+   a caller do `EVbb = ev*finalPot - invested` at all — S-B measured E[F]/potSize at 1.603..11.865,
+   so a caller assuming finalPot == potSize is wrong in the pot term by up to an order of magnitude.
+   Under checkdown both are identities: potMult is exactly 1 and invShare exactly 0, because a game
+   with no betting after the decision node ends with the pot it started with.
+
    NOTHING HERE IS AN OPINION. Every number it returns is built from shipped measurements; the
-   file it mirrors introduces zero constants and so does this. */
+   file it mirrors introduces zero constants and so does this — 1 and 0 are what checkdown IS. */
 var PAYOFF = (function () {
 'use strict';
 
@@ -2702,10 +2709,18 @@ function seOfShare(p, n) {
   var q = Math.min(hi, Math.max(lo, p));
   return Math.sqrt((q * (1 - q)) / n);
 }
-function finish(ev, se, source, supported) {
+/* six keys since the P2 pre-stage amendment (V3-PLAN §2's Amended block). `potMult` and
+   `invShare` are APPENDED, never interleaved: the mirror test compares Object.keys in order.
+   Their ranges are structural (final pot contains the pot at the node; hero cannot invest more
+   after the node than the whole final pot), so an out-of-range value cannot leave wearing
+   supported:true, the same idiom `ev` already had. */
+function finish(ev, se, source, supported, potMult, invShare) {
   var evOk = typeof ev === 'number' && isFinite(ev) && ev >= 0 && ev <= 1;
   var seOk = typeof se === 'number' && se > 0 && !isNaN(se);
-  return { ev: ev, se: seOk ? se : Infinity, source: source, supported: !!supported && evOk && seOk };
+  var pmOk = typeof potMult === 'number' && isFinite(potMult) && potMult >= 1;
+  var isOk = typeof invShare === 'number' && isFinite(invShare) && invShare >= 0 && invShare <= 1;
+  return { ev: ev, se: seOk ? se : Infinity, source: source,
+    supported: !!supported && evOk && seOk && pmOk && isOk, potMult: potMult, invShare: invShare };
 }
 function cellOf(M, key) {
   if (typeof key !== 'string') return null;
@@ -2746,19 +2761,22 @@ function evaluate(M, cells, potSize, spr, opts) {
     var pA = hero.eq[0] / 100, pB = villain.eq[0] / 100;
     /* `0.5 + (pA - pB)/2` rather than `(pA + (1 - pB))/2`: IEEE negation is exact, so the two
        orderings sum to EXACTLY 1 and conservation is an identity, not a tolerance. */
+    /* `1, 0` is the checkdown pot geometry, not two chosen numbers: no betting after the decision
+       node means E[final pot] = potSize (multiplier 1) and hero invests nothing after it (post-node
+       share 0). Every return below repeats the identities for the same reason. */
     return finish(0.5 + (pA - pB) / 2,
-      Math.hypot(seOfShare(pA, M.trials), seOfShare(pB, M.trials)) / 2, 'checkdown', true);
+      Math.hypot(seOfShare(pA, M.trials), seOfShare(pB, M.trials)) / 2, 'checkdown', true, 1, 0);
   }
   if (inDomain) {
     var p = hero.eq[len - 2] / 100;
-    return finish(p, seOfShare(p, M.trials), 'checkdown', false);
+    return finish(p, seOfShare(p, M.trials), 'checkdown', false, 1, 0);
   }
   if (hero) {
     var j = Math.min(Math.max(len - 2, 0), hero.eq.length - 1), q = hero.eq[j] / 100;
-    return finish(q, seOfShare(q, M.trials), 'checkdown', false);
+    return finish(q, seOfShare(q, M.trials), 'checkdown', false, 1, 0);
   }
   var evq = 1 / Math.max(2, len);
-  return finish(evq, seOfShare(evq, 0), 'checkdown', false);
+  return finish(evq, seOfShare(evq, 0), 'checkdown', false, 1, 0);
 }
 function prepare(model) {
   if (!model || typeof model !== 'object' || !model.cells || typeof model.cells !== 'object') {
@@ -2788,7 +2806,7 @@ function makePayoff(model) {
   return fn;
 }
 return { version: 1, SOURCES: ['checkdown', 'model', 'simulated'],
-  RESULT_KEYS: ['ev', 'se', 'source', 'supported'], makePayoff: makePayoff };
+  RESULT_KEYS: ['ev', 'se', 'source', 'supported', 'potMult', 'invShare'], makePayoff: makePayoff };
 })();
 /* @end:payoff-page */
 
@@ -3207,7 +3225,7 @@ function eqMixOf(d, mix) {
    un-injected template (and a live cross-check during development).        */
 var POL = (window.POLICY && typeof window.POLICY.solve === 'function') ? window.POLICY : null;
 var POLICY_SOURCE = 'builtin (reference implementation)';
-HAS_VP = !!(POL && POL.villainEq && POL.seOfTrials && VLAT && VPTS.length);
+HAS_VP = !!(POL && POL.villainEq && POL.profiledModel && POL.seOfTrials && VLAT && VPTS.length);
 
 /* ============================ V3-PLAN item 8 / §5.1 — THE B1 DEFAULT FLIP ============================
    The page now OPENS with the villain profile on. This changes the page's INITIAL STATE and nothing
@@ -3270,11 +3288,6 @@ function validBookEntry(r) {
 }
 var SIMBOOK = SIMUI.makeBook({ maxBytes: 1500 * 1024, maxEntries: 24, validate: validBookEntry });
 var VPM = { key: '', model: null, applied: null };
-function fnvHex(s) {
-  var h = 0x811c9dc5;
-  for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0; }
-  return ('0000000' + h.toString(16)).slice(-8);
-}
 function bookKey(v, q) { return v + '|' + q; }
 function simResult() { return (HAS_VP && S.vp) ? SIMBOOK.get(bookKey(S.v, S.q)) : null; }
 function profileNow() {
@@ -3289,41 +3302,33 @@ function vpKey() {
   var r = simResult();
   return 'ON|' + S.v + '|' + S.q + '|' + (r ? r.settingsHash : '-');
 }
-function copyOwn(o) {
-  var out = {}, k;
-  for (k in o) if (Object.prototype.hasOwnProperty.call(o, k)) out[k] = o[k];
-  return out;
-}
-function rhoFromEq(eq) {
-  var out = new Array(eq.length);
-  for (var i = 0; i < eq.length; i++) out[i] = (eq[i] * (i + 2)) / 100;
-  return out;
-}
+/* THE SHADOW MODEL IS BUILT BY `POLICY.profiledModel`, AND NOWHERE ELSE (P2 pre-stage).
+   This function used to carry a line-for-line copy of that construction. Lane M hoisted the
+   construction into `scripts/lib/policy.mjs` at P1 — which is what made gate I43 possible at all,
+   since a build that only ever ran in the page is a path no gate can see — and left this copy
+   behind with a comment naming it "a duplicate of this, not a variant of it". This is that
+   deletion. Every load-bearing property is now asserted where the code lives: OFF is OBJECT
+   IDENTITY (I43(a), `===` and never `deepEqual`), an off-lattice q that moves nothing is ALSO the
+   model itself, and the shadow wears its own `meta.hash` prefix so `solve`'s memo cannot hand back
+   the unprofiled answer (I43(c)).
+
+   NO BUILTIN FALLBACK, AND IT IS NOT AN OMISSION. `emodel` was never reachable without an injected
+   policy: `HAS_VP` is false when `POL` is null, `vpKey()` is then the constant 'OFF', and this
+   returns MODEL on its first line. `POL.profiledModel` joins `POL.villainEq` in that predicate
+   above so the same is true of a policy too old to carry it — the un-injected template degrades to
+   the profile being unavailable, which is what it already did, rather than to a second construction
+   this repository would then own two copies of.
+
+   THE ONE-ENTRY MEMO STAYS, AS A FRONT AND NOT AS THE CACHE. `POLICY.profiledModel` now keeps its
+   own bounded per-profile book (see its header), so a slider step that returns to a VPIP it has
+   already visited gets the SAME shadow object back rather than an equal rebuild. This local `VPM`
+   pair is only a fast path over the string key the page has already computed, and `VPM.applied`
+   below is still what tells `syncProfileCells` whether the CELLS records need re-pointing. */
 function emodel() {
   var k = vpKey();
   if (k === 'OFF') return MODEL;
   if (VPM.key === k) return VPM.model;
-  var prof = profileNow(), r = simResult(), m = copyOwn(MODEL), key, moved = 0;
-  m.meta = copyOwn(MODEL.meta);
-  m.meta.hash = fnvHex(k) + String(MODEL.meta.hash).slice(8);
-  var cells = {};
-  for (key in MODEL.cells) if (Object.prototype.hasOwnProperty.call(MODEL.cells, key)) {
-    var c = MODEL.cells[key];
-    if (!c.combos) { cells[key] = c; continue; }
-    var got = POL.villainEq(MODEL, key, c, prof);
-    if (got.eq === c.eq) { cells[key] = c; continue; }     /* unsupported (q) — shipped, by reference */
-    var nc = copyOwn(c);
-    nc.eq = got.eq; nc.rho = got.rho; nc.vpSource = got.source;
-    cells[key] = nc; moved++;
-  }
-  /* An off-lattice q is `supported: false` at every cell: the accessor refuses to interpolate an
-     axis with one measurement on it and hands the baseline straight back. So the profile is on and
-     nothing has moved — and the honest representation of that is MODEL itself, not a hash-shifted
-     twin that makes the page re-solve 123 identical cells and re-key its memo. The badge is what
-     says the profile is on; the numbers say they are the shipped ones, because they are. */
-  if (!moved) { VPM.key = k; VPM.model = MODEL; return MODEL; }
-  m.cells = cells;
-  if (POL.hydrate) POL.hydrate(m);
+  var m = POL.profiledModel(MODEL, profileNow());
   VPM.key = k; VPM.model = m;
   return m;
 }
@@ -4063,10 +4068,38 @@ function setCols(mode) {
 }
 
 /* =============================================================== CURVES */
-var curveCache = null;
+/* THE CURVE BOOK — BOUNDED, NOT ONE ENTRY (P2 pre-stage, the slider-morph re-anchor).
+   This was a single `curveCache` slot, and under the B1 villain default it was the whole of the
+   morph cost. MEASURED, on the shipped page, over smoke's own layout-inclusive sweep (8 rounds x
+   VPIP 25..90 by 5): profile OFF, median 1.10 ms; profile ON, median 10.60 ms, p95 16.50 — and
+   instrumenting `POLICY.solve` said where it went. `curveKey` carries `vpKey()`, because the ribbon
+   IS profile-dependent: the villain's v is the table VPIP slider, so every step asks for a
+   different curve and the ribbon re-solves all 66 VPIP points, 70 solves a step. With the profile
+   OFF `vpKey()` is the constant 'OFF' and `curveKey` does not mention S.v at all, so the one slot
+   hit every time and the sweep cost nothing. That is the entire ON/OFF gap: not the shadow model
+   (building one measures 0.1-0.9 ms), not `render`, the curve.
+     Neither memo underneath could absorb it: the page's 400-entry `memo` holds 6 VPIP values' worth
+   of the 66 evaluations, and `POLICY`'s 800-entry `SOLVE_MEMO` clears WHOLESALE at 12. Raising
+   either is the wrong lever by two orders of magnitude — one evaluation is three 145-wide typed
+   arrays, ~3 KB, and 66 of them per VPIP is megabytes — while ONE CURVE is three 66-number arrays,
+   about 1.6 KB, and 24 of them is 40 KB. So the aggregate is what gets cached, not the parts.
+     Bounded and LRU-evicted through `SIMUI.makeBook`, the same book `SIMBOOK` runs, because
+   `curveKey`'s space is every (position, node, limpers, raiser, mix, selection, environment,
+   profile) combination and an unbounded map over that is a leak wearing a cache's name. `sizeOf` is
+   arithmetic rather than the default `JSON.stringify` — the entry is three float arrays of known
+   length, and stringifying 200 floats to measure them would put the cost back on the cold path this
+   exists to pay for.
+     WHAT IT DOES NOT DO: it does not make the FIRST visit to a VPIP cheaper, and it is not meant
+   to. A slider drag visits each value once, so the cold curve is what a user feels; smoke.mjs's ON
+   row is pinned on that sweep, cold visits included, and its header carries both figures. */
+var curveBook = SIMUI.makeBook({
+  maxBytes: 512 * 1024, maxEntries: 24,
+  sizeOf: function (c) { return 8 * (c.w.length + c.ns.length + c.tiers.length); }
+});
 function curveKey() { return S.pos + '|' + S.node + '|' + S.L + '|' + (S.raiser || defaultRaiser()) + '|' + S.mix.join(',') + '|' + S.sel + '|' + envKey() + '|' + vpKey(); }
 function curves() {
-  if (curveCache && curveCache.k === curveKey()) return curveCache;
+  var k = curveKey(), hit = curveBook.get(k);
+  if (hit) return hit;
   var w = [], ns = [], tiers = [], sel = CK[S.sel];
   for (var v = VMIN; v <= VMAX; v++) {
     var e = evaluate(v / 100, S.pos, S.node, S.L, S.raiser || defaultRaiser(), S.mix);
@@ -4076,8 +4109,9 @@ function curves() {
     w.push(e.aggFreq); ns.push(e.nutShare);
     tiers.push(sel && sel.live ? e.tier[sel.i] : 0);
   }
-  curveCache = { k: curveKey(), w: w, ns: ns, tiers: tiers };
-  return curveCache;
+  var c = { k: k, w: w, ns: ns, tiers: tiers };
+  curveBook.put(k, c);
+  return c;
 }
 function ribbonSegments(tiers) {
   var segs = [], cur = tiers[0], from = VMIN;
@@ -5040,7 +5074,7 @@ function renderNodeCtl() {
       rng.oninput = function () {
         simCancelOnChange('the 3-bet mix');
         S.mix[i] = +rng.value; v.textContent = S.mix[i] + '%';
-        curveCache = null; render(); renderInspector(true); paintSpark(); pushHash();
+        curveBook.clear(); render(); renderInspector(true); paintSpark(); pushHash();
         Array.prototype.forEach.call(s.querySelectorAll('.mixrow .v'), function (node, j) { node.textContent = Math.round(mixW(S.mix)[j] * 100) + '%'; });
       };
       r.appendChild(lab); r.appendChild(rng); r.appendChild(v); b.appendChild(r);
@@ -5163,7 +5197,7 @@ function renderDisplayCtl() {
 }
 function syncDisplayCtl() { renderDisplayCtl(); }
 function invalidate() {
-  curveCache = null;
+  curveBook.clear();
   render(); syncTopbar(); syncTableCtl(); syncVP(); renderNodeCtl(); renderPinBox();
   paintRibbon($('#railribbon'), $('#railcaret'), $('#railribbonlabels'), $('#railribboncap'));
   paintSpark(); renderInspector(true); pushHash();
@@ -5178,7 +5212,7 @@ function select(key, opts) {
   cellNodes[rec.i].setAttribute('aria-selected', 'true');
   cellNodes[rec.i].tabIndex = 0;
   $('#ribbonwho').textContent = rec.row.short + ' × ' + rec.col.short;
-  curveCache = null;
+  curveBook.clear();
   paintRibbon($('#railribbon'), $('#railcaret'), $('#railribbonlabels'), $('#railribboncap'));
   $('#railcaret').style.left = ((S.v - VMIN) / (VMAX - VMIN) * 100) + '%';
   paintSpark();
@@ -5854,7 +5888,7 @@ function commitEnv(fromDrag) {
     return;
   }
   var before = lastEv ? lastEv.tier.slice() : null;
-  curveCache = null;
+  curveBook.clear();
   render(); renderInspector(true); syncTopbar(); syncTableCtl(); syncVP();
   paintSpark();
   paintRibbon($('#railribbon'), $('#railcaret'), $('#railribbonlabels'), $('#railribboncap'));
@@ -6354,7 +6388,7 @@ function onSimDone(r) {
   VPM.key = ''; VPM.applied = null;      /* the shadow model has to be rebuilt around the measurement */
   clearSimBar();
   var before = lastEv ? lastEv.tier.slice() : null;
-  curveCache = null;
+  curveBook.clear();
   render(); renderInspector(true); syncTopbar(); syncTableCtl(); paintSpark();
   paintRibbon($('#railribbon'), $('#railcaret'), $('#railribbonlabels'), $('#railribboncap'));
   if (S.pin) renderPinBox();
@@ -6398,7 +6432,7 @@ function vpStatPlain() {
 }
 function commitVP() {
   var before = lastEv ? lastEv.tier.slice() : null;
-  curveCache = null;
+  curveBook.clear();
   render(); renderInspector(true); syncTopbar(); syncTableCtl(); syncVP();
   paintSpark();
   paintRibbon($('#railribbon'), $('#railcaret'), $('#railribbonlabels'), $('#railribboncap'));
@@ -8222,7 +8256,13 @@ function init() {
      its own ceiling. The two copies are held together by a SOURCE comparison instead, in
      test/ui-rail.test.mjs ("THE CROSS-LANE PIN"), which fails if either moves alone. What that pin
      guarantees is that two copies of 4.0 agree; it does not guarantee any morph was measured, since
-     smoke.mjs needs Playwright and is not one of the three GREEN checks. */
+     smoke.mjs needs Playwright and is not one of the three GREEN checks.
+     WHICH STATE 4.0 IS ABOUT (P2 pre-stage): the villain profile OFF. S-E measured it there, and
+     barrier B1 has since made ON the load default — so smoke.mjs now drives the page into the OFF
+     state through the profile toggle before running this budget's sweep, and pins the shipping
+     default on a SECOND row with its own measured figure. That row is deliberately harness-side
+     only: this constant is the one the cross-lane pin holds, and giving the page a second budget to
+     publish would hand the artifact a second ceiling to raise. */
   window.__morphBudgetMs = 4.0;
   window.__measureMorph = function (v) {
     var t = performance.now();

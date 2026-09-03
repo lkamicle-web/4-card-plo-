@@ -9,6 +9,12 @@
 // Every one of those is a silent wrong answer, not a crash, which is exactly the class of bug the
 // four whole phases fanning out against this signature cannot afford.
 //
+// AMENDED AT THE P2 PRE-STAGE, in step with the freeze it harnesses: the return is six keys, the
+// stub's `potMult === 1` / `invShare === 0` are pinned as IDENTITIES (so P2's first real source is
+// measured against a baseline rather than against nobody's expectation), and the three clauses the
+// ceremony added or rewrote — (g) the ip-in-every-memo-key rule, (h) card-removal degeneracy, and
+// the monotonicity clause now that S-B has falsified it — each get a fabricated violator here too.
+//
 // It also pins two properties that are easy to lose and expensive to rediscover: that `payoff.mjs`
 // still survives `build.mjs`'s `moduleToIife` (§2 says the file is present in BOTH builds, and the
 // dual build does not exist yet to find out the hard way), and that `se` is the same shipped basis
@@ -20,6 +26,11 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as P from '../scripts/lib/policy.mjs';
 import { payoff, makePayoff, setDefaultModel, SOURCES, RESULT_KEYS } from '../scripts/lib/payoff.mjs';
+/* The amended clauses are armed against THE GATE'S OWN DETECTORS, not against a second copy of
+   them written here. A harness that re-implements a detector proves only that the harness's copy
+   fires; importing them is what makes these tests say something about the gate that runs. */
+import { memoProblems, ipMemoAliases, stripComments, MEMO_SCOPE, isDegeneratePair, removalProblems,
+  monoProblems, monoRows } from '../scripts/gates/payoff.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MODEL_PATH = resolve(ROOT, 'data/model.json');
@@ -50,16 +61,96 @@ test('the signature is frozen at four arguments — no default may soften it', (
   if (HAVE) assert.equal(makePayoff(M).length, 4, 'the bound accessor keeps the arity too');
 });
 
-test('a return carries exactly the four frozen keys, with the frozen types', { skip: !HAVE }, () => {
+test('a return carries exactly the six frozen keys, with the frozen types', { skip: !HAVE }, () => {
   const r = payoff([LIVE[0], LIVE[1]], 10, 4, { ip: true });
-  assert.deepEqual(Object.keys(r).sort(), [...RESULT_KEYS].sort());
-  assert.deepEqual([...RESULT_KEYS].sort(), ['ev', 'se', 'source', 'supported']);
+  assert.deepEqual(Object.keys(r), [...RESULT_KEYS], 'and in ORDER — the page mirror pins that too');
+  assert.deepEqual([...RESULT_KEYS], ['ev', 'se', 'source', 'supported', 'potMult', 'invShare'],
+    'the P2 pre-stage amendment APPENDS; interleaving the two new keys is a red mirror test');
   assert.equal(typeof r.ev, 'number');
   assert.equal(typeof r.se, 'number');
   assert.equal(typeof r.source, 'string');
   assert.equal(typeof r.supported, 'boolean');
+  assert.equal(typeof r.potMult, 'number');
+  assert.equal(typeof r.invShare, 'number');
   assert.ok(SOURCES.includes(r.source), `source ${r.source} is outside the frozen enum`);
   assert.ok(r.ev >= 0 && r.ev <= 1, 'ev is a pot FRACTION, not a percentage');
+});
+
+// ---------------------------------------------------------------------------
+// amendment (i): the two keys that make the bb conversion possible at all
+// ---------------------------------------------------------------------------
+
+test('the stub reports the checkdown pot geometry as an IDENTITY, at every spr and on every exit', { skip: !HAVE }, () => {
+  // Checkdown means no betting after the decision node, so the final pot IS the pot at the node:
+  // E[F] = potSize (multiplier exactly 1) and hero invests nothing after it (post-node share
+  // exactly 0). Object.is, not a tolerance — these are what P2's first real source gets measured
+  // against, and "approximately 1" would be a baseline nobody could hold anyone to.
+  for (const spr of [0, 0.5, 1, 4, 13, 400]) {
+    for (const opts of [undefined, null, {}, { ip: false }, { ip: true }, { seed: 'rundown-v3' }]) {
+      const r = payoff([LIVE[0], LIVE[1]], 10, spr, opts);
+      assert.ok(Object.is(r.potMult, 1), `potMult at spr ${spr}`);
+      assert.ok(Object.is(r.invShare, 0), `invShare at spr ${spr}`);
+    }
+  }
+  // multiway, and the malformed exits — a return site that forgot the new keys shows up here
+  for (const cells of [[LIVE[0], LIVE[1], LIVE[2]], [LIVE[0]], [], null, 'x', ['NOPE|XX', 'ALSO|XX']]) {
+    const r = payoff(cells, 10, 4, {});
+    assert.deepEqual(Object.keys(r), [...RESULT_KEYS], 'every exit packs all six');
+    assert.ok(Object.is(r.potMult, 1) && Object.is(r.invShare, 0));
+  }
+});
+
+test('the caller arithmetic the two keys complete is exact, and heroPre is the caller\'s half', { skip: !HAVE }, () => {
+  // The contract: finalPot = potMult*potSize; invested = heroPre + invShare*finalPot;
+  // EVbb = ev*finalPot - invested. `heroPre` — hero's own contribution to potSize — is NOT returned
+  // from here, because the four frozen arguments do not carry it: S-B's own invShare bundles a
+  // 0.5/0.5 REF3 NORMALISATION for it, which is an assumption about the node and not a measurement.
+  // Under the stub the conversion collapses to something a human can check by hand.
+  const potSize = 10, heroPre = 2.5;
+  const r = payoff([LIVE[0], LIVE[1]], potSize, 4, { ip: false });
+  const finalPot = r.potMult * potSize;
+  const invested = heroPre + r.invShare * finalPot;
+  assert.equal(finalPot, potSize, 'checkdown: the pot at the end is the pot at the node');
+  assert.equal(invested, heroPre, 'checkdown: hero invests nothing after the node');
+  assert.ok(Math.abs((r.ev * finalPot - invested) - (r.ev * potSize - heroPre)) < 1e-15);
+  // and the conversion back to S-B's total-share reading is one line, exactly as the header says
+  assert.equal(heroPre / finalPot + r.invShare, heroPre / potSize, 'total = heroPre/finalPot + invShare');
+});
+
+/** the module's own `finish`, sliced out of the shipped text — the moduleToIife trick, reused so
+ *  the guard under test is the guard that ships rather than a paraphrase of it */
+function shippedFinish() {
+  let src = readFileSync(resolve(ROOT, 'scripts/lib/payoff.mjs'), 'utf8');
+  src = src.slice(0, src.indexOf('/* @browser-cut'))
+    .replace(/^export\s+(const|let|function|class)\s+/gm, '$1 ');
+  return new Function(`${src}\nreturn finish;`)();
+}
+
+test('a value outside the two new structural ranges can never leave wearing supported:true', { skip: !HAVE }, () => {
+  // The same idiom `ev` already had, extended by the amendment to the two new keys. The bounds are
+  // STRUCTURAL — the final pot contains the pot at the node, and hero cannot invest more after the
+  // node than the whole final pot — so they are not tolerances anybody chose. Unreachable through
+  // the stub's public surface (it always answers 1 and 0), which is exactly why the guard is
+  // exercised directly: an unreachable guard nobody calls is a guard that quietly stops working.
+  const finish = shippedFinish();
+  const good = finish(0.6, 0.001, 'checkdown', true, 1, 0);
+  assert.equal(good.supported, true);
+  assert.deepEqual(Object.keys(good), [...RESULT_KEYS], 'six keys, in order, out of `finish` itself');
+  for (const [potMult, invShare, why] of [
+    [0.5, 0, 'a final pot smaller than the pot at the node'],
+    [NaN, 0, 'a non-finite multiplier'],
+    [Infinity, 0, 'an infinite multiplier'],
+    [1, -0.1, 'a negative post-node share'],
+    [1, 1.5, 'hero investing more than the whole final pot'],
+    [1, NaN, 'a non-finite share'],
+    [undefined, 0, 'a source that forgot the key entirely'],
+  ]) {
+    const r = finish(0.6, 0.001, 'model', true, potMult, invShare);
+    assert.equal(r.supported, false, `${why} must be flagged`);
+    assert.deepEqual(Object.keys(r), [...RESULT_KEYS], `${why}: still six keys`);
+    assert.ok(Object.is(r.potMult, potMult) && Object.is(r.invShare, invShare),
+      `${why}: the bad number is RETURNED, not clamped away — a clamp would hide it from I33`);
+  }
 });
 
 test('the same arguments give the same object, twice, at either position', { skip: !HAVE }, () => {
@@ -166,7 +257,7 @@ test('the door closes where the measurement stops', { skip: !HAVE }, () => {
 // out of domain: never throws, never unflagged
 // ---------------------------------------------------------------------------
 
-test('every malformed request returns all four keys instead of throwing', { skip: !HAVE }, () => {
+test('every malformed request returns all six keys instead of throwing', { skip: !HAVE }, () => {
   const bad = [
     [['NOPE|XX', LIVE[0]], 10, 4, undefined, 'unknown hero key'],
     [[LIVE[0], 'NOPE|XX'], 10, 4, undefined, 'unknown villain key'],
@@ -192,8 +283,10 @@ test('every malformed request returns all four keys instead of throwing', { skip
   ];
   for (const [cells, pot, spr, opts, why] of bad) {
     const r = payoff(cells, pot, spr, opts);
-    assert.deepEqual(Object.keys(r).sort(), [...RESULT_KEYS].sort(), why);
+    assert.deepEqual(Object.keys(r), [...RESULT_KEYS], why);
     assert.equal(r.supported, false, `${why} must be flagged`);
+    assert.ok(Object.is(r.potMult, 1) && Object.is(r.invShare, 0),
+      `${why}: nothing was bet on a request that was never in the game`);
     assert.ok(SOURCES.includes(r.source), why);
     assert.ok(typeof r.ev === 'number' && r.ev >= 0 && r.ev <= 1, `${why}: ev stays a pot fraction`);
     assert.ok(r.se > 0, `${why}: se stays positive`);
@@ -243,22 +336,140 @@ test('a cell measured at the extremes still reports a positive, finite se', { sk
 });
 
 // ---------------------------------------------------------------------------
-// the monotonicity clause — the one written to be falsified
+// amendment (ii): clause (g), `opts.ip` in every memo key
 // ---------------------------------------------------------------------------
 
-test('ev is monotone in hero checkdown equity at fixed spr — today, by construction', { skip: !HAVE }, () => {
-  // §2 predicts high-cooler hands break this at spr >= 4 once a real payoff model lands, and that
-  // the break is the model WORKING. Under the stub there is nothing to break: ev is affine in
-  // eq[0]. When it fails, the clause gets rewritten to the measurement, not widened.
-  const sorted = [...LIVE].sort((x, y) => M.cells[x].eq[0] - M.cells[y].eq[0]);
-  for (const spr of [0, 1, 4, 13]) {
-    let prev = -Infinity;
-    for (const k of sorted) {
-      const ev = payoff([k, 'AA_BIGPAIR|RB'], 10, spr).ev;
-      assert.ok(ev >= prev, `${k} at spr ${spr}`);
-      prev = ev;
-    }
+test('a payoff memo key that forgot `ip` is caught, and one that carries it is not', () => {
+  // S-B: ev(A,B,ip) != ev(A,B,!ip) by up to 43 pt, while ev(A,B,ip) + ev(B,A,!ip) = 1 holds
+  // exactly. So a memo without `ip` in the key is wrong by more than the whole error budget — the
+  // pre-registered Grade A edge is 2.5 pt — and wrong silently. The detector is the gate's own.
+  const keyless = "const k = cells.join(',') + '|' + pot + '|' + spr;\n"
+    + 'if (memo.has(k)) return memo.get(k);\nconst r = payoff(cells, pot, spr, opts); memo.set(k, r); return r;';
+  const keyed = "const k = cells.join(',') + '|' + pot + '|' + spr + '|' + (opts && opts.ip ? 1 : 0)\n"
+    + "  + '|' + (opts && opts.seed) + '|' + PAY.modelHash;\n"
+    + 'if (memo.has(k)) return memo.get(k);\nconst r = payoff(cells, pot, spr, opts); memo.set(k, r); return r;';
+  assert.equal(memoProblems('cfr.mjs', keyless).length, 1, 'a keyless memo must fire the clause');
+  assert.match(memoProblems('cfr.mjs', keyless)[0], /without ip/);
+  assert.equal(memoProblems('cfr.mjs', keyed).length, 0, 'a key carrying ip + seed + hash must clear');
+  // a key that remembers ip but forgets WHICH MODEL answered is the other half of the rule
+  assert.equal(memoProblems('cfr.mjs', keyed.replace('PAY.modelHash', 'spr')).length, 1);
+});
+
+test('the detector reads code, not the prose about the code', () => {
+  // payoff.mjs's own header is a thousand words about memo keys and contains "memo", "key", "ip"
+  // and "hash". Scanned raw it would clear the clause for entirely the wrong reason — because it
+  // DISCUSSES compliance. Stripping comments first is what makes (g) mean anything.
+  const src = readFileSync(resolve(ROOT, 'scripts/lib/payoff.mjs'), 'utf8');
+  assert.ok(/\bmemo\b/i.test(src), 'the raw file does talk about memos');
+  assert.ok(!/\bmemo\w*\b/i.test(stripComments(src)),
+    'and after the strip there is no memo left, because payoff.mjs deliberately has none');
+  assert.equal(memoProblems('payoff.mjs', src).length, 0);
+  // scope: payoff.mjs cannot satisfy clause (e)'s "imports payoff.mjs", so (g) has its own regex,
+  // and policy.mjs's envKey solve memos are a different key rule and stay out of it.
+  assert.ok(MEMO_SCOPE.test('payoff.mjs') && MEMO_SCOPE.test('cfr.mjs')
+    && MEMO_SCOPE.test('payoff-model.mjs') && MEMO_SCOPE.test('ev-cut.mjs'));
+  assert.ok(!MEMO_SCOPE.test('policy.mjs') && !MEMO_SCOPE.test('taxonomy.mjs'));
+});
+
+test('a keyless memo aliases the two positions onto one object, and the real accessor does not', { skip: !HAVE }, () => {
+  // The dynamic half. Under a position-inert stub the two VALUES are equal, so object identity is
+  // the only signal there is — which is why the text clause above is the load-bearing one and this
+  // is the companion. A memo that cloned its cached value would slip past this, and that limit is
+  // stated in the gate's own detail line rather than left for someone to discover.
+  const m = new Map();
+  const keylessMemo = (cells, pot, spr, opts) => {
+    const k = `${cells}|${pot}|${spr}`;
+    if (!m.has(k)) m.set(k, payoff(cells, pot, spr, opts));
+    return m.get(k);
+  };
+  assert.equal(ipMemoAliases(keylessMemo, [LIVE[0], LIVE[1]], 10, 4), true, 'the fabrication must fire');
+  assert.equal(ipMemoAliases(payoff, [LIVE[0], LIVE[1]], 10, 4), false, 'the real accessor must not');
+  // and the reason values cannot discriminate today, stated as an assertion rather than a hope
+  assert.deepStrictEqual(payoff([LIVE[0], LIVE[1]], 10, 4, { ip: true }),
+    payoff([LIVE[0], LIVE[1]], 10, 4, { ip: false }));
+});
+
+// ---------------------------------------------------------------------------
+// amendment (iii): clause (h), card-removal degeneracy
+// ---------------------------------------------------------------------------
+
+test('the degeneracy families are the measured ones, and nothing else', { skip: !HAVE }, () => {
+  // S-B: AA_DANGLER|RB x AA_BIGPAIR|DS is degenerate on 12.56% of street evaluations (the four
+  // aces are shared), mean 0.73% over 50 pairs, 4/50 over 1%. S-A: 43 structurally undealable
+  // pairs, AA_* x A_BLOCKED, combo mass 3.6e-5. Two families, no invented third.
+  assert.ok(isDegeneratePair('AA_DANGLER|RB', 'AA_BIGPAIR|DS'), "S-B's own named pair");
+  assert.ok(isDegeneratePair('AA_BIGPAIR|DS', 'A_BLOCKED|RB') && isDegeneratePair('A_BLOCKED|SSA', 'AA_DANGLER|DS'));
+  assert.ok(!isDegeneratePair('TRASH|RB', 'RUN2|DS'), 'two ace-free cells share no ranks structurally');
+  assert.ok(!isDegeneratePair('A_BLOCKED|RB', 'A_BLOCKED|SSA'), 'one ace each is two aces, which is dealable');
+  const degen = [];
+  for (const a of LIVE) for (const b of LIVE) if (a !== b && isDegeneratePair(a, b)) degen.push([a, b]);
+  assert.ok(degen.length > 0 && degen.length < LIVE.length * (LIVE.length - 1) / 10,
+    `${degen.length} of ${LIVE.length * (LIVE.length - 1)} ordered pairs — a real subset, not everything`);
+});
+
+test('a source that silently collapses a degenerate pair is caught; one that flags it is not', { skip: !HAVE }, () => {
+  // THE FAILURE MODE IS SILENT. S-B's first implementation dead-carded the range against the
+  // opponent's actual hand and collapsed every AA-vs-AA pair to a checkdown with no error raised.
+  // `collapser` is that bug, reproduced: the checkdown answer wearing a dealt-board label.
+  const degen = [], control = [];
+  for (const a of LIVE) for (const b of LIVE) {
+    if (a === b) continue;
+    if (isDegeneratePair(a, b)) degen.push([a, b]); else if (control.length < 40) control.push([a, b]);
   }
+  const collapser = (c, p, s, o) => ({ ...payoff(c, p, s, o), source: 'simulated', supported: true });
+  const honest = (c, p, s, o) => ({
+    ...payoff(c, p, s, o), source: 'simulated',
+    supported: !(Array.isArray(c) && c.length === 2 && isDegeneratePair(c[0], c[1])),
+  });
+  assert.equal(removalProblems(collapser, degen).length, degen.length, 'every degenerate pair, not some');
+  assert.equal(removalProblems(honest, degen).length, 0, 'flagged is what honest looks like');
+  assert.equal(removalProblems(collapser, control).length, 0,
+    'the detector carries the degeneracy scope itself, so it must stay quiet on a non-degenerate pair');
+  // the stub deals nothing and is exempt BY CONSTRUCTION — asserted, not assumed
+  assert.equal(removalProblems(payoff, degen).length, 0);
+  for (const [a, b] of degen) assert.equal(payoff([a, b], 10, 4, { ip: false }).source, 'checkdown');
+});
+
+// ---------------------------------------------------------------------------
+// the monotonicity clause — §2 wrote it to be falsified, and S-B falsified it
+// ---------------------------------------------------------------------------
+
+test('checkdown is strictly increasing in hero eq[0], which is now the half that stays asserted', { skip: !HAVE }, () => {
+  // §2 predicted high-cooler hands break monotonicity at spr >= 4 once a real payoff model lands,
+  // and that the break is the model WORKING. S-B broke it: inversions on 1.7% of pairs at spr 1,
+  // 8.1% at spr 4, 15.9% IP / 20.5% OOP at spr 10, worst case 9.1 pt LESS checkdown equity for
+  // 20.0 pt MORE ev. The clause was rewritten to the measurement, not widened and not deleted —
+  // and this half of it survives unchanged, because it is what catches the stub quietly ceasing to
+  // be the stub.
+  const sorted = [...LIVE].sort((x, y) => M.cells[x].eq[0] - M.cells[y].eq[0]);
+  const rows = monoRows(payoff, sorted, 'AA_BIGPAIR|RB', [0, 1, 4, 13]);
+  for (const r of rows) {
+    assert.equal(r.source, 'checkdown');
+    assert.equal(r.inversions, 0, `spr ${r.spr} ip=${r.ip}: the stub is affine in eq[0]`);
+  }
+  assert.equal(monoProblems(payoff, sorted, 'AA_BIGPAIR|RB', [0, 1, 4, 13]).length, 0);
+});
+
+test('a NON-checkdown source that is perfectly monotone at spr >= 4 is the new failure', { skip: !HAVE }, () => {
+  // The rewritten half, and the one with teeth: realization is exactly what checkdown equity does
+  // not measure, so a source claiming to model it while reproducing the checkdown ORDER is not
+  // modelling it. No upper bound is asserted anywhere — S-B's band is reported, never used as a
+  // tolerance, because 50 pairs cannot license one.
+  const sorted = [...LIVE].sort((x, y) => M.cells[x].eq[0] - M.cells[y].eq[0]);
+  const asModel = (c, p, s, o) => ({ ...payoff(c, p, s, o), source: 'model' });
+  const jolt = (k) => { let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) >>> 0; return ((h % 1000) / 1000 - 0.5) * 0.2; };
+  const realizing = (c, p, s, o) => {
+    const r = asModel(c, p, s, o);
+    return (s >= 4 && Array.isArray(c)) ? { ...r, ev: Math.min(1, Math.max(0, r.ev + jolt(String(c[0])))) } : r;
+  };
+  const flagged = monoProblems(asModel, sorted, 'AA_BIGPAIR|RB', [0, 1, 4, 13]);
+  assert.ok(flagged.length > 0, 'the stub relabelled `model` is monotone, and that is now a failure');
+  assert.match(flagged[0], /perfectly monotone at spr (4|13)/);
+  assert.equal(monoProblems(realizing, sorted, 'AA_BIGPAIR|RB', [0, 1, 4, 13]).length, 0,
+    'a `model` that actually perturbs the order at spr >= 4 is what passing looks like');
+  // spr 1 is REPORTED, not asserted: 1.7% is too near zero to serve as a floor
+  const quietLow = monoProblems(asModel, sorted, 'AA_BIGPAIR|RB', [0, 1]);
+  assert.equal(quietLow.length, 0, 'below spr 4 a monotone non-checkdown source is not asserted against');
 });
 
 test('the stub is spr-inert, which is what "checkdown" means — reported, not a claim about the future', { skip: !HAVE }, () => {
