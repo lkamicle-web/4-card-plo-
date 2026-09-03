@@ -438,11 +438,77 @@ not gain *enough*: a delta shared across a band moves scores and not ranks, and 
 percentile. That is limitation 17's structural fact arriving from the other direction, and it is
 worth more than the prediction would have been.
 
-**The default is not flipped here.** `villainProfileOf` still reads anything without `on: true` as
-OFF and every caller in this repository still passes nothing. Flipping it moves tiers on the frozen
-surface, which V3-PLAN §5.1 makes a fixture-re-freeze ceremony with its move-diff committed — a
-barrier decision, not a lane's. What ships now is the machinery, the load-default definition, and
-the gate that already measures what the flip would do.
+**The library default is still OFF, and that is what makes the flip below safe.**
+`villainProfileOf` reads anything without `on: true` as OFF, every caller in this repository still
+passes nothing, and `solve` has never received a profile argument. So the *legacy state* means
+exactly what it always meant, and gates I22 and I32 keep asserting it. What changed at B1 is which
+state the page opens in.
+
+### 3.4 The B1 default flip — what turning the profile on actually moves
+
+*(v3 P1, barrier B1. V3-PLAN §5.1's third-fixture ceremony; §0.4(c)'s move-diff, committed.)*
+
+**The page now loads with the villain profile ON.** `src/shell.html` reads
+`POLICY.villainLoadDefault(MODEL)` at boot instead of hard-coding a value, and opens on it — which
+means the load state is derived from the shipped lattice rather than typed into the page. It
+declines itself on a dataset where the page's own VPIP default is not the lattice point the load
+default names, because opening on interpolated numbers under a measured-looking grid is the one
+outcome limitation 1's partial closure must not produce. On the shipped data they coincide at
+v = 55, so all 123 live cells load from a measured row (gate I43(b)).
+
+**A default flip changes the page's initial state and no state's semantics.** That distinction is
+the whole reason this is safe to do mid-program, and it is asserted rather than argued: I43(e)
+pins the library default OFF, I43(a) pins OFF as *object identity*, and I22/I32 are green on the
+other side of the flip — the legacy lane is still there, still reproducing v1 and v2 bit for bit.
+The `#v1point` button clears the profile along with depth, rake and straddle, so the identity point
+remains one click away. Permalinks changed with the default: `&vp` is now written in **both**
+directions, since a present-means-on encoding would have silently dropped "I turned the villains
+off" out of every shared link.
+
+**The third fixture.** `data/tiers-v3-default.fixture.txt` freezes the ON surface over the same 12
+environment lanes, the same 21 legal (node, position) pairs and the same 66 integer VPIPs as the v2
+fixture — 16,632 settings × 123 cells — **alongside, not replacing, it**. On this page the villain
+VPIP *is* the table VPIP slider, so each row is frozen at the profile the page is actually running
+at that row's VPIP: measured at the lattice points, interpolated between them, and frozen either
+way, because the user reaches the in-between with one drag. No lane of it is the v1 operating point
+and it declares none. It carries no gate id — V3-PLAN §7.2 reserves ids at Phase 0 and names none
+for it — so it is pinned under `node --test` (`test/tier-fixture-v3.test.mjs`), which is one of the
+three GREEN checks; the test is proved to fail on a single flipped tier character.
+
+**The move diff, printed by `freeze-tiers.mjs --v3` and committed here.** Between the two frozen
+files, no pipeline in the middle:
+
+| | |
+|---|---|
+| settings that move | **15,048 / 16,632** (90.5 %) |
+| cell tiers that move | **285,708 / 2,045,736** (**13.97 %**) |
+| net change in painted (T1/T2) slots | **−17,382** (−2.00 %) |
+| lane that moves most / least | `d40/r0/s1` (26,576) / `d250/r5/s0` (20,058) |
+| by VPIP, at v = 25 / 40 / 55 / 70 / 90 | 6,582 / 5,516 / 4,696 / 3,542 / **1,610** |
+| top rank moves | T1→T5 60,792 · T5→T1 33,744 · T5→T3 18,748 · T2→T1 16,532 · T1→T2 16,460 |
+| rows that move most | `RUN0_HIGH` 43,450 · `RUN0_LOW` 42,330 · `BROADWAY_RUN` 38,674 · `SMPAIR_CONN` 20,732 |
+| at the exact load state (`d100/r5/s0`, rfi/CO, v = 55) | **24 of 123 cells** |
+
+Three things in that table are worth saying out loud, because each of them is a claim the diff
+either supports or refuses.
+
+1. **It is a re-sort, not a tightening.** The net is only −2.00 % of painted slots, and 33,744 cells
+   move *up* to T1 against 60,792 moving down to fold. A filtered field is not uniformly worse to
+   play against; it is differently ordered, which is the same thing §3.3's cooler/nut table says
+   one measurement at a time.
+2. **The size of the move tracks how filtered the field is,** monotonically: 6,582 moved tiers at
+   VPIP 25 down to 1,610 at VPIP 90. At 90 % VPIP the filtered pool nearly *is* random, so the flip
+   nearly does nothing — which is the sanity check that says the mechanism is doing what it claims
+   rather than adding noise.
+3. **The rundowns and the broadway run move most.** They are the rank-overlap rows: exactly the
+   hands whose value depends on what everybody else is holding, and therefore the hands a range
+   assumption should move. If `AA_BIGPAIR` had topped this list, something would be wrong.
+
+**14 % of the surface is a large move, and it is a change of default rather than a change of
+model.** Nothing was re-measured and no constant moved; the page simply stops answering "what is
+this hand worth against random opponents" by default and starts answering "against opponents who
+play the VPIP you set". Both answers were already in the shipped data. What the ceremony records is
+that we changed which one the page volunteers.
 
 ---
 
@@ -1474,15 +1540,16 @@ emitted** — the exact minified byte string `generate-data.mjs` writes to disk,
 | v2 at the phase-4 end (+ the frozen villain ordering) | 183.5 KB (187,859 B) | 282.5 KB |
 | v2, 3 lattice rows (not shipped) | 134.6 KB (137,854 B) | 221.0 KB |
 | v3, after the sub-bucket cut, before P1 | 113.9 KB (116,643 B) | 172.2 KB |
-| **shipped, v3 P1** (+ the coupling constants) | **115.2 KB (118,006 B)** | **173.7 KB** |
+| **shipped, v3 P1** (+ the coupling constants, + D10/D11) | **115.3 KB (118,032 B)** | **173.7 KB** |
 
 *(The last row is the file as it stands. Everything above it is history and is kept because the
 budget argument below is about how the number moved, not only about where it landed: the cut took
 69.5 KB out of a 183.5 KB file and D6's ceiling came down with it, from 195 KB to 120 KB. A removal
-that does not move the ceiling has not been paid back. The 1,363 B P1 then spent is `constants`
-and nothing else — `rake.potScale`/`potBBAt`/`flag`, `depth.widthRatio`, the `sizing` block, the
-two `limitations` entries and four gate keys — which is the shape every v3 scoring phase should
-have: the measured payload does not move, because the axes re-score what is already measured.)*
+that does not move the ceiling has not been paid back. The **1,389 B** P1 then spent is `constants`
+and gate keys and nothing else — `rake.potScale`/`potBBAt`/`flag`, `depth.widthRatio`, the `sizing`
+block, the two `limitations` entries, and six gate keys (I41–I44 from the scoring lane, D10/D11 from
+the dual build) — which is the shape every v3 scoring phase should have: the measured payload does
+not move, because the axes re-score what is already measured.)*
 
 The phase-3 row moved three times after the measurement pass, and none of those moves is payload.
 `model.gates` is part of the file, so each new gate adds a key/value pair: **+38 B** for I24/I25/D7
@@ -1516,9 +1583,17 @@ is printed in the detail lines of both D6 and D7 on every run, and it is 173.7 K
 
 Inside that ceiling, **D6** carries the budget that actually bites. As it stands, after the
 sub-bucket cut (§2.4) and v3 P1's new scoring constants: cells ≤ 65 KB (measured 62.2), meta +
-tables ≤ 13 KB (12.1), **order ≤ 43 KB (40.3)**, total ≤ 120 KB (115.2) — 4–7 % headroom per block,
-close to the margin v1 ran at (38.6 / 40 KB and 58.4 / 60 KB). The `sub ≤ 72 KB` sub-budget is **gone**
-along with the 69.5 KB block it bounded, and the total came down 195 → 120 KB in the same commit.
+tables ≤ 13 KB (12.1), **order ≤ 43 KB (40.3)**, **baseline tiers ≤ 12 KB (0.0, nothing there yet)**,
+total ≤ 132 KB (115.3) — 4–7 % headroom per block, close to the margin v1 ran at (38.6 / 40 KB and
+58.4 / 60 KB). The `sub ≤ 72 KB` sub-budget is **gone** along with the 69.5 KB block it bounded, and
+the total came down 195 → 120 KB in the same commit.
+
+**The 120 → 132 KB raise is RESERVED, not granted.** *(v3 P1, the dual build; V3-PLAN §5.3.)* The
+12 KB is the baseline-tier block P3 will add, and a `core` clause re-asserts the original **120 KB
+against the payload minus that block** — so no existing block gains a byte of headroom before the
+block it was raised for exists. The gate's own line prints both readings on every run
+(`total 115.3K/132K (of which core 115.3K/120K)`), which is what stops the raise being usable by
+anything but the thing it was raised for.
 Those budgets are sized to catch a payload that creeps, not to leave room for one, and the meta
 budget was *tightened* from 14 KB because the new measurement constants cost under a kilobyte
 between them. The `order` sub-budget and the total's raise from 150 KB are phase 4's, stated at the
@@ -1545,13 +1620,13 @@ saved ~8 KB of it. It was a page problem, and §9.11 is how it was settled.
 
 *(v2 decision, 2026-08-29; revised at the phase-4 end, 2026-08-30.)* Measured on the shipped build:
 
-| | KB, phase-4 end | **KB, as it stands** |
+| | KB, phase-4 end | **KB, as it stands (v3 P1 / B1)** |
 |---|---:|---:|
-| `data` — the injected model | 183.5 | **115.2** |
+| `data` — the injected model | 183.5 | **115.3** |
 | model code — inlined `policy.mjs` + `taxonomy.mjs`, **stripped** | 46.2 | **44.7** |
-| app shell — CSS, markup and the **minified** app JavaScript | 344.8 | **326.8** |
+| app shell — CSS, markup and the **minified** app JavaScript | 344.8 | **359.2** |
 | *of which:* the inlined Simulate worker bundle | *18.8* | *18.4* |
-| **total `index.html`** | **574.4** | **486.8** |
+| **total `index.html`** | **574.4** | **519.2** |
 
 The right-hand column is the build as it stands; the left is the phase-4 reading this section was
 originally written against, kept because the argument below is about what the split and the
@@ -1596,9 +1671,10 @@ it is committed beside the artifact.
 
 So:
 
-- **`src/shell.html`** is now the hand-authored source — 415.5 KB of commented markup, CSS and
-  application JavaScript, `git mv`'d out of `index.html` with the three generated regions emptied to
-  bare markers. It is the file you edit and the file a reader should read.
+- **`src/shell.html`** is now the hand-authored source — 480.3 KB of commented markup, CSS and
+  application JavaScript (415.5 KB when the split was made), `git mv`'d out of `index.html` with the
+  generated regions emptied to bare markers. It is the file you edit and the file a reader should
+  read.
 - **`index.html` is generated and never hand-edited.** `scripts/build.mjs` walks every inline
   `<script>` in the source and runs its body through the same `jsmin.mjs` lexer the injected module
   copies go through, splices in the model, the policy, the classifier and the Simulate worker
@@ -1613,9 +1689,9 @@ So:
 What that bought, measured as a `--no-minify` control build against the shipped one: the whole page
 **785.0 → 574.4 KB** at the phase-4 end. The app shell's three inline scripts went 371.0 → 251.1 KB,
 the machine-assembled worker bundle 48.1 → 18.8 KB, and the injected module copies 107.0 → 46.2 KB.
-As it stands, after the sub-bucket cut and v3 P1, the whole page is **698.4 → 486.8 KB** and the
-same three readings are 344.9 → 237.7 KB, 47.5 → 18.4 KB, and 119.7 → 44.7 KB. Roughly 75 KB of
-markup and CSS is untouched in both.
+As it stands, after the sub-bucket cut and v3 P1, the whole page is **763.5 → 519.2 KB** and the
+same three readings are 396.7 → 257.1 KB, 47.5 → 18.4 KB, and 119.8 → 44.7 KB. Roughly 84 KB of
+markup and CSS is untouched in both — up from 75, which is P1's new UI markup and its CSS.
 
 **Staleness has teeth, because a generated artifact that can silently drift is worse than no split
 at all.** `node scripts/build.mjs --check` rebuilds the whole page in memory and compares it byte
@@ -1631,18 +1707,31 @@ as a copy of the built page rather than compiled from.
 **The budgets, retuned to that reality — once, at the phase end.** All three sit at the finished
 measurement plus about 5 %, the same rule the phase-3 numbers were set by:
 
-| gate | v1 | phase 3 | **budget** | measured, phase-4 end | **measured, as it stands** |
-|---|---:|---:|---:|---:|---:|
-| total `index.html` | 400 KB | 540 KB | **600 KB** | 574.4 | **486.8** |
-| app shell | 245 KB | 345 KB | **360 KB** | 344.8 | **326.8** |
-| inlined model code | *(none)* | 46 KB | **50 KB** | 46.2 | **44.7** |
+| gate | v1 | phase 3 | **budget** | measured, phase-4 end | **measured, as it stands** | headroom |
+|---|---:|---:|---:|---:|---:|---:|
+| total `index.html` | 400 KB | 540 KB | **600 KB** | 574.4 | **519.2** | 13.5 % |
+| app shell | 245 KB | 345 KB | **360 KB** | 344.8 | **359.2** | **0.2 %** |
+| inlined model code | *(none)* | 46 KB | **50 KB** | 46.2 | **44.7** | 10.6 % |
 
-*(The budget column is what `build.mjs` enforces and it has not moved. The two measured columns are
-the phase-4 reading these budgets were sized against and the reading as it stands — the sub-bucket
-cut took roughly 90 KB out of the page and v3 P1 has since put 2.2 KB back, so all three still run
-with far more headroom than the 5 % rule below asks for. They are deliberately **not** re-tightened
-here: retuning a tripwire is a once-per-phase act with its own paragraph, and the v3 phases still to
-land are the ones that will spend it.)*
+*(The budget column is what `build.mjs` enforces and **it has still not moved**. The measured columns
+are the phase-4 reading these budgets were sized against and the reading as it stands.)*
+
+**The app-shell tripwire is 0.8 KB from firing, and that is the most useful number on this page for
+whoever works here next.** P1's UI workstream — the collapsible rail, the matrix's own colour-mode
+switch with its ramp hatches, and the four-tab inspector — spent **32.4 KB** of app shell, taking it
+from 326.8 to 359.2 against a 360 KB gate. Nothing is over and nothing was widened to get here: the
+budget is doing precisely what a tripwire is for, which is to make the next addition an explicit
+decision instead of a diff nobody sized.
+
+It was **deliberately not retuned at B1**, though the once-per-phase rule would have allowed it. Two
+reasons. First, a budget raised in the same commit as the change that filled it is a budget that has
+stopped being evidence — the 5 % rule sizes a tripwire against a *finished* measurement, and the
+UI work §8 schedules is not finished. Second, "raise the ceiling" and "make the shell smaller" are
+genuinely competing answers here and the second has not been tried: the shell carries markup and CSS
+**as authored**, because minifying those needs an HTML/CSS rewriter with no test suite behind it,
+and that trade was priced when 75 KB was untouched rather than 84. Whoever lands the next UI phase
+owns that decision and owes it a paragraph, in this section, with the measurement it was sized
+against — the same ceremony every earlier raise on this page got.
 
 The total is *up* despite the shell now being minified, and both halves of that are worth stating:
 the split took the page down to 454.1 KB, and phase 4 then spent it — 40.4 KB of frozen villain
@@ -1669,9 +1758,35 @@ much further than the stripped one (107.0 → 119.7) and that gap is the point o
 from the source and the page does not carry.
 
 The honest claim is no longer "it fits in 400 KB", and it is no longer "the shell is source you read
-in the shipped file" either. It is: **487 KB of self-contained offline page — 115 KB of measured
-data, 45 KB of the model's own source, 327 KB of application — generated from 416 KB of commented
+in the shipped file" either. It is: **519 KB of self-contained offline page — 115 KB of measured
+data, 45 KB of the model's own source, 359 KB of application — generated from 480 KB of commented
 source that is committed next to it and that `--check` will not let it drift from.**
+
+**From v3 P1 that sentence is per-artifact, and it is grep-gated rather than proof-read.** The dual
+build (V3-PLAN §5.3) ships *lite* as `index.html` and, once P3's payload exists, *full* as
+`index-full.html`; each artifact carries exactly one honesty sentence in its banner, and gate **D11**
+asserts both directions — that an artifact carries its own claim, **and that it carries none of the
+others'**. "One artifact wearing the other's claim sentence" is the named failure mode, and it is the
+one a copy-paste between two shells produces. The sentences in `scripts/lib/variant.mjs` today are
+shaped placeholders carrying each variant's load-bearing clause (lite: *nothing that needed a
+solver*; full: *the solved baseline as well as the measurement*); **the final wording is P5's**, and
+whatever lands is enforced from the moment it is written because the gate reads the manifest rather
+than a copy of the text. The full artifact's **size budget is deliberately `null`** until D9 sets it
+from the first real `data/equilibrium.json` at measured + 5 %: it reports its bytes and asserts
+nothing, loudly, because a fabricated ceiling would read as a checked claim.
+
+**One dependency, scoped as a property rather than a promise.** *(From spike S-E §7.)* This
+repository is no longer "zero-dependency" flatly, and pretending otherwise would have been the
+easier sentence. Playwright is a **dev-time** dependency with two named consumers, `smoke.mjs` and
+`browsers.mjs`, and no runtime reach at all. The promise that survives is the one that was ever
+load-bearing and is now stated exactly: **the generator and both shipped artifacts have zero runtime
+dependencies** — `index.html` fetches nothing, imports nothing and runs from `file://`, and
+`scripts/generate-data.mjs` builds it with nothing but Node. That is mechanically enforced rather
+than asserted here: `test/manifest.test.mjs` pins Playwright as the *sole* dependency and pins the
+manifest's deliberate absence of a `"type"` field (adding one would flip `.js` resolution repo-wide
+and break the two classic worker scripts) — two properties that are invisible in a diff and
+catastrophic to lose. Any further adoption needs a named consumer and a memo; the default answer is
+no.
 
 ### 9.12 The Simulate button — the one Monte Carlo that runs in your browser
 
@@ -1857,9 +1972,17 @@ reports it now, and `tick`'s own `document.hidden` guard is kept for a browser t
 rAF. The run resumes on unhide with a bit-identical result.
 
 **The cache promises nothing, and neither does this document.** It is best-effort. The backend is
-decided once, at load, by a **real write probe** rather than a `typeof` sniff, because WebKit is
-documented to throw `SecurityError` on the first `localStorage` access from a `file://` page; if the
-probe fails, the engine degrades silently to an in-memory `Map` for the session. Keys are namespaced
+decided once, at load, by a **real write probe** rather than a `typeof` sniff; if the probe fails,
+the engine degrades silently to an in-memory `Map` for the session. **The reason used to be a
+citation and is now a measurement, and the measurement went the other way.** This section used to
+say WebKit "is documented to throw `SecurityError` on the first `localStorage` access from a
+`file://` page". Spike S-E measured it and gate **SS** independently reproduced it: WebKit 26.5 does
+**not** throw — `localStorage` is reachable from `file://` and the page caches to it. The probe
+stays, because the design argument never depended on which browser throws: a `typeof` sniff answers
+a question about the API's *presence* when what the engine needs to know is whether a *write*
+succeeds, and that is a different question in any browser with storage disabled, a full quota, or a
+private window. What changed is that the sentence explaining it is now a verdict this repository
+measured rather than a fact it repeated. Keys are namespaced
 `plo4:<model hash>:<settings hash>`, the cap is ~1.5 MB with LRU eviction, and `QuotaExceededError`
 is handled explicitly (evict, retry once, then live in memory). **Chrome shares one `localStorage`
 area across every `file://` page on the machine**, so the store is treated as hostile: every read is
@@ -1941,10 +2064,15 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
    a far better approximation than it would be in a tight game — at 90% VPIP an opponent's calling
    range genuinely is close to random — but at the tight end of the slider it overstates
    speculative hands. The vs-Raise `tighten` shift (§6.5) is a patch, not a solution.
-   **Partly closed in v2, and only when you ask for it:** the villain-profile control switches the
+   **Partly closed in v2, and closed by default in v3:** the villain-profile control switches the
    grid onto the VPIP-filtered lattice (§3.3), and the Simulate button (§9.12) measures settings the
-   lattice does not cover. The default is still random opponents — that is what gate I22 pins — so
-   this limitation stands as written for the page as it loads.
+   lattice does not cover. **At barrier B1 that control's default was flipped on** (§3.4), so the
+   page as it loads now scores against opponents playing the VPIP you set, not against random ones.
+   What survives of this limitation is smaller and still real: the lattice is measured at five VPIP
+   points and one discipline `q`, so away from those the page is interpolating (badged), and `q`
+   itself is opinion with nothing calibrating it (limitation 18). Random opponents remain one click
+   away at the `#v1point` button, and gate **I22 pins that path**, not the default — which is
+   exactly why the flip could happen without weakening anything.
 2. **Cell means hide within-cell variance.** `RUN2` spans `QJ97` down to `6432`. One number for a
    cell is a real simplification. The taxonomy is designed to minimize it — rundowns are split by
    gap *count* and gap *position*, and `RUN0` is split high/low in the wheel-aware orientation
@@ -2067,17 +2195,49 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
     vs-3-bet node, whose threshold is an absolute price. A rake model that re-sorted the grid would
     have to be non-uniform across cells, which is a different and much bigger claim about what rake
     does to hand values, and it is not made.
-15. **Every claim about the browser is measured in one browser, on one machine.** The page itself is
-    plain DOM and has no reason to differ, but §9.12's three load-bearing browser facts do: that a
-    classic Blob worker boots from a `file://` page, that `localStorage` is reachable there, and
-    that a hidden tab suspends `requestAnimationFrame`. All three are **headless Chrome on macOS**,
-    and Firefox and Safari have not been run at all. The engine is written so that either answer is
-    safe — a browser that refuses the worker gets the main-thread fallback, and one that throws on
-    `localStorage` gets a session-only in-memory cache, both disclosed on screen — but "written to
-    be safe" is not "measured". The throughput figures, the 12× fallback ratio and the cache's
-    survival across a restart are all one-machine readings and are quoted as such. Separately,
-    `smoke.mjs` needs Playwright, which is not installed here, so the screenshot gate and the 8 ms
-    slider-morph p95 budget have not been re-measured since v1.
+15. **Three engines now, one machine still — and one of the three facts remains unmeasurable.**
+    *(Rewritten at v3 P1 from what `browsers.mjs` measures; gates **SF** and **SS**.)* §9.12 rests on
+    three load-bearing browser facts: **F1** a classic Blob worker boots from a `file://` page,
+    **F2** `localStorage` is reachable there, **F3** a hidden tab suspends `requestAnimationFrame`.
+    Each is now measured **twice** — once against the raw browser and once against what the page
+    *claims* about it — and the gate is the **agreement** between them, so a page that boots the
+    worker and reports "fallback" fails, and so does one that degrades silently.
+
+    | | Chromium 151.0.7922.34 | Firefox 153.0 | WebKit 26.5 |
+    |---|---|---|---|
+    | F1 worker boots from `file://` | yes, page reports `worker` | yes, page reports `worker` | yes, page reports `worker` |
+    | F2 `localStorage` reachable | yes, page caches to it | yes, page caches to it | **yes** — falsifying the claim §9.12 used to repeat |
+    | F3 hidden tab suspends rAF | **not measurable headless** | **not measurable headless** | **not measurable headless** |
+    | F3's *consequence* | measured green | measured green | measured green |
+
+    **Two caveats with teeth.** Playwright's WebKit build **is not Safari.app** — the harness prints
+    that on every run, and this row is evidence about WebKit, not about the browser your reader
+    uses. And F3's raw fact is unmeasurable headless by any mechanism available (`bringToFront`
+    leaves `visibilityState` at `"visible"`), so the gate **asserts that it is unmeasurable** and
+    measures the consequence instead: the fallback run pauses, freezes, does not finish while
+    hidden, resumes, clears the flag, and the page carries the sentence it renders from. If a future
+    Playwright ever makes the raw fact measurable, that row goes **red** and forces this limitation
+    to be deleted rather than the gate to be widened.
+
+    Everything else here is still **one machine**: the throughput figures, the 12× fallback ratio and
+    the cache's survival across a restart are single-box readings and are quoted as such. Both
+    harnesses run headless against Playwright-managed throwaway profiles and never an installed
+    browser. `smoke.mjs` now runs — Playwright is the repository's one dev-time dependency
+    (§9.11) — so the screenshot gate and the slider-morph budget are measured again rather than
+    inherited from v1; the layout-inclusive p95 is **2.3–2.7 ms against a 4.0 ms budget**, and the
+    old JS-only 8 ms figure is kept only as an explicitly-labelled floor check that reports its own
+    slack.
+
+    **One thing the harness found that is worth recording, because it had been contaminating
+    measurements silently.** The first-run tour auto-arms 400 ms after init and drives the very
+    control under test — its per-step `setProfile()` cancels a running simulation — so both
+    harnesses were measuring a moving target: `smoke.mjs` had removed the tour element ~50 ms after
+    `__ready`, i.e. before it existed, and a 30-second animation then ran underneath the whole state
+    sweep, both morph measurements and every screenshot. Both harnesses now suppress the tour
+    through the page's own `sessionStorage` guard, and **the suppression is itself a gate row** in
+    each, because a suppression that quietly stops working puts us back where we were while
+    reporting green. A deliberate tour exercise — run it, assert zero page errors — would be a
+    reasonable later addition; 30 seconds per variant is too slow for smoke as it stands.
 16. **ρ's relevance decays with depth, and the deep end of the slider is where the measurement
     means least.** *(v3 P1, brief §5.5.)* The entire measurement layer is **all-in equity at
     showdown**: 100 % of stacks in, every hand, every street, to the river. That number is most
@@ -2119,6 +2279,49 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
     cannot drift:* A percentile cut can change which hands you play but never how many, so every
     dial that scales or shifts every cell moves the ordering and not the count; the absolute-EV cut
     is the designated structural fix, and its gate is written to prove the fix bites.
+18. **The decision layer remains unfalsified against money.** *(v3 P1, from spike S-C; V3-PLAN §3.5,
+    §5.4.)* Everything in §§1–3 is measured. Everything from §5 on — realization, the score, the
+    tier cuts, `q` = 0.85, the depth and rake curves — is **opinion that has never been checked
+    against a result**. The pre-registered test that would check it (criteria **PC-0..PC-8**, written
+    at Phase 0 before any EV number existed and stored verbatim in `scripts/gates/reserved.mjs`)
+    **cannot be run**: PC-1 (hero's cards visible independently of the outcome), PC-2 (lawful
+    provenance) and PC-3 (assignment) are unsatisfiable, because no lawful, hero-visible, assigned
+    4-card PLO corpus exists at any volume. PC-0 is failure-closed — a criterion that cannot be
+    evaluated counts as FAIL — so gate **I46 is parked, unpassable by construction, and recorded at
+    full strength rather than lowered to what today's data could clear.** It comes alive unchanged
+    the day such a corpus exists.
+
+    **Two consequences, both structural.** The absolute-EV surface is display-only and stays
+    `estimate`-badged everywhere; score-primary is permanent for v3, not by preference but because
+    the flip is gated on a verdict that can only be stamped FAIL. And **no corpus size fixes this**:
+    you cannot read the EV of an action nobody took, so the only design that satisfies the bar is a
+    *prospective randomised A/B test on the marginal cells*, run by a player against their own play.
+    That is the named successor experiment, and it is out of scope for v3.
+
+    **The bar as written is weaker than the bar as meant, and that is worth stating wherever it is
+    quoted.** The pre-registered sufficiency threshold counts *showdowns*; S-C's carry-forward
+    finding is that it should count **hero rows**, because a datamined corpus can clear a
+    showdown-counted bar at any volume while failing PC-1 outright — hero's cards are visible there
+    only when the hand went to showdown, which is exactly the outcome-dependent visibility PC-1
+    forbids. The harness therefore evaluates and reports **both readings** rather than picking one,
+    and a test builds the datamined shape at volume (90 cells × 120 showdown rows, zero hero rows)
+    to assert all three facts at once: the bar as written is met, the repaired bar is not, and PC-1
+    refuses the corpus.
+
+    One number the harness *can* produce today, because it needs no corpus: **PC-8 passes.** 890 of
+    987 transposed cell pairs (**90.2 %**) have a shipped heads-up equity gap wider than 2 × the
+    cell standard error, so where the score ordering and the EV ordering disagree, they disagree
+    across real distance rather than inside the error bars. That is a finding to set beside S-C §5's
+    "71 % of *adjacent* pairs sit inside the error bars", which it does not contradict and is often
+    mistaken for: the transposed set is not the adjacent set.
+
+    A calibration harness ships anyway, because PC-4's paired estimator is exactly the shape a
+    **self-play consistency** check takes — the code is not wasted, only its input is missing. Its
+    output is stamped `unit: 'potFrac'` / `moneyValidated: false` at every field a caller might read,
+    and feeding it to the verdict machine fails PC-4 by name; a number that looks like a result is
+    the one way this limitation could quietly stop being true. **P5 renders this limitation from
+    shipped data in the Method view** (`model.calibration`), so the reason is on screen and not only
+    in this document; it is stated here from P1 because it is true from P1.
 
 ### v2 list — shipped
 
@@ -2135,11 +2338,16 @@ being painted — see §2.4 for what it cost and what went with it.
 an axis and the premium is not; see limitation 8.)* The 3-bet *mix* was editable in v2; the
 *sizing* was not.
 
-The honest v2.1 list is now short and mostly about coverage rather than model: Firefox and Safari
-have never run the worker path or the `localStorage` probe (limitation 15); the cell is the finest
-unit the model resolves, so there is nothing finer than a cell to ask about (§2.4); `q` is opinion
-with nothing calibrating it; and 5-card PLO and street-by-street postflop realization remain out of
-scope by decision rather than by omission (V2-PLAN §0).
+The honest v2.1 list is now short and mostly about coverage rather than model. **Two items came off
+it at v3 P1 and one got worse.** Off: Firefox and WebKit now run the worker path and the
+`localStorage` probe, as gates SF and SS, and one of the facts that was being repeated turned out to
+be false (limitation 15). Off: the 3-bet *sizing* is now an axis (limitation 8). Worse, or rather
+now stated at its true size: `q` is opinion with nothing calibrating it, and so is everything else
+in the decision layer — limitation 18 is what that sentence grew into once S-C established that the
+test which would settle it cannot be run at all. Unchanged: the cell is the finest unit the model
+resolves, so there is nothing finer than a cell to ask about (§2.4); and 5-card PLO and
+street-by-street postflop realization remain out of scope by decision rather than by omission
+(V2-PLAN §0).
 
 ---
 
@@ -2150,8 +2358,8 @@ positions × 4 nodes — I22, the regression gate, sweeps every integer v from 2
 I32 sweeps that same VPIP axis across all twelve depth × rake × straddle lanes at once,
 I24/I25 assert the shape of the v2 build-time measurements over the emitted data itself,
 I23/I27/I28 sweep the depth axis on top of the same grid, I26/I29/I30/I31 sweep the straddle
-toggle and the rake slider, and I41–I44 sweep the four v3 axes — **50 gates in total** with the D
-and V families and the benchmark gate. The counts are derived from `EXPECTED_IDS` in
+toggle and the rake slider, I41–I44 sweep the four v3 axes, and D10/D11 read the built artifacts
+off disk — **52 gates in total** with the rest of the D and V families and the benchmark gate. The counts are derived from `EXPECTED_IDS` in
 `scripts/gates/index.mjs`, which is the frozen report order and is written out rather than
 generated, precisely so that a family quietly disappearing produces a mismatch instead of a smaller
 report that agrees with itself.

@@ -280,3 +280,49 @@ test('the morph budget is measurable, and the budget ships as data rather than a
   assert.match(SHELL, /window\.__morphBudgetMs = 4\.0;/,
     'the budget ships on the page so the harness cannot hold it to a number it made up');
 });
+
+test('THE CROSS-LANE PIN: the page and the harness carry the same morph budget', () => {
+  // P1 INTEGRATION (B1). Lane U shipped `window.__morphBudgetMs` on the page so the harness would
+  // read the promise; lane I, in a different worktree, arrived at the same 4.0 ms independently and
+  // typed it into smoke.mjs as MORPH_LAYOUT_BUDGET_MS. Two lanes, two measurements, one number —
+  // and nothing yet stopping them drifting apart, because smoke.mjs is not one of the three GREEN
+  // checks and needs Playwright to say anything at all.
+  //
+  // This is the pin, and it is deliberately a SOURCE comparison rather than a wiring change. Making
+  // the harness read the budget off the artifact under test would let the artifact raise its own
+  // ceiling — the thing being measured choosing its own yardstick, which is the failure `smoke.mjs`
+  // already guards against in the cache validator. Two independent copies that must agree is the
+  // stronger arrangement, and this test is what makes "must agree" true.
+  const smoke = readFileSync(join(ROOT, 'smoke.mjs'), 'utf8');
+  const page = /window\.__morphBudgetMs = ([\d.]+);/.exec(SHELL);
+  const harness = /const MORPH_LAYOUT_BUDGET_MS = ([\d.]+);/.exec(smoke);
+  assert.ok(page, 'the page no longer publishes its morph budget');
+  assert.ok(harness, 'smoke.mjs no longer declares a layout-inclusive morph budget');
+  assert.equal(Number(harness[1]), Number(page[1]),
+    `smoke.mjs budgets ${harness[1]} ms and the page promises ${page[1]} ms — one of the two moved alone`);
+});
+
+test('the retained 8 ms floor check is pinned, and no longer claims to time JS only', () => {
+  // P1 RED TEAM (docs/refutations/P1.md). Two refuters moved MORPH_BUDGET_MS from 8 to 800 and
+  // watched all 52 gates and the whole suite stay green: unlike the layout budget it has no
+  // page-side twin, so the cross-lane pin above does not reach it and nothing greps the literal.
+  // Keeping a floor check that reports its own slack is the right call — a check that says "I
+  // cannot distinguish this page from one N times slower" is information — but it has to be a
+  // check somebody notices moving. This is that pin.
+  const smoke = readFileSync(join(ROOT, 'smoke.mjs'), 'utf8');
+  assert.match(smoke, /const MORPH_BUDGET_MS = 8;/,
+    'the floor check moved without a reviewer seeing it; it is anchored to nothing, so the digits are all there is');
+  // AND ITS LABEL. The same refuters found the stated rationale falsified: `__measureMorph` now
+  // forces style + layout inside the timed region (asserted three tests up), so both smoke budgets
+  // sample layout-inclusive work and the old "JS-only ... at Chromium's performance.now() floor"
+  // account described a function that no longer exists. A floor check whose stated reason for
+  // being a floor has been falsified is worse than no second budget, so the words are gated too.
+  const detail = smoke.slice(smoke.indexOf('check(morph.p95 < MORPH_BUDGET_MS'),
+    smoke.indexOf('const morphL ='));
+  assert.ok(!/JS pass|JS only|JS-only/.test(detail),
+    'the retained check still calls itself a JS-only measurement, which __measureMorph falsified');
+  assert.ok(!/performance\.now\(\) floor/.test(detail),
+    'the readings are not at the clock floor any more — that figure was measured against the retired function');
+  assert.match(detail, /FLOOR CHECK/,
+    'and it must keep saying what it is, or it reads as a live tripwire');
+});

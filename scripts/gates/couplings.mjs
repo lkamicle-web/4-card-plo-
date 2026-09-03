@@ -11,7 +11,7 @@
 //
 //   I41  the rake-depth coupling (item 6)      — one new opinion, `rake.potScale`, flagged
 //   I42  the depth->width factor (item 6b)     — zero new opinion, the free anchor of brief §5.4
-//   I43  the villain profile-ON machinery (8)  — the default is NOT flipped here; B1 flips it
+//   I43  the villain profile-ON machinery (8)  — the LIBRARY default stays OFF; B1 flipped the PAGE's
 //   I44  the 3-bet sizing axis (item 9)        — exact arithmetic, one unanchorable flag
 //
 // Two of §7.2's expected-falsified predictions are tested here and BOTH SURVIVE. They are
@@ -46,6 +46,16 @@ const NODES3 = ['rfi', 'limps', 'raise'];
  * is I41's own flag, and limitation 17 is the defect I42's factor half-closes. Each gate proves the
  * limitation it leans on is actually published, in both places, rather than asserted in a comment.
  *
+ * SCOPED TO THE ENTRY'S OWN BLOCK, and that is the P1 red team's correction rather than a
+ * refinement. The first version searched the whole flattened document for the sentence and checked
+ * separately that a numbered heading line for N existed at all. A refuter SWAPPED the two entries' `n` values —
+ * so limitation 16, the named reason `rake.potScale` cannot be anchored, carried the percentile-cut
+ * note — left both notes byte-identical to METHODOLOGY.md, and passed all 52 gates. The docstring
+ * above promised "under the numbered entry it names" and the code did not check it. It does now:
+ * the search runs over the slice from entry N's own heading to the next numbered entry and
+ * nowhere else, so a
+ * note filed under the wrong number fails, and so does a note relocated out of its entry.
+ *
  * @returns {string[]} the problems, empty when the register and the document agree
  */
 function limitationProblems(n) {
@@ -55,12 +65,29 @@ function limitationProblems(n) {
   if (!e) return [`limitation ${n} is missing from constants.limitations`];
   if (!e.note || e.note.length < 80) out.push(`limitation ${n}'s note is missing or a stub`);
   if (!e.of || !e.fix) out.push(`limitation ${n} does not name what it is about or what would fix it`);
+  // THE CHAIN FROM THE ADMISSION TO THE CONSTANTS IT LEGITIMISES. `flagsItExplains` is the only
+  // machine-readable link from a limitation to the flags that cite it, and it too was deletable
+  // with everything green. Where it is declared it must resolve: every path a real shipped
+  // constant, in a block that actually carries a flag.
+  for (const path of e.flagsItExplains || []) {
+    const [blk, key] = path.split('.');
+    const block = P.CONSTANTS[blk];
+    if (!block || typeof block !== 'object' || !(key in block)) {
+      out.push(`limitation ${n} says it explains ${path}, which is not a shipped constant`);
+    } else if (!block.flag) {
+      out.push(`limitation ${n} says it explains ${path}, whose block ships no flag`);
+    }
+  }
   let doc = null;
   try { doc = readFileSync(resolve(ROOT, 'docs/METHODOLOGY.md'), 'utf8'); } catch (err) {
     return [`METHODOLOGY.md is unreadable, so the register cannot be checked: ${err.message}`];
   }
-  // the numbered entry must exist in §10's list, and the shipped sentence must be inside the file
-  if (!new RegExp(`^${n}\\. \\*\\*`, 'm').test(doc)) out.push(`METHODOLOGY §10 has no entry ${n}`);
+  // the numbered entry must exist in §10's list, and the shipped sentence must be inside IT
+  const head = new RegExp(`^${n}\\. \\*\\*`, 'm').exec(doc);
+  if (!head) { out.push(`METHODOLOGY §10 has no entry ${n}`); return out; }
+  const rest = doc.slice(head.index + head[0].length);
+  const nxt = /^\d+\. \*\*/m.exec(rest);
+  const block = nxt ? rest.slice(0, nxt.index) : rest;
   // WHITESPACE-NORMALISED, and only whitespace. METHODOLOGY is hard-wrapped at 100 columns and its
   // list items are indented, so the same sentence is one string here and four lines with leading
   // spaces there. Collapsing runs of whitespace to a single space on BOTH sides compares the words
@@ -68,9 +95,48 @@ function limitationProblems(n) {
   // stay wrapped the way the rest of it is. Nothing else is normalised: no case folding, no
   // punctuation stripping, so a changed word or a moved comma still fails.
   const flat = (t) => t.replace(/\s+/g, ' ');
-  if (e.note && flat(doc).indexOf(flat(e.note)) < 0) {
-    out.push(`limitation ${n}'s shipped note does not appear verbatim in METHODOLOGY.md — `
+  if (e.note && flat(block).indexOf(flat(e.note)) < 0) {
+    out.push(`limitation ${n}'s shipped note does not appear verbatim under METHODOLOGY.md entry ${n} — `
       + `the page and the document have drifted; fix BOTH, never one`);
+  }
+  return out;
+}
+
+/**
+ * THE FLAG'S OWN THREE LEGS, asserted rather than assumed — V3-PLAN §6's "flagged" idiom is
+ * "named in `constants`, labeled in the Method view, and bounded by a gate", and the P1 red team
+ * found the first two legs unenforced on every flag in this lane: `constants.rake.flag` and
+ * `constants.sizing.flag` could each be emptied or deleted with 52 gates, 436 tests and a clean
+ * rebuild all green, at which point `stampConstants` republishes the block without the admission
+ * and the Method view silently loses the sentence that legitimises the number.
+ *
+ * @param {string} blk        the constants block that carries the flag
+ * @param {string[]} names    substrings the flag must contain — the constants it flags, and the gate
+ * @param {string[]} badged   dotted constant paths that must carry the Method view's `estimate` badge
+ */
+function flagProblems(blk, names, badged) {
+  const out = [];
+  const flag = (P.CONSTANTS[blk] || {}).flag;
+  if (typeof flag !== 'string' || flag.length < 60) {
+    out.push(`constants.${blk}.flag is missing or a stub — the admission that legitimises this block is not shipped`);
+  } else {
+    for (const nm of names) if (flag.indexOf(nm) < 0) out.push(`constants.${blk}.flag does not name ${nm}`);
+  }
+  // THE BADGE LEG. The Method view renders `constants` generically, so before this clause a flagged
+  // number rendered as an ordinary field, indistinguishable from an anchored one. `UNANCHORED` in
+  // src/shell.html is the map that gives it the `estimate` tag; a flagged path missing from it is a
+  // number the page presents as if it were checked.
+  let shell = null;
+  try { shell = readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8'); } catch (err) {
+    return out.concat(`src/shell.html is unreadable, so the badge cannot be checked: ${err.message}`);
+  }
+  const map = /var UNANCHORED = \{([^}]*)\}/.exec(shell);
+  if (!map) {
+    out.push('src/shell.html no longer carries the UNANCHORED badge map — every flagged constant would render unbadged');
+    return out;
+  }
+  for (const path of badged) {
+    if (map[1].indexOf(`'${path}'`) < 0) out.push(`${path} is flagged but not badged in the Method view`);
   }
   return out;
 }
@@ -181,6 +247,29 @@ export function build(ctx) {
       const lim16 = limitationProblems(16);
       bad.push(...lim16);
 
+      // (g) THE FLAG AND THE FORMULA ARE THEMSELVES BOUNDED — the P1 red team's two findings on this
+      // constant, closed in the idiom clause (f) already owns.
+      //
+      // THE FLAG. Three refuters deleted `constants.rake.flag` outright and watched 52 gates, 436
+      // tests and a clean rebuild all pass, with `stampConstants` then republishing the rake block
+      // WITHOUT the admission — so the page lost the sentence that legitimises `potScale` and
+      // nothing noticed. Of gated + flagged + badged, only "gated" was real. The flag must exist,
+      // must name the constant it flags and the gate that bounds it, and `potScale` must carry the
+      // Method view's `estimate` badge rather than rendering like an anchored field.
+      bad.push(...flagProblems('rake', ['potScale', 'I41'], ['rake.potScale']));
+      // THE FORMULA STRING. `potBBAt` is rendered by the Method view under "Constants (rendered from
+      // the shipped data)" and was read by nothing: refuters replaced it with 'potBB*(d/40)^7',
+      // 'potBB*(100/d)^2' and 'ANYTHING AT ALL' and the tree stayed green, so the page could publish
+      // one formula while this gate narrated another in the terminal. It is now asserted
+      // character-for-character against a spelling COMPOSED FROM `depth.ref`, which closes the
+      // second half of the finding too — the literal 100 in the string would have become a lie the
+      // day the reference depth moved, with nothing firing.
+      const wantPotBBAt = `potBB*(d/${D.ref})^potScale`;
+      if (R.potBBAt !== wantPotBBAt) {
+        bad.push(`rake.potBBAt reads "${R.potBBAt}" but the coupling computes "${wantPotBBAt}" — `
+          + `the Method view would publish a formula the model does not run`);
+      }
+
       G('I41', bad.length === 0,
         `rake-depth coupling (V3-PLAN item 6, brief §5.3), potBB(d) = ${R.potBB}*(d/${D.ref})^${R.potScale}. ` +
         `(a) THE KNEE IS AN IDENTITY, not a fit: 3/0.05 = ${R.potBB} is the existing constant, the ratio is 1 at ` +
@@ -203,7 +292,15 @@ export function build(ctx) {
         `(f) AND THAT REASON IS PUBLISHED RATHER THAN BELIEVED: METHODOLOGY §10 limitation 16 ships as ` +
         `constants.limitations[0] and renders in the Method view from the shipped data, and its sentence is ` +
         `byte-compared against docs/METHODOLOGY.md here — the grep-gate idiom, so the page and the document ` +
-        `cannot carry two versions of the same admission` +
+        `cannot carry two versions of the same admission — and the search is SCOPED to entry 16's own ` +
+        `block, so a note filed under the wrong number fails too. (g) THE OTHER TWO LEGS OF "FLAGGED", ` +
+        `after the P1 red team found both unenforced (docs/refutations/P1.md): constants.rake.flag must ` +
+        `exist and must name both potScale and this gate — deleting it used to leave everything green ` +
+        `while the artifact shipped the exponent with no admission attached — and potScale must carry ` +
+        `the Method view's ESTIMATE badge, so a bounded number cannot render like an anchored one. The ` +
+        `formula string is bounded the same way: potBBAt is asserted character-for-character against ` +
+        `"${wantPotBBAt}", composed from depth.ref rather than a hard-coded 100, because a page that ` +
+        `publishes its own arithmetic must publish the arithmetic it runs` +
         (bad.length ? ` — FAILS: ${bad.slice(0, 4).join('; ')}` : ''));
     } },
 
@@ -350,6 +447,21 @@ export function build(ctx) {
       const lim17 = limitationProblems(17);
       bad.push(...lim17);
 
+      // (g) THE FORMULA STRING IS BOUNDED TOO, in the same idiom clause (f) already owns, and the
+      // asymmetry the P1 red team named is the argument: this file spent thirty lines byte-comparing
+      // the limitation NOTES against METHODOLOGY.md and nothing at all on the formula strings that
+      // make arithmetic claims about the code standing beside them. `depth.widthRatio` renders in
+      // the Method view under "Constants (rendered from the shipped data)" and was read by nothing —
+      // refuters replaced it with 'sqrt(beta)*log(d) -- NONSENSE' and with the ratio inverted and
+      // squared, and all 52 gates stayed green while the page published a formula this very clause
+      // proves the code does not run. Composed from `depth.ref` rather than a literal 100, so the
+      // string cannot go quietly false the day the reference depth moves.
+      const wantWidthRatio = `baseRealization(pos,d)/baseRealization(pos,${D.ref})`;
+      if (D.widthRatio !== wantWidthRatio) {
+        bad.push(`depth.widthRatio reads "${D.widthRatio}" but clause (a) proves the code computes `
+          + `"${wantWidthRatio}" — the Method view would publish a formula the model does not run`);
+      }
+
       G('I42', bad.length === 0,
         `depth->width factor (V3-PLAN item 6b, brief §5.4) — ZERO NEW OPINION: it is ` +
         `baseRealization(pos,d)/baseRealization(pos,${D.ref}), the ratio beta already implies and I23(f) ` +
@@ -374,21 +486,28 @@ export function build(ctx) {
         `which is the defect brief §5.1 names. (f) that defect is PUBLISHED and stays published: METHODOLOGY §10 ` +
         `limitation 17 ships as constants.limitations[1], renders in the Method view from the shipped data, and ` +
         `its sentence is byte-compared against docs/METHODOLOGY.md here. This factor half-closes it — the other ` +
-        `three quarters of the model still cut percentiles, and the absolute-EV cut is the named structural fix` +
+        `three quarters of the model still cut percentiles, and the absolute-EV cut is the named structural fix ` +
+        `— and the search is SCOPED to entry 17's own block, so a note filed under the wrong number fails too. ` +
+        `(g) THE FORMULA STRING CARRIES THE SAME BOUND AS THE NOTES, which is the asymmetry the P1 red team ` +
+        `named: depth.widthRatio is asserted character-for-character against "${wantWidthRatio}", composed from ` +
+        `depth.ref rather than a hard-coded ${D.ref}. It renders in the Method view and was read by nothing, so ` +
+        `the page could publish a formula that clause (a) proves the code does not run` +
         (bad.length ? ` — FAILS: ${bad.slice(0, 4).join('; ')}` : ''));
     } },
 
     // =========================================================================
     // I43 — the villain profile, ON (V3-PLAN item 8)
     // =========================================================================
-    { ids: ['I43'], label: 'villain profile-ON: the machinery, with the default NOT flipped', run: () => {
+    { ids: ['I43'], label: 'villain profile-ON: the machinery, with the library default still OFF', run: () => {
       // METHODOLOGY §10.1's remaining half: the lattice is measured and shipped, and the tiers are
       // still cut from random-opponent equities. `scripts/lib/tier-fixture-v2.mjs` records exactly
       // why no gate could see it — "the villain profile reaches tiers through `villainEq`, which the
       // page calls and `solve` does not". So the shadow-model construction has been hoisted out of
       // `src/shell.html` into `policy.mjs` (`profiledModel`), and this gate is what that hoist was
-      // for. THE DEFAULT IS NOT FLIPPED: `villainProfileOf` still treats anything without `on: true`
-      // as OFF and every caller still passes nothing. §5.1 makes the flip a fixture ceremony at B1.
+      // for. THE LIBRARY DEFAULT IS STILL OFF: `villainProfileOf` treats anything without `on: true`
+      // as OFF and every caller in this repository still passes nothing. B1 has since performed §5.1's
+      // ceremony and flipped the PAGE's initial state — a different object entirely, and clause (e)
+      // below is what stops the two ever being confused for one another.
       const bad = [];
       const V = (model.constants && model.constants.villainLattice) || {};
       const pts = V.v || [];
@@ -451,7 +570,7 @@ export function build(ctx) {
       }
 
       // (d) I6 / I7 / I8 / I13 / I19 RE-RUN UNDER ON, at every lattice point rather than only at the
-      // load default: the default is what P1 ships, but B1 may flip it and the user may move it.
+      // load default: the load default is where B1 opens the page, and the user may move it anywhere.
       const struct = [];
       const vs = fast ? [def.v] : pts;
       for (const pv of vs) {
@@ -491,9 +610,13 @@ export function build(ctx) {
       }
       if (struct.length) bad.push(`${struct.length} structural violations under ON: ${struct.slice(0, 3).join('; ')}`);
 
-      // (e) THE DEFAULT IS STILL OFF, asserted rather than assumed — a lane that "meant not to flip
-      // it" and did is exactly what this clause is for.
-      if (P.villainProfileOf(undefined, model).on !== false) bad.push('villainProfileOf now defaults to ON — the B1 ceremony has been skipped');
+      // (e) THE LIBRARY DEFAULT IS STILL OFF, asserted rather than assumed. Before B1 this caught a
+      // lane that "meant not to flip it" and did. After B1 it is doing MORE work, not less: the flip
+      // that landed is the page's initial state, and this clause is what says the legacy state's
+      // SEMANTICS did not move with it. `solve` still receives no profile and OFF is still object
+      // identity — which is the entire reason I22 and I32 survive a default flip, so this must keep
+      // failing if anyone ever "simplifies" the flip down out of the page and into the library.
+      if (P.villainProfileOf(undefined, model).on !== false) bad.push('villainProfileOf now defaults to ON — the flip has leaked out of the page and into the library, and I22/I32 no longer asserts what it says it asserts');
       if (P.VILLAIN_OFF.on !== false) bad.push('VILLAIN_OFF is not off');
 
       G('I43', bad.length === 0,
@@ -514,9 +637,11 @@ export function build(ctx) {
         `THE FINDING**: it expected I8 (TRASH x RB never T1/T2) to fail at tight-v profile-ON, on the strength of ` +
         `I25 having measured TRASH gaining against tight pools. It gains, and it does not gain enough — the ` +
         `percentile cut is what holds, because a delta common to a band moves scores and not ranks. That is the ` +
-        `same structural fact limitation 17 names, arriving from the other direction. (e) THE DEFAULT IS NOT ` +
-        `FLIPPED: villainProfileOf still reads anything without on:true as OFF, which §5.1 makes a B1 ` +
-        `fixture-re-freeze ceremony rather than a lane's decision` +
+        `same structural fact limitation 17 names, arriving from the other direction. (e) THE LIBRARY DEFAULT ` +
+        `IS STILL OFF: villainProfileOf reads anything without on:true as OFF and solve receives no profile, so ` +
+        `the legacy state's SEMANTICS are what they always were. B1 has run §5.1's ceremony and flipped the ` +
+        `PAGE's initial state, freezing data/tiers-v3-default.fixture.txt beside the v2 one; this clause keeps ` +
+        `those two facts distinct, and it is why I22/I32 are still green on the far side of a default flip` +
         (bad.length ? ` — FAILS: ${bad.slice(0, 4).join('; ')}` : ''));
     } },
 
@@ -629,6 +754,81 @@ export function build(ctx) {
       const sBreak = t / (3 * K.breakeven - 2 * t);
       if (lowFold) bad.push(`RUN0_LOW|DS folds at ${lowFold} settings inside the pot-limit domain`);
 
+      // (e) THE DOMAIN IS ASSERTED, NOT READ — the P1 red team's central finding on this gate, and
+      // it was a fair hit. Every clause above BUILDS ITS SWEEP FROM `SZ.min` and `SZ.ref`, so none of
+      // them can bound either one: move the clamp and the sweep moves with it. Measured by the
+      // refuters, `sizing.min` went to 0.001 and `sizing.max` to 2 with all 52 gates and the whole
+      // suite green — a 0.1%-of-pot "3-bet" inside the modelled range, and a domain admitting a
+      // 2x-pot raise that is not a legal PLO action, while this gate's own report line narrated a
+      // window it had never swept. §6 recorded `min` as "bounded by I44's domain sweep"; a sweep
+      // anchored at the constant cannot bound the constant, so here is the bound.
+      //
+      // TWO KINDS OF CLAUSE, and the difference is the whole point of §6. The TOP of the domain is an
+      // IDENTITY — the pot-limit maximum IS s = 1, an arithmetic fact of the game — so it is asserted
+      // outright. The BOTTOM is an authored judgement nothing here measures, so it is PINNED in the
+      // I41(b) idiom: a literal that records the reviewed value and fails on any drift, which proves
+      // the shipped clamp is the one that was reviewed and never that 0.25 is right.
+      if (SZ.ref !== 1) bad.push(`sizing.ref is ${SZ.ref}, not 1 — pot-size is the identity anchor`);
+      if (SZ.max !== SZ.ref) bad.push(`sizing.max ${SZ.max} !== sizing.ref ${SZ.ref} — the pot-limit maximum IS the reference`);
+      if (!(SZ.min > 0 && SZ.min < SZ.ref)) bad.push(`sizing.min ${SZ.min} is not a clamp strictly inside the domain`);
+      // THE CLAMP IS A CLAMP IN BOTH DIRECTIONS. These two probe the MECHANISM, so reading SZ is
+      // right here — the VALUE is bounded by the pin below and by max === ref above, and 2 is left
+      // as a literal because it is a real illegal super-pot 3-bet rather than an offset from a
+      // constant that could move.
+      if (P.envOf({ sizing: SZ.min / 2 }).sizing !== SZ.min) bad.push('a sizing below min is not clamped to min');
+      if (P.envOf({ sizing: 2 }).sizing !== SZ.max) bad.push('a sizing above max is not clamped — the page could quote an illegal super-pot 3-bet');
+      // THE PIN on the authored end. 0.29 * (3*0.25)/(1+0.5) = 0.145 exactly, and it is a literal
+      // here on purpose: recomputing it from SZ.min would be self-consistent under any clamp.
+      const pinnedMinPrice = 0.145;
+      if (P.sizingPrice(SZ.min) !== pinnedMinPrice) {
+        bad.push(`sizingPrice(min) is ${P.sizingPrice(SZ.min)}, not the pinned ${pinnedMinPrice} — the clamp has moved`);
+      }
+      // THE DETENTS ARE ON THE LADDER THEY CLAIM TO BE ON. Read by nothing today — there is no
+      // sizing control on the page — so a refuter set them to [9, 9, 9] and to [0.1, 0.9, 7] with
+      // everything green, and the Method view would have rendered an illegal 7x-pot stop under the
+      // heading "Constants (rendered from the shipped data)".
+      const det = SZ.detents || [];
+      if (!det.length) bad.push('sizing.detents is empty');
+      if (det.some((x) => !(x >= SZ.min && x <= SZ.max))) bad.push(`a sizing detent is outside [${SZ.min}, ${SZ.max}]: ${det.join(', ')}`);
+      if (det.length && det[det.length - 1] !== SZ.ref) bad.push('the last sizing detent is not the pot-limit maximum');
+      if (det.some((x, i) => i > 0 && x <= det[i - 1])) bad.push(`the sizing detents are not strictly increasing: ${det.join(', ')}`);
+      // THE RECORDED CALIBRATION POINT IS THE POINT THIS GATE PROBES. `premiumCalibratedAt` was
+      // inert: set to 0.25 or 0.37 — a shipped, Method-view-rendered claim that the 7-point premium
+      // was calibrated at a quarter pot, which is false — it passed everything. Clause (b) measures
+      // the premium from vs3bet's own constants and never consulted this datum, so the two could not
+      // disagree. Now they must.
+      if (SZ.premiumCalibratedAt !== SZ.ref) {
+        bad.push(`premiumCalibratedAt ${SZ.premiumCalibratedAt} is not sizing.ref ${SZ.ref} — the record names a calibration point the gate does not probe`);
+      }
+      const premAtCalib = P.callFloorAt({ sizing: SZ.premiumCalibratedAt }) - P.breakevenPrice({ sizing: SZ.premiumCalibratedAt });
+      if (Math.abs(premAtCalib - (K.call - K.breakeven)) > 1e-15) {
+        bad.push(`the premium at the recorded calibration point is ${premAtCalib}, not the shipped ${K.call - K.breakeven}`);
+      }
+
+      // (f) THE FLAG AND THE FORMULA, bounded in the idiom I41(f) already owns. `constants.sizing.flag`
+      // could be emptied or deleted with 52 gates, 436 tests and a clean rebuild green, and because
+      // `stampConstants` republishes the whole block from the live object, the admission left the
+      // Method view with it. `priceAt` was read by nothing and could spell 'breakeven*s' — dropping
+      // the 1/(1+2s) denominator that is the entire geometric argument — with the page rendering it
+      // as the model's own description of arithmetic clause (b) recomputes correctly beside it.
+      bad.push(...flagProblems('sizing', ['min', 'premiumCalibratedAt', 'detents', 'I44'],
+        ['sizing.min', 'sizing.premiumCalibratedAt', 'sizing.detents']));
+      const wantPriceAt = 'breakeven*3s/(1+2s)';
+      if (SZ.priceAt !== wantPriceAt) {
+        bad.push(`sizing.priceAt reads "${SZ.priceAt}" but clause (b) recomputes "${wantPriceAt}" — `
+          + `the Method view would publish a formula the model does not run`);
+      }
+      // and limitation 16 is the named reason THIS block's premium record cannot be anchored, so the
+      // chain from the flag to the admission is asserted here the way I41(f) asserts its own half
+      const lim16sz = limitationProblems(16);
+      if (!lim16sz.length) {
+        const e16 = (P.CONSTANTS.limitations || []).find((x) => x.n === 16);
+        if (!(e16.flagsItExplains || []).includes('sizing.premiumCalibratedAt')) {
+          bad.push('limitation 16 no longer names sizing.premiumCalibratedAt among the flags it explains');
+        }
+      }
+      bad.push(...lim16sz);
+
       G('I44', bad.length === 0,
         `3-bet sizing axis (V3-PLAN item 9, METHODOLOGY §10.8) over s in [${SZ.min}, ${SZ.max}]. ` +
         `THE DOMAIN'S TOP IS THE GAME'S: the pot-limit maximum IS s = 1, so the reference is this axis's ` +
@@ -658,7 +858,21 @@ export function build(ctx) {
         `face-up mix, and the floor reaches it at s = ${sBreak.toFixed(3)} — TWICE the pot-limit maximum. The ` +
         `anchor is not merely unfalsified, it is unfalsifiable in this game: the floor's asymptote is ` +
         `${((K.call - K.breakeven + K.breakeven * 1.5) * 100).toFixed(2)}% and no legal 3-bet reaches it. So I15 ` +
-        `is NOT re-scoped to the default, and the reason is arithmetic rather than tolerance` +
+        `is NOT re-scoped to the default, and the reason is arithmetic rather than tolerance. ` +
+        `(e) THE DOMAIN IS NOW ASSERTED RATHER THAN READ — the P1 red team's central hit on this gate ` +
+        `(docs/refutations/P1.md), which moved sizing.min to 0.001 and sizing.max to 2 with every gate green, ` +
+        `because every clause above builds its sweep FROM those endpoints. The top is asserted as the identity ` +
+        `it is (max === ref === 1, and a request at s = 2 must clamp); the bottom is PINNED in the I41(b) idiom ` +
+        `— sizingPrice(${SZ.min}) === ${pinnedMinPrice} exactly — which proves the shipped clamp is the one that ` +
+        `was reviewed and NEVER that ${SZ.min} is right, because nothing here measures where a raise stops being ` +
+        `a 3-bet. The detents are asserted onto the ladder they claim (inside [${SZ.min}, ${SZ.max}], strictly ` +
+        `increasing, last one the pot-limit maximum), and premiumCalibratedAt === sizing.ref with the premium ` +
+        `re-measured AT that point (${(premAtCalib * 100).toFixed(0)} pts) — the record now names the point this ` +
+        `gate probes instead of being decoration beside it. (f) AND THE FLAG IS ITSELF BOUNDED: ` +
+        `constants.sizing.flag must exist and name all three records plus this gate — deleting it used to leave ` +
+        `everything green while stampConstants quietly republished the block without the admission — each of the ` +
+        `three carries the Method view's ESTIMATE badge, and priceAt is asserted character-for-character against ` +
+        `"${wantPriceAt}", the arithmetic clause (b) recomputes` +
         (bad.length ? ` — FAILS: ${bad.slice(0, 4).join('; ')}` : ''));
     } },
 

@@ -211,7 +211,7 @@ Node ≥ 22, **zero npm dependencies** anywhere in the repo — stdlib only (`no
 
 ```bash
 node scripts/generate-data.mjs          # enumerate, measure, derive, emit data/model.json
-node scripts/verify.mjs                 # 50 gates: D1-D8 (no D3), V1-V6, B, I1-I33 (no I17), I41-I44
+node scripts/verify.mjs                 # 52 gates: D1-D11 (no D3/D9), V1-V6, B, I1-I33 (no I17), I41-I44
 node scripts/build.mjs                  # compile src/shell.html -> index.html
 node --test test/*.test.mjs             # evaluator, taxonomy and policy unit tests
 node smoke.mjs                          # headless browser gate (Playwright, if installed)

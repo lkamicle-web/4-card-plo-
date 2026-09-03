@@ -41,19 +41,40 @@
  * THE MORPH BUDGET — measured twice, on purpose (docs/spikes/S-E.md §3)
  *
  * The 8 ms budget was predicted to fail on its first re-run under Playwright.
- * It does not. It passes by a factor of eighty — and the reason matters more
- * than the result: `__measureMorph` times `{ S.v = clamp(v); render() }`, which
- * is JS only. No style, no layout, no paint. The readings sit ON Chromium's
- * `performance.now()` floor (0.0999999 ms), so the gate could not detect a page
- * eighty times slower than this one. A budget that cannot fail is not a budget.
+ * It does not, and at the time this was written the reason was that
+ * `__measureMorph` timed `{ S.v = clamp(v); render() }` and nothing else: JS
+ * only, no style, no layout, no paint, with the readings sitting on Chromium's
+ * `performance.now()` floor. A budget that cannot fail is not a budget.
  *
  * The fix S-E recommends is to make `__measureMorph` layout-inclusive, which is
  * an edit in src/shell.html. This harness does not need to wait for that: it can
  * force the flush itself, from outside. So both quantities are measured, and
  * both are named for what they are —
  *
- *   JS-only, 8 ms       kept, unchanged, and REPORTED WITH ITS SLACK so nobody
+ *   the 8 ms check      kept, unchanged, and REPORTED WITH ITS SLACK so nobody
  *                       reads it as a live tripwire. It is a floor check.
+ *
+ *                       ITS LABEL IS NOW CORRECTED, and the correction is the
+ *                       P1 red team's (docs/refutations/P1.md). Two refuters
+ *                       traced what it samples and found the "JS-only" account
+ *                       above FALSIFIED: lane U's edit landed, and
+ *                       `window.__measureMorph` now runs `render()` and then
+ *                       `void document.body.offsetHeight` BEFORE it reads the
+ *                       clock — asserted, in exactly those words, by
+ *                       test/ui-rail.test.mjs ("the style + layout it forces
+ *                       must be inside the timed region, or the number is a
+ *                       lie"). So both budgets sample layout-inclusive work and
+ *                       differ only in the sweep: 21 samples over v 40-80 by 2
+ *                       here, 112 below, and which element's offsetHeight is
+ *                       read. The "factor of eighty" was 8 / 0.0999999 against
+ *                       the retired JS-only reading; on the current function it
+ *                       is single digits. The number 8 is anchored to nothing
+ *                       and is not defended as anything — the live slack line
+ *                       the check prints is the only version of the claim that
+ *                       cannot go stale, which is why the prose no longer
+ *                       quotes a figure beside it. It is pinned against silent
+ *                       edits by test/ui-rail.test.mjs, not by a page-side
+ *                       twin: unlike the layout budget it has none.
  *   layout-inclusive,   the honest one, and the one that can fire. Anchored:
  *   4.0 ms              S-E measured p95 2.7 ms over 528 samples. Re-measured
  *                       here over five independent 112-sample runs WITH THE
@@ -67,6 +88,26 @@
  *                       8.1 ms: the tail is the host's scheduler, not the page,
  *                       and a budget that gates it would be measuring this
  *                       machine's load rather than this page's render.
+ *
+ *                       REPORTED AND NOT REPRODUCED HERE (P1 red team,
+ *                       docs/refutations/P1.md). One refuter ran this harness
+ *                       unmodified at HEAD seven times on an Apple M5 Pro and
+ *                       failed this budget every time — median 11.1-11.6 ms,
+ *                       p95 13.7-17.2 — and diagnosed it as a COLD sweep: the
+ *                       same 112 samples run twice in one page give p95
+ *                       16.8-17.1 on the first pass and 1.7-2.4 on the second,
+ *                       and a 3 s idle after `__ready` alone gives p95 2.30,
+ *                       which reproduces the anchor. `__ready === true` fires
+ *                       while post-load work is still in flight and the sweep
+ *                       starts timing immediately. If that reproduces, the fix
+ *                       is a warm-up here — discard one sweep, or wait for idle
+ *                       — and NOT a bigger number: raising 4.0 to cover a
+ *                       cold start would be tolerance-widening around a harness
+ *                       bug, and would turn a render budget into a cold-start
+ *                       detector still wearing a render-budget label. It could
+ *                       not be reproduced in the session that recorded this:
+ *                       Playwright is not installed there, so smoke cannot run
+ *                       at all, which is the same gap the line below names.
  *
  * ---------------------------------------------------------------------------
  * BROWSERS. Headless, and every context is a throwaway profile Playwright
@@ -99,7 +140,7 @@ const flag = (n, d) => {
 const positional = argv.filter((a) => !a.startsWith('--'))[0];
 const SHOTS = flag('shots', null);
 const ROUND = flag('round', '1');
-const MORPH_BUDGET_MS = 8;          // JS-only; a floor check, see the header
+const MORPH_BUDGET_MS = 8;          // a floor check, anchored to nothing; see the header
 const MORPH_LAYOUT_BUDGET_MS = 4;   // layout-inclusive; S-E §3's measurement + ~48%
 const TOTAL_COMBOS = 270725;
 const WIDTHS = [1440, 1360, 1280, 1024, 390];
@@ -284,10 +325,12 @@ const morph = stats(await page.evaluate(() => {
 }));
 /* Gate on p95, not the worst pass: a single host-scheduler hiccup on an
    otherwise sub-millisecond morph is not a render regression. */
-check(morph.p95 < MORPH_BUDGET_MS, `slider-morph JS pass p95 < ${MORPH_BUDGET_MS} ms`,
+check(morph.p95 < MORPH_BUDGET_MS, `slider-morph short sweep p95 < ${MORPH_BUDGET_MS} ms`,
   `median ${morph.median.toFixed(2)} ms · p95 ${morph.p95.toFixed(2)} ms · worst ${morph.max.toFixed(2)} ms `
-  + `over ${morph.n} passes — ${(MORPH_BUDGET_MS / Math.max(morph.p95, 0.1)).toFixed(0)}x of slack, and the `
-  + 'readings are at Chromium\'s performance.now() floor: this is a FLOOR CHECK, the budget below is the live one');
+  + `over ${morph.n} passes — ${(MORPH_BUDGET_MS / Math.max(morph.p95, 0.1)).toFixed(0)}x of slack. `
+  + 'This is a FLOOR CHECK and the budget below is the live one: 8 is anchored to nothing, the slack '
+  + 'printed here is the only non-stale statement about it, and both sweeps time the same '
+  + 'layout-inclusive quantity now that __measureMorph flushes inside the timed region');
 const morphL = stats(await page.evaluate(() => {
   const R = window.__rundown;
   const out = [];

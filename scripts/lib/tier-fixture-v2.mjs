@@ -52,8 +52,12 @@ export const FIXTURE_PATH = 'data/tiers-v2.fixture.txt';
  *
  * `villains=off` is not a value the solver takes — the villain profile reaches tiers through
  * `villainEq`, which the page calls and `solve` does not. It is recorded because V3-PLAN §0.4
- * names it as part of the frozen state and item 8 will flip its DEFAULT: the day the profile
- * becomes a solve input, OFF is what this fixture was frozen at, and `LEGACY_LANE` is where it
+ * names it as part of the frozen state, and item 8 HAS since flipped its default at B1: the page
+ * now opens with the profile ON, and this fixture keeps asserting the OFF surface. That is not an
+ * oversight, it is the design — a default flip changes which state the page opens in and changes
+ * no state's meaning, so the legacy lane is still there to be asserted. The ON surface is frozen
+ * separately in `tier-fixture-v3.mjs` / `data/tiers-v3-default.fixture.txt`. The day the profile
+ * ever becomes a solve INPUT, OFF is what this fixture was frozen at and `LEGACY_LANE` is where it
  * gets pinned.
  */
 export const LEGACY_STATE = 'limpers=2 raiserPos=CO mix=default villains=off';
@@ -73,18 +77,19 @@ export const LEGACY_STATE = 'limpers=2 raiserPos=CO mix=default villains=off';
  *
  * FILLED IN AT P1 (lane M) with the three axes that now exist, WRITTEN OUT rather than read from
  * `P.OPERATING_POINT`. That is the whole point of the hook: these are what the fixture was FROZEN
- * at, not what the model currently defaults to, and the day B1 flips a default the two stop being
- * the same object. A version of this that spread `OPERATING_POINT` would follow the flip and go
+ * at, not what the model currently defaults to, and the day a B1-style ceremony flips one of these
+ * three the two stop being the same object. (B1 itself flipped only item 8's villain profile, which
+ * is not one of these — see `LEGACY_STATE` above.) A version of this that spread `OPERATING_POINT` would follow the flip and go
  * green against the new default — the exact silent failure the paragraph above describes.
  *
  *   rakeDepth: false   item 6's coupling off; `potBB` is the flat 60.
  *   depthWidth: false  item 6b's factor off; `widthFor` does not read depth.
  *   sizing: 1          item 9 at the pot-limit maximum, where every threshold is by reference.
  *
- * The villain profile is not listed because it is not a solve argument even now: item 8 routes it
- * through `P.profiledModel`, which returns the model itself when the profile is off, so OFF is
- * carried by object identity rather than by a state key. `LEGACY_STATE` above records it, and I43
- * asserts the identity that makes the omission safe.
+ * The villain profile is not listed because it is not a solve argument even now — not before B1 and
+ * not after it: item 8 routes it through `P.profiledModel`, which returns the model itself when the
+ * profile is off, so OFF is carried by object identity rather than by a state key. `LEGACY_STATE`
+ * above records it, and I43(a)/(e) assert the identity that makes the omission safe.
  */
 export const LEGACY_LANE = Object.freeze({ rakeDepth: false, depthWidth: false, sizing: 1 });
 
@@ -94,9 +99,18 @@ export const LEGACY_LANE = Object.freeze({ rakeDepth: false, depthWidth: false, 
 /** `d40/r5/s1` — greppable, self-describing, and stable across a re-freeze */
 export const laneId = (L) => `d${L.d}/r${L.rakePct}/s${L.straddle ? 1 : 0}`;
 
-/** the human form the header stores, so a lane means something without reading this file */
+/**
+ * The human form the header stores, so a lane means something without reading this file.
+ *
+ * `villains` reads the lane's own field and falls back to `off`, which is what every lane of THIS
+ * fixture is and always will be — so v2's bytes are unchanged. The fallback exists because
+ * `tier-fixture-v3.mjs` freezes the same 12 environment lanes with the villain profile ON (V3-PLAN
+ * §5.1's third fixture, at the B1 default flip) and shares this format, this encoder and this
+ * parser with them. One format means one parser: a second copy of the delta encoding is a second
+ * place for a fixture to be silently misread.
+ */
 export const laneSpec = (L) =>
-  `d=${L.d} rakePct=${L.rakePct} rakeCapBB=${L.rakeCapBB} straddle=${L.straddle ? 'on' : 'off'} villains=off`;
+  `d=${L.d} rakePct=${L.rakePct} rakeCapBB=${L.rakeCapBB} straddle=${L.straddle ? 'on' : 'off'} villains=${L.villains || 'off'}`;
 
 /**
  * The 12 lanes of V3-PLAN §0.4, in the order the plan lists them: depth outermost, then rake,
@@ -200,18 +214,32 @@ export function digestOf(cells, lanes, sweep) {
  * line still carries its whole setting key, because a fixture you cannot grep is a fixture nobody
  * can debug against.
  */
-export function encodeFixture({ model, cells, lanes, sweep, generated }) {
+/** the banner `encodeFixture` writes when the caller supplies none — this fixture's own claim */
+export const V2_BANNER = [
+  '# RUNDOWN — I32 tier fixture. The v2 tier output over the whole environment surface, frozen.',
+  '#',
+  '# GENERATED FILE — never hand-edit. Rewritten only by `node scripts/freeze-tiers.mjs --v2 --force`,',
+  '# which is a deliberate manual act: verify.mjs reads this file and never writes it, because a',
+  '# gate that regenerates its own expectation asserts nothing.',
+  '#',
+  '# THE CLAIM (V3-PLAN §0.4): with every v3 axis at its legacy setting — EV mode off, vs-GTO off,',
+  '# skill dial neutral, 3-bet sizing at pot, villain profile OFF — the pipeline paints these tiers',
+  '# on all 12 environment lanes, not merely at the v1 point. Lane `d100/r0/s0` IS the v1 operating',
+  '# point, so gate I22 lives inside this file transitively; the containment is asserted, not assumed.',
+];
+
+/**
+ * @param {object}   o.banner   the `#` header block; defaults to this fixture's own (V2_BANNER)
+ * @param {string}   o.state    the `legacy-state` value; defaults to LEGACY_STATE
+ * @param {string}   o.v1Point  the `v1-point` value; '' omits the line entirely, which is what the
+ *                              v3-default fixture does — every one of its lanes runs the villain
+ *                              profile ON, so no lane of it is the v1 operating point and claiming
+ *                              one was would be a lie in a header a gate reads.
+ */
+export function encodeFixture({ model, cells, lanes, sweep, generated,
+  banner = V2_BANNER, state = LEGACY_STATE, v1Point = V1_POINT_LANE() }) {
   const L = [];
-  L.push('# RUNDOWN — I32 tier fixture. The v2 tier output over the whole environment surface, frozen.');
-  L.push('#');
-  L.push('# GENERATED FILE — never hand-edit. Rewritten only by `node scripts/freeze-tiers.mjs --v2 --force`,');
-  L.push('# which is a deliberate manual act: verify.mjs reads this file and never writes it, because a');
-  L.push('# gate that regenerates its own expectation asserts nothing.');
-  L.push('#');
-  L.push('# THE CLAIM (V3-PLAN §0.4): with every v3 axis at its legacy setting — EV mode off, vs-GTO off,');
-  L.push('# skill dial neutral, 3-bet sizing at pot, villain profile OFF — the pipeline paints these tiers');
-  L.push('# on all 12 environment lanes, not merely at the v1 point. Lane `d100/r0/s0` IS the v1 operating');
-  L.push('# point, so gate I22 lives inside this file transitively; the containment is asserted, not assumed.');
+  for (const line of banner) L.push(line);
   L.push('#');
   L.push('# Encoding: one line per (lane, node, position, VPIP), as `<lane> <node> <pos> <vpip> <payload>`.');
   L.push('#   payload `=<vector>`  the full tier vector, one char per cell in the CELLS order below');
@@ -225,8 +253,8 @@ export function encodeFixture({ model, cells, lanes, sweep, generated }) {
   L.push(`version ${FIXTURE_VERSION}`);
   L.push(`model-hash ${model.meta.hash || ''}`);
   L.push(`frozen ${generated}`);
-  L.push(`legacy-state ${LEGACY_STATE}`);
-  L.push(`v1-point ${V1_POINT_LANE()}`);
+  L.push(`legacy-state ${state}`);
+  if (v1Point) L.push(`v1-point ${v1Point}`);
   L.push(`vpip ${model.meta.vpip.min} ${model.meta.vpip.max}`);
   L.push(`digest ${digestOf(cells, lanes, sweep)}`);
   L.push(`cells ${cells.length}`);

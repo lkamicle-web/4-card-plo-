@@ -125,6 +125,11 @@ export const CONSTANTS = {
     // asserts the identity `width ratio === realization ratio` with `===` rather than a tolerance.
     // A form that is algebraically equal and numerically one ulp off would turn that gate into a
     // tolerance argument, which is how exactness claims rot.
+    // A formula string, rendered by the Method view, carrying no number of its own — and bounded
+    // like the other two: I42(f) asserts it character-for-character against a spelling composed from
+    // `depth.ref`. The P1 red team replaced it with 'sqrt(beta)*log(d) -- NONSENSE' and with the
+    // ratio inverted and squared, and every gate stayed green while the page published a formula the
+    // code does not run.
     widthRatio: 'baseRealization(pos,d)/baseRealization(pos,100)',
     // No new constant: `beta` above is the only opinion involved and it is unchanged. What the
     // factor DOES force is a re-measured allowance where it compounds with M_deep — I23(d)'s
@@ -153,9 +158,26 @@ export const CONSTANTS = {
     // the domain introduces no constant at the top.
     //   The bottom, 0.25, is a judgement and is the only authored number here: below a quarter pot
     // a "3-bet" is a min-click, and the face-up value range this node models (60/25/10/5 AA/KK/QQ)
-    // is not the range anybody min-3-bets. It is a display clamp, not a threshold — no decision
-    // reads it — which is why it is not carried as an opinion constant of its own.
-    min: 0.25, ref: 1, max: 1, detents: [0.5, 0.75, 1],
+    // is not the range anybody min-3-bets.
+    //   CORRECTED BY THE P1 RED TEAM (docs/refutations/P1.md), because the earlier sentence here was
+    // false: this was described as "a display clamp, not a threshold — no decision reads it", and
+    // `envOf` clamps `sizing` into [min, max] before anything downstream sees it. So it is a
+    // BEHAVIOURAL FLOOR — the value at which the model stops answering the question it was asked and
+    // starts answering a neighbouring one — with no consumer that can see it move. Two refuters
+    // moved it to 0.001 with all 52 gates and the whole suite green, which is exactly right: nothing
+    // in this repository measures where a raise stops being a 3-bet. It is therefore UNANCHORABLE,
+    // it ships in `flag` below, and I44(e) PINS it — the I41(b) idiom, a literal that records the
+    // reviewed value so it cannot drift silently, never a justification of it.
+    min: 0.25, ref: 1, max: 1,
+    // FORWARD-DECLARED UI DATA, and said that way rather than as a shipped UI fact: there is no
+    // 3-bet-sizing control on the page yet, so nothing reads these. They are bounded, not anchored —
+    // I44(e) asserts they lie on the ladder they claim to be on ([min, max], strictly increasing,
+    // last one the pot-limit maximum), which is what stops the first slider that lands snapping to
+    // an illegal super-pot 3-bet.
+    detents: [0.5, 0.75, 1],
+    // The formula this block's arithmetic actually runs, rendered by the Method view. NOT free
+    // prose: I44(f) asserts it character-for-character against the spelling clause (b) recomputes,
+    // so the page cannot publish one formula while the code runs another.
     priceAt: 'breakeven*3s/(1+2s)',
     // FLAGGED, AND IT CANNOT BE ANCHORED — said out loud rather than quietly held.
     // `vs3bet.call` sits 7 points above the price "because a 3-bet pot is played out of position
@@ -165,8 +187,16 @@ export const CONSTANTS = {
     // the same hole limitation 16 names. So the premium is HELD CONSTANT at its pot-sized
     // calibration, the flag ships, and I44 measures the CONSEQUENCE (how the continue range moves
     // when only the price moves) instead of inventing a coefficient to hide it.
+    // Written as a literal 1 and ASSERTED === sizing.ref by I44(e): a record that names a
+    // calibration point has to name the point the gate probes, or it is decoration.
     premiumCalibratedAt: 1,
-    flag: 'the 7-pt call premium is calibrated at pot-size and held constant across the axis — unanchorable, bounded by gate I44',
+    // THE FLAG, in the shipped data so the Method view renders it rather than transcribing it — and
+    // its own presence is now gated (I44(f)), because the P1 red team deleted it outright and the
+    // whole tree stayed green: an admission nothing checks is a convention, not a claim.
+    flag: 'THREE records in this block are opinion no measurement in this repository can settle, so they ship BOUNDED rather than justified — gate I44(e) pins each one and none of them is anchored by it. '
+      + '`min` = 0.25 is an authored behavioural floor: nothing here measures where a raise stops being a 3-bet. '
+      + '`premiumCalibratedAt` records that the 7-pt call premium is calibrated at pot-size and HELD CONSTANT across the axis — a bigger 3-bet is a lower SPR and the premium ought to shrink, and limitation 16 is why nothing here can say by how much, so I44(b) measures that consequence instead of inventing a coefficient. '
+      + '`detents` are forward-declared UI stops with no consumer on the page today.',
   },
   // ---- the rake dial (V2-PLAN §3.2; every measurement in METHODOLOGY §5.2) ---------------------
   // CRUDE, and the plan says so. One fraction, applied two ways:
@@ -213,8 +243,15 @@ export const CONSTANTS = {
     // (5.00% -> 2.00%, price 30.53% -> 29.59%), monotonicity in depth, and the exact arithmetic
     // including the straddle-doubled cap unit. See `rake.flag` below and METHODOLOGY §5.2.
     potScale: 1,
+    // The formula the coupling actually runs, rendered by the Method view. NOT free prose: I41(f)
+    // asserts it character-for-character against a spelling composed from `depth.ref`, which closes
+    // the drift the P1 red team found twice over — a false formula published beside a true constant,
+    // and a hard-coded 100 that would silently become a lie the day the reference depth moved.
     potBBAt: 'potBB*(d/100)^potScale',
-    // The flag, in the shipped data so the Method view renders it rather than transcribing it.
+    // The flag, in the shipped data so the Method view renders it rather than transcribing it — and
+    // its presence, and the two names in it, are now gated by I41(f). Three refuters deleted this
+    // string and watched 52 gates, 436 tests and a clean rebuild go green while the exponent shipped
+    // with no admission attached (docs/refutations/P1.md).
     flag: 'potScale is unanchored opinion (linear) — bounded by gate I41, off by default (env.rakeDepth)',
   },
   // ---- the straddle (V2-PLAN §3.3; full write-up in METHODOLOGY §5.3) --------------------------
@@ -1018,11 +1055,12 @@ export function profiledModel(model, profile) {
  * `model.constants.villainLattice` because the generator measured it, and a load default typed into
  * this file could name a v the lattice does not carry.
  *
- * THE DEFAULT IS NOT FLIPPED HERE. `villainProfileOf` still treats anything without `on: true` as
- * OFF, and every caller in this repository still passes nothing. V3-PLAN §5.1 makes the flip a
- * fixture-re-freeze ceremony (§0.4(c)) at barrier B1, with the move-diff committed; what P1 ships
- * is the machinery, the load-default definition, and I43 asserting both — so the flip is one line
- * against a gate that already measures what the line does.
+ * NOTHING IS FLIPPED HERE, BEFORE OR AFTER B1. `villainProfileOf` treats anything without
+ * `on: true` as OFF, and every caller in this repository still passes nothing — `solve` has never
+ * seen a profile and does not now. The flip V3-PLAN §5.1 asks for is the PAGE's initial state
+ * (`src/shell.html` reads this function at boot and opens on what it returns), performed at barrier
+ * B1 with the third fixture frozen and the move-diff committed. Keeping the library default OFF is
+ * what makes I22 and I32 survive that flip, and I43(e) is the assertion that says so.
  *
  * `exact` is the claim I43's first clause turns into a gate: at this profile every live cell reads
  * a MEASURED lattice row, so zero cells are labelled `interpolated` at load. A default that landed

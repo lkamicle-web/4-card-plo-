@@ -632,6 +632,7 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .cf i{font-style:normal;color:var(--text-tertiary);margin-right:3px}
 .tag-m{font:600 9px/12px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--accent);
   border:1px solid var(--border-subtle);border-radius:3px;padding:0 3px;margin-left:4px}
+.tag-m.tag-e{color:var(--pos-warn)}
 .gate{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 var(--sp-3);border-radius:var(--r-sm);
   background:var(--surface-2);font:500 10px/13px var(--font-mono);color:var(--text-secondary)}
 .gate i{width:5px;height:5px;border-radius:50%;background:var(--pos-good)}
@@ -2812,9 +2813,13 @@ var S = {
      SCORING function's default stays 0, which is what keeps gate I22's v1 identity checkable. */
   d: DEPTH.ref, rake: HAS_ENV ? RAKE.preset : 0, rakeCap: RAKE.capBB, straddle: false,
   cbPatterns: false, monoSuits: false, rain: 8, reduce: false, itab: 'verdict', preview: null,
-  /* V2-PLAN §4. `vp` false is the DEFAULT and the identity point: with it off the page reads
-     `cell.eq` by reference and reproduces v1 across the whole slider. `q` is the shipped opinion
-     (0.85) and is user-editable like the 3-bet mix — §7.3, resolved yes. */
+  /* V2-PLAN §4. `vp` false is the IDENTITY POINT: with it off the page reads `cell.eq` by
+     reference and reproduces v1 across the whole slider. It is no longer the load default —
+     V3-PLAN item 8's flip landed at barrier B1 and `VP_DEFAULT` below is what the page opens on.
+     SEEDED false here and assigned there, because the load default is read from the shipped
+     lattice through `POLICY.villainLoadDefault`, which is not resolved until the policy adapter
+     runs. `q` is the shipped opinion (0.85) and is user-editable like the 3-bet mix — §7.3,
+     resolved yes. */
   vp: false, q: QDEF == null ? 0.85 : QDEF
 };
 /* §5.1's result, kept out of S because it is a VIEW of the taxonomy and not a setting: it survives
@@ -2836,7 +2841,10 @@ function stateOf(o) {
    reproduces v1 bit for bit (u(ref) = 0 exactly, rakeFrac = 0). The UI deliberately opens off it at
    the 5% rake preset (V2-PLAN §3.2), so it has to be one obvious click back.
    The villain profile joins the three env axes here: I22 is a claim about the RANDOM-VILLAIN
-   equities, so a filtered field is off the identity point exactly the way a rake is. */
+   equities, so a filtered field is off the identity point exactly the way a rake is. SINCE B1 the
+   page opens off it on that axis too (V3-PLAN item 8, METHODOLOGY §3.4), which makes this button
+   carry more weight, not less: it is now the only route back to the surface I22 pins, and the
+   handler below clears the profile along with the other three for exactly that reason. */
 function atV1Point() { return S.d === DEPTH.ref && S.rake === 0 && !S.straddle && !S.vp; }
 /* the effective depth the SCORING layer sees: a straddle halves it, clamped to the dial (§3.3) */
 function dEff() { return S.straddle ? Math.min(DEPTH.max, Math.max(DEPTH.min, S.d / (STRAD.unit || 2))) : S.d; }
@@ -3200,6 +3208,29 @@ function eqMixOf(d, mix) {
 var POL = (window.POLICY && typeof window.POLICY.solve === 'function') ? window.POLICY : null;
 var POLICY_SOURCE = 'builtin (reference implementation)';
 HAS_VP = !!(POL && POL.villainEq && POL.seOfTrials && VLAT && VPTS.length);
+
+/* ============================ V3-PLAN item 8 / §5.1 — THE B1 DEFAULT FLIP ============================
+   The page now OPENS with the villain profile on. This changes the page's INITIAL STATE and nothing
+   else: `POLICY.villainProfileOf` still treats anything without `on: true` as OFF, `profiledModel`
+   still returns THE MODEL ITSELF on that path (gate I43(a), `===`), and `solve` still receives no
+   profile argument — so the legacy state's semantics are untouched and I22/I32 keep asserting
+   exactly what they asserted before the flip. What moves is which state a fresh visitor lands in.
+
+   DERIVED, NOT TYPED. `POLICY.villainLoadDefault(MODEL)` reads the load default out of the shipped
+   lattice (v at the lattice's own centre, q at the one discipline it was measured at), and gate
+   I43(b) asserts that at that profile every live cell is cut from a MEASURED row — zero cells
+   labelled `interpolated` at load. This page's profile v is the TABLE VPIP slider, not a separate
+   dial, so the guarantee only transfers if the page's own VPIP default IS that lattice point and
+   its q IS that discipline. Both are checked here rather than assumed: on a dataset where they
+   diverge the flip declines itself and the page opens OFF, because opening on interpolated numbers
+   under a measured-looking grid is the one outcome I43(b) exists to prevent.
+
+   The escape hatch predates the flip: the `#v1point` button already clears the profile along with
+   depth/rake/straddle, so the v1 identity point stays one click away. */
+var VPLOAD = (POL && typeof POL.villainLoadDefault === 'function') ? POL.villainLoadDefault(MODEL) : null;
+var VPIP_DEFAULT = (MODEL.meta.vpip && MODEL.meta.vpip.default) || 55;
+var VP_DEFAULT = !!(HAS_VP && VPLOAD && VPLOAD.on && VPLOAD.v === VPIP_DEFAULT && VPLOAD.q === QDEF);
+S.vp = VP_DEFAULT;
 
 /* ==================================================== V2-PLAN §4 — THE VILLAIN PROFILE
    `POLICY.villainEq` answers one cell at a time; the scoring pipeline wants a MODEL. So the profile
@@ -6995,9 +7026,14 @@ function buildHash() {
     if (S.straddle) h += '&str=1';
   }
   /* the villain profile moves every equity on the page, so a link without it reopens on a different
-     field. Both omitted at their defaults, which keeps the common link the length it was. */
+     field. Both omitted at their defaults, which keeps the common link the length it was.
+     `vp` is written in BOTH directions since the B1 flip: the default is now ON, so a bare `&vp=1`
+     present-means-on encoding would silently lose "I turned the villains off" from every shared
+     link. The reader below accepts '0' and '1'; a v2-era link carrying `&vp=1` still means what it
+     always meant, and a v2-era link carrying nothing now opens at the new default, which is the
+     one thing a default flip is allowed to change. */
   if (HAS_VP) {
-    if (S.vp) h += '&vp=1';
+    if (S.vp !== VP_DEFAULT) h += '&vp=' + (S.vp ? '1' : '0');
     if (S.q !== QDEF) h += '&q=' + S.q;
   }
   return h;
@@ -7042,7 +7078,7 @@ function readHash() {
     if (q.str === '1') S.straddle = true;
   }
   if (HAS_VP) {
-    if (q.vp === '1') S.vp = true;
+    if (q.vp === '1') S.vp = true; else if (q.vp === '0') S.vp = false;
     var qq = num(q.q); if (qq !== null) S.q = clamp(Math.round(qq * 100) / 100, 0, 1);
   }
   var pv = num(q.pin);
@@ -7512,12 +7548,25 @@ function renderTable() {
    source of truth is the code; measurement's is the run that produced the file. The split is the
    generator's own, so the Method view can state it rather than assert it. */
 var MEASURED_CONST = { nuBarMeasured: 1, coolerBarMeasured: 1, nMax: 1, mosaicTotal: 1, cooler: 1, villainLattice: 1 };
+/* V3-PLAN §6's THIRD LEG, and it was the missing one. §6's contract for a constant no measurement
+   here can settle is "gated + flagged + badged": named in `constants`, bounded by a gate, and
+   LABELLED where it renders. The first two were real; this was not. The Method view walks
+   `constants` generically, so `rake.potScale` — the one new opinion in the rake-depth coupling —
+   rendered as an ordinary field, indistinguishable from the measured `potBB` beside it, and the P1
+   red team said so in five separate memos (docs/refutations/P1.md). Keyed by DOTTED PATH because
+   every one of them is a nested field, and asserted from the other side by I41(g)/I44(f), which
+   read this map out of the source: a flagged constant missing from it fails the build. */
+var UNANCHORED = { 'rake.potScale': 1, 'sizing.min': 1, 'sizing.premiumCalibratedAt': 1, 'sizing.detents': 1 };
 /* v2 put four nested blocks into `constants`; JSON.stringify rendered them as one-line blobs */
-function constHTML(v) {
+function constHTML(v, p) {
   if (v == null || typeof v !== 'object') return String(v);
-  if (Array.isArray(v)) return v.length ? v.map(constHTML).join(', ') : '—';
+  /* the wrapper matters: Array#map passes an INDEX as the second argument, which would become the
+     path prefix and badge whatever happened to sit at that ordinal */
+  if (Array.isArray(v)) return v.length ? v.map(function (x) { return constHTML(x, ''); }).join(', ') : '—';
   return Object.keys(v).map(function (k) {
-    return '<span class="cf"><i>' + k + '</i>' + constHTML(v[k]) + '</span>';
+    var q = p ? p + '.' + k : k;
+    return '<span class="cf"><i>' + k + (UNANCHORED[q] ? '<span class="tag-m tag-e">estimate</span>' : '') +
+      '</i>' + constHTML(v[k], q) + '</span>';
   }).join('');
 }
 /* Live, not transcribed: how far past the clamp this page can actually be driven. The domain is
@@ -7643,10 +7692,12 @@ function renderMethod() {
     '<p class="t-sm dim">Everything the model knows, in one object. <b>Opinion unless tagged</b> — the untagged rows are ' +
     'authored constants whose source of truth is <code>policy.mjs</code>; the ' +
     '<span class="tag-m">measured</span> rows came out of the Monte Carlo run that produced this file and are carried ' +
-    'across untouched. Nested blocks are printed as named fields, not as JSON.</p><div class="kv">' +
+    'across untouched. An <span class="tag-m tag-e">estimate</span> field is opinion no measurement here can ' +
+    'settle: it ships bounded by a gate and named in its block\'s <i>flag</i> beside it, never anchored. ' +
+    'Nested blocks are printed as named fields, not as JSON.</p><div class="kv">' +
     Object.keys(C).map(function (k) {
       return '<div class="k">' + k + (MEASURED_CONST[k] ? '<span class="tag-m">measured</span>' : '') +
-        '</div><div class="v">' + constHTML(C[k]) + '</div>';
+        '</div><div class="v">' + constHTML(C[k], k) + '</div>';
     }).join('') + '</div>' +
     '<p class="t-sm dim">These are the whole model. Change one and every tier on the page moves; nothing else is hidden behind them.' +
     (HAS_ENV ? '' : ' <b>This build ships no environment layer</b> — no <code>depth</code>, <code>rake</code> or ' +
@@ -7889,8 +7940,9 @@ function runTour() {
         }
         var tr = simTrials();
         return 'One more axis, and the only control here that can want a number the generator never ' +
-          'measured: <b>villain profile</b>, in the rail. Off — the default — every equity on this page is ' +
-          'against a <i>random</i> opponent, which is what v1 shipped. On, the same slider also filters the ' +
+          'measured: <b>villain profile</b>, in the rail. Off — one click away, at the <b>v1 point</b> ' +
+          'button — every equity on this page is against a <i>random</i> opponent, which is what v1 ' +
+          'shipped. On, which is how this page now opens, the same slider also filters the ' +
           'field: at ' + S.v + '% you are up against hands that folded their worst, and ' +
           (vpFact.n ? '<b>' + vpFact.n + '</b> cell tiers move' : 'every score moves') + '. The cost is not ' +
           'what anyone predicted — <b>a tight pool punishes rank overlap, not weakness</b>: Broadway run × ' +
@@ -8163,9 +8215,14 @@ function init() {
      shipped artifact over 240 passes: JS-only p95 2.3 ms, layout-inclusive p95 2.6 ms, max 7.7 —
      the two figures are a clock apart on this box and an order of magnitude apart on S-E's, which
      is the whole reason the flush has to be inside rather than assumed.
-     THE BUDGET SHIPS AS DATA, not as a number typed into the harness: `smoke.mjs` reads
-     `window.__morphBudgetMs` off the page, so the artifact and the gate cannot disagree about
-     what was promised. A harness that does not find it keeps its own default. */
+     THE BUDGET SHIPS AS DATA so the page states its own promise rather than leaving it to folklore.
+     STALE SENTENCE CORRECTED (P1 red team, docs/refutations/P1.md): this used to claim `smoke.mjs`
+     READS `window.__morphBudgetMs` off the page. It does not, and deliberately — B1 rejected that
+     wiring, because a harness reading its yardstick off the thing under test lets the artifact raise
+     its own ceiling. The two copies are held together by a SOURCE comparison instead, in
+     test/ui-rail.test.mjs ("THE CROSS-LANE PIN"), which fails if either moves alone. What that pin
+     guarantees is that two copies of 4.0 agree; it does not guarantee any morph was measured, since
+     smoke.mjs needs Playwright and is not one of the three GREEN checks. */
   window.__morphBudgetMs = 4.0;
   window.__measureMorph = function (v) {
     var t = performance.now();
