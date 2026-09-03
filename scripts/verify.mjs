@@ -27,8 +27,9 @@
 //   I26    straddle        gates/env.mjs           the §3.3 direction and its composition case
 //   I29-30 straddle sweep                          I16 and I21 re-run with it ON
 //   I31    rake                                    the §3.2 haircut
+//   I41-44 v3 axes        gates/couplings.mjs      rake-depth, depth-width, profile-ON, 3-bet sizing
 //
-// 46 gates in total — D3 and I17 went with the sub-bucket layer they asserted (the dual-key
+// 50 gates in total — D3 and I17 went with the sub-bucket layer they asserted (the dual-key
 // partition, and the geometric-mean reconstruction of a cell's M_play from its buckets'). D1
 // already pins sum(cells) === 270,725, which is what is left of the partition claim.
 // V1/I5 and V2/V3/I4 are RANDOM-VILLAIN gates: the filtered-villain lattice is exempt from

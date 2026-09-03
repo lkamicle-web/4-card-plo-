@@ -60,8 +60,7 @@ export const LEGACY_STATE = 'limpers=2 raiserPos=CO mix=default villains=off';
 
 /**
  * THE HOOK. Every v3 axis, at the setting where it must be the identity, merged into the solve
- * state of every row of this sweep. EMPTY TODAY — v3 has no axes yet, and an empty object is the
- * honest encoding of "nothing to neutralise".
+ * state of every row of this sweep.
  *
  * WHEN YOU ADD A v3 AXIS, ADD IT HERE, and add it to `P.envKey` (or to whatever cache key covers
  * it) in the same commit. If you add the axis and not this object, I32 stops asserting the legacy
@@ -71,8 +70,23 @@ export const LEGACY_STATE = 'limpers=2 raiserPos=CO mix=default villains=off';
  *
  * The settings §0.4 names: EV mode off, vs-GTO off, skill dial neutral, 3-bet sizing at pot,
  * villain profile OFF with object identity.
+ *
+ * FILLED IN AT P1 (lane M) with the three axes that now exist, WRITTEN OUT rather than read from
+ * `P.OPERATING_POINT`. That is the whole point of the hook: these are what the fixture was FROZEN
+ * at, not what the model currently defaults to, and the day B1 flips a default the two stop being
+ * the same object. A version of this that spread `OPERATING_POINT` would follow the flip and go
+ * green against the new default — the exact silent failure the paragraph above describes.
+ *
+ *   rakeDepth: false   item 6's coupling off; `potBB` is the flat 60.
+ *   depthWidth: false  item 6b's factor off; `widthFor` does not read depth.
+ *   sizing: 1          item 9 at the pot-limit maximum, where every threshold is by reference.
+ *
+ * The villain profile is not listed because it is not a solve argument even now: item 8 routes it
+ * through `P.profiledModel`, which returns the model itself when the profile is off, so OFF is
+ * carried by object identity rather than by a state key. `LEGACY_STATE` above records it, and I43
+ * asserts the identity that makes the omission safe.
  */
-export const LEGACY_LANE = Object.freeze({});
+export const LEGACY_LANE = Object.freeze({ rakeDepth: false, depthWidth: false, sizing: 1 });
 
 // ---------------------------------------------------------------------------
 // the environment lanes

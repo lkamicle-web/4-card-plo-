@@ -42,19 +42,22 @@ test('reserved ids are disjoint from the enforced set', () => {
   assert.deepEqual(leaked, [], `reserved ids in EXPECTED_IDS: ${leaked.join(' ')}`);
 });
 
-test('everything the catalog calls live IS enforced, and only I32/I33 are', () => {
-  assert.deepEqual(LIVE_IDS, ['I32', 'I33']);
+test('everything the catalog calls live IS enforced, and the live set is the P0+P1 set', () => {
+  // P1 lane M promoted I41-I44 (V3-PLAN §3.1 items 6, 6b, 9, 8) by the three-line edit index.mjs
+  // describes: flip `status`, add to a family's `ids`, add to EXPECTED_IDS. This list is the fourth
+  // copy, on purpose — a promotion that forgot one of the four fails here rather than quietly.
+  assert.deepEqual(LIVE_IDS, ['I32', 'I33', 'I41', 'I42', 'I43', 'I44']);
   for (const id of LIVE_IDS) assert.ok(EXPECTED_IDS.includes(id), `${id} claims live but is not run`);
 });
 
-test('the enforced report is still the 46 gates, and EXPECTED_IDS is still a literal', () => {
-  assert.equal(EXPECTED_IDS.length, 46);
+test('the enforced report is the 50 gates, and EXPECTED_IDS is still a literal', () => {
+  assert.equal(EXPECTED_IDS.length, 50);
   // Written out, not derived — the reason is in index.mjs: a list flat-mapped from REGISTRY cannot
   // detect a deleted family, because it shrinks with it. Adding a reserved-id manifest must not
   // become the excuse to generate this list.
   const decl = INDEX_SRC.slice(INDEX_SRC.indexOf('export const EXPECTED_IDS'));
   const literal = decl.slice(0, decl.indexOf('];') + 2);
-  assert.equal((literal.match(/'[A-Z]+\d*'/g) || []).length, 46);
+  assert.equal((literal.match(/'[A-Z]+\d*'/g) || []).length, 50);
   assert.match(literal, /^export const EXPECTED_IDS = \[/, 'EXPECTED_IDS is no longer a literal');
   assert.ok(!literal.includes('flatMap') && !literal.includes('CATALOG'),
     'EXPECTED_IDS is being derived — the independent copy is the point');

@@ -34,6 +34,7 @@ import * as payoff from './payoff.mjs';
 import * as measurement from './measurement.mjs';
 import * as depth from './depth.mjs';
 import * as env from './env.mjs';
+import * as couplings from './couplings.mjs';
 import { CATALOG } from './reserved.mjs';
 
 export const REGISTRY = [
@@ -46,10 +47,11 @@ export const REGISTRY = [
   measurement,   // I24 I25                    the v2 measurement shapes
   depth,         // I23 I27 I28                the depth axis
   env,           // I26 I29 I30 I31            straddle + rake
+  couplings,     // I41 I42 I43 I44            the v3 axes (P1 lane M)
 ];
 
 /**
- * The frozen report order — 46 gates, D3 and I17 retired with the sub-bucket layer.
+ * The frozen report order — 50 gates, D3 and I17 retired with the sub-bucket layer.
  *
  * WRITTEN OUT, NOT DERIVED FROM `REGISTRY`. A list built by flat-mapping the registry cannot
  * detect the failure it exists to detect: delete a family from `REGISTRY` and the derived list
@@ -69,6 +71,10 @@ export const EXPECTED_IDS = [
   'I24', 'I25',
   'I23', 'I27', 'I28',
   'I26', 'I29', 'I30', 'I31',
+  // P1 lane M (V3-PLAN §3.1 items 6, 6b, 9, 8). APPENDED, never interleaved: the report order is a
+  // thing reviewers diff, and appending keeps the pre-existing 46 lines a strict prefix of the new
+  // report exactly as the registry split itself was gated on.
+  'I41', 'I42', 'I43', 'I44',
 ];
 
 // Import-time consistency: what the families DECLARE must equal the frozen list. This is the
