@@ -223,10 +223,44 @@ export function build(ctx) {
         if (P.envOf({ d, straddle: true }).dEff !== want) idBad.push(`dEff ${d}`);
         if (P.envOf({ d }).dEff !== d) idBad.push(`dEff plain ${d}`);
       }
+      // REWRITTEN AT P1 (V3-PLAN §7.1). The old form was
+      //     |widthFor(straddled) - widthFor(plain) * seatWidthFactor| <= 1e-15
+      // and §7.1 predicted it "fails as written the moment `widthFor` reads depth — under a straddle
+      // dEff halves, so width moves by more than the seat factor". The prediction is correct in
+      // substance and lands one step later than expected: item 6b's factor is off by default, so the
+      // straddled-only reading below is still true; what changes is that it is no longer the WHOLE
+      // composition. So the clause is rewritten to assert the full composition, with the depth
+      // factor ON, which is the case that would have broken it — and it is asserted with `===`
+      // rather than 1e-15, because `widthFor` applies both factors as multiplications and a product
+      // identity is exact where a quotient identity could only be a tolerance.
       for (const pos of P.POSITIONS) {
-        const w0 = P.widthFor(pos, 'rfi', 0.55), w1 = P.widthFor(pos, 'rfi', 0.55, { straddle: true });
-        if (Math.abs(w1 - w0 * P.seatWidthFactor(pos, { straddle: true })) > 1e-15) idBad.push(`widthFor ${pos}`);
+        const plain = P.widthFor(pos, 'rfi', 0.55);
+        const str = P.widthFor(pos, 'rfi', 0.55, { straddle: true });
+        const fSeat = P.seatWidthFactor(pos, { straddle: true });
+        if (Math.abs(str - plain * fSeat) > 1e-15) idBad.push(`widthFor ${pos}`);
         if (P.seatWidthFactor(pos, undefined) !== 1) idBad.push(`seat factor not 1 unstraddled at ${pos}`);
+        // The full composition, and the ORDER is the claim. The seat factor enters INSIDE, on
+        // `baseRaise` itself, before the VPIP slope; the depth factor enters OUTSIDE, on the
+        // finished width. Those are different numbers in IEEE-754 — `(b*f)*m` is not `(b*m)*f` —
+        // which is why the seat half above is a 1e-15 claim and this half is an `===` one, and why
+        // the comparand here is the straddled width rather than the plain width times the seat
+        // factor. Measured while writing it: comparing against `plain * seat * g` fails at HJ in
+        // all three straddled depths, on association alone.
+        for (const d of [40, 100, 250]) {
+          for (const straddle of [false, true]) {
+            const e = { d, straddle, depthWidth: true };
+            const got = P.widthFor(pos, 'rfi', 0.55, e);
+            const g = P.depthWidthFactor(pos, e);
+            const base = P.widthFor(pos, 'rfi', 0.55, { straddle });
+            if (got !== (g === 1 ? base : base * g)) idBad.push(`composition ${pos} d${d}${straddle ? ' str' : ''}`);
+            // and the depth factor reads dEff, so a straddle really does move it — the half §7.1
+            // predicted would break the old form. Asserted, so it cannot silently stop being true.
+            if (straddle && d === 100 && P.CONSTANTS.baseR[pos] !== 1
+              && g === P.depthWidthFactor(pos, { d, depthWidth: true })) {
+              idBad.push(`the straddle does not halve the depth the width factor reads at ${pos}`);
+            }
+          }
+        }
       }
       if (P.breakevenPrice({ straddle: true }) !== P.CONSTANTS.vs3bet.breakeven) idBad.push('the price moved at rake 0');
       if (P.unitBB({ straddle: true }) !== KS.unit || P.unitBB(undefined) !== 1) idBad.push('unitBB');
@@ -255,8 +289,13 @@ export function build(ctx) {
         `fight it and is 2-6x larger on the nu coefficient (d kappa = 0.13*cBlind(v) = +0.032..+0.107 against ` +
         `-0.189 flat); what completes the field's margin is the MEASUREMENT — the multiway realization slope ` +
         `(+0.027..+0.122) and rho read further up its N curve. (e) I6/I7/I8/I9/I10/I13/I19 all hold straddled ` +
-        `at 40/100/250 bb. (f) the transform is exact: N_eff gains cBlind(v), dEff = d/2 clamped, widthFor ` +
-        `scales by seatWidthFactor, and the price does not move at rake 0` +
+        `at 40/100/250 bb. (f) the transform is exact: N_eff gains cBlind(v), dEff = d/2 clamped, and the price ` +
+        `does not move at rake 0. REWRITTEN at P1 (§7.1 predicted the old width identity would fail "the moment ` +
+        `widthFor reads depth"): the clause now asserts the FULL composition — widthFor === base * seatWidthFactor ` +
+        `* depthWidthFactor with item 6b's factor ON, at 40/100/250 x straddle {off,on} — with === rather than ` +
+        `1e-15, because both factors enter as multiplications and a product identity is exact where a quotient one ` +
+        `is a tolerance. The half §7.1 saw coming is asserted directly: under a straddle dEff halves, so the width ` +
+        `factor at 100bb straddled is the 50bb factor and not the 100bb one` +
         (okA ? '' : ` — (a) FAILS: rfi ${dir.rfi.l} looser (worst ${dir.rfi.at}), iso ${dir.limps.l} (${dir.limps.at})`) +
         (okB ? '' : ` — (b) FAILS: nu falls at ${dir.rfi.nuDown}/${dir.limps.nuDown} settings, worst ${(Math.max(dir.rfi.nuWorst, dir.limps.nuWorst) * 100).toFixed(2)} pts`) +
         (okC ? '' : ` — (c) FAILS: field ${pct(mField)}, depth ${pct(mDepth)}, both ${pct(mBoth)} — re-read the composition before relaxing this; if the depth half now WINS, that is a finding, not a tolerance`) +
@@ -438,16 +477,40 @@ export function build(ctx) {
         seq[pos] = s;
       }
       // (c) the arithmetic
+      //
+      // REWRITTEN AT P1 to the DEPTH-COUPLED reference pot (V3-PLAN §7.1). `want` was
+      // `min(pct, capBB/(potBB*unit))` with a constant `potBB`; item 6 makes the reference pot
+      // `potBB * (d/ref)^potScale`, so the reference this clause recomputes against has to be the
+      // same one the model uses or the gate is checking a formula the code no longer runs.
+      //
+      // WHAT KEEPS THE PRESET CHECKS INTACT is the knee: the ratio is 1 at `depth.ref`, so at the
+      // reference depth `rakePotBB` returns `potBB` itself and every reading below is the number it
+      // has always been. The sweep now spans the whole depth slider AND both settings of the
+      // coupling axis, so the clause asserts three things where it used to assert one — the legacy
+      // arithmetic, the coupled arithmetic, and that the two agree exactly at 100bb. I41 is where
+      // the coupling's own claims live; this is I31 keeping its formula honest about the change.
       const aBad = [];
       const prem = P.CONSTANTS.vs3bet.call - P.CONSTANTS.vs3bet.breakeven;
       for (const pct of [0, 1, 2.5, 3, 5, 6]) {
         for (const straddle of [false, true]) {
-          const e = P.envOf({ rakePct: pct, straddle });
-          const want = Math.min(pct / 100, KR.capBB / (KR.potBB * (straddle ? KS.unit : 1)));
-          if (Math.abs(P.rakeFraction(e) - want) > 1e-15) aBad.push(`rakeFrac ${pct}%${straddle ? ' straddled' : ''}`);
-          if (Math.abs(P.breakevenPrice(e) - P.CONSTANTS.vs3bet.breakeven / (1 - want)) > 1e-15) aBad.push(`price ${pct}%`);
-          if (Math.abs((P.callFloorAt(e) - P.breakevenPrice(e)) - prem) > 1e-12) aBad.push(`premium ${pct}%`);
-          if (Math.abs(P.rakeRhoFactor(e) - (1 - want)) > 1e-15) aBad.push(`rhoFactor ${pct}%`);
+          for (const d of [P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max]) {
+            for (const rakeDepth of [false, true]) {
+              const e = P.envOf({ rakePct: pct, straddle, d, rakeDepth });
+              const pot = rakeDepth ? KR.potBB * Math.pow(d / P.CONSTANTS.depth.ref, KR.potScale) : KR.potBB;
+              const at = `${pct}% d${d}${straddle ? ' straddled' : ''}${rakeDepth ? ' coupled' : ''}`;
+              if (P.rakePotBB(e) !== pot) aBad.push(`rakePotBB ${at}`);
+              const want = Math.min(pct / 100, KR.capBB / (pot * (straddle ? KS.unit : 1)));
+              if (Math.abs(P.rakeFraction(e) - want) > 1e-15) aBad.push(`rakeFrac ${at}`);
+              if (Math.abs(P.breakevenPrice(e) - P.CONSTANTS.vs3bet.breakeven / (1 - want)) > 1e-15) aBad.push(`price ${at}`);
+              if (Math.abs((P.callFloorAt(e) - P.breakevenPrice(e)) - prem) > 1e-12) aBad.push(`premium ${at}`);
+              if (Math.abs(P.rakeRhoFactor(e) - (1 - want)) > 1e-15) aBad.push(`rhoFactor ${at}`);
+              // the knee, stated as an identity between the two lanes rather than as two readings
+              if (d === P.CONSTANTS.depth.ref
+                && P.rakeFraction(e) !== P.rakeFraction(P.envOf({ rakePct: pct, straddle, d }))) {
+                aBad.push(`knee identity ${at}`);
+              }
+            }
+          }
         }
       }
       if (P.rakeRhoFactor(undefined) !== 1 || P.breakevenPrice(undefined) !== P.CONSTANTS.vs3bet.breakeven
@@ -472,7 +535,12 @@ export function build(ctx) {
         `${(prem * 100).toFixed(0)}-point premium over it is invariant, and a straddle doubles the unit the cap is ` +
         `measured against so the same 3bb cap takes ` +
         `${(P.rakeFraction({ rakePct: KR.preset, straddle: true }) * 100).toFixed(1)}% instead of ` +
-        `${(P.rakeFraction({ rakePct: KR.preset }) * 100).toFixed(1)}%` +
+        `${(P.rakeFraction({ rakePct: KR.preset }) * 100).toFixed(1)}%. (c) is REWRITTEN at P1 to the ` +
+        `depth-coupled reference pot (§7.1): the recomputation now runs over depth {40,100,250} x both settings ` +
+        `of the coupling axis, so it checks the formula the model actually runs rather than the flat one item 6 ` +
+        `replaced — and the preset readings above are unchanged BECAUSE of the knee, which is asserted here as an ` +
+        `identity between the coupled and uncoupled lanes at ${P.CONSTANTS.depth.ref}bb rather than as two ` +
+        `numbers that happen to match` +
         (moved > tolMoved ? ` — (a) FAILS: ${moved} tiers moved, first ${firstMove}` : '') +
         (scored === nCells ? '' : ` — (a) FAILS: only ${scored} of ${nCells} scores moved; the haircut is not reaching the score`) +
         (worstDev < 1e-12 ? '' : ` — (a) FAILS: the haircut is not uniform (${worstDev.toExponential(2)})`) +

@@ -107,6 +107,66 @@ export const CONSTANTS = {
     // 0.06 is the round number just past the gap; deep it takes the bar to 0.56 and moves the three
     // weakest AA cells into the call lane, which is the half of the claim that survives.
     fourBet: 0.06,
+    // ---- the depth->WIDTH factor (V3-PLAN item 6, brief §5.4; gate I42) -------------------------
+    // ZERO NEW OPINION, and that is the whole reason it is here rather than in a fitted table.
+    // brief §5.4: `baseRealization` ALREADY moves with depth, through `beta`, which is already in
+    // the model and already gated (I23(f)). The ratio of a seat's realization at d to its
+    // realization at the reference depth is therefore a free, signed, seat-dependent factor:
+    //
+    //     widthRatio(pos, d) = baseRealization(pos, d) / baseRealization(pos, 100)
+    //
+    // Measured on the shipped constants at 250bb: SB 0.9638  BB 0.9749  UTG 0.9894  HJ 0.9965
+    // CO 1.0070  BTN 1.0206 — the blinds and the early seats TIGHTEN deep and CO/BTN LOOSEN,
+    // because position compounds when there is more money behind. Exactly 1 at 100bb, because
+    // u(100) = 0 and the exponent is 1 there.
+    //
+    // It is written as the RATIO and not as `baseR^(beta*u)` even though those are the same
+    // quantity in real arithmetic: measured, the two forms differ by 1 ulp at HJ and BB, and I42
+    // asserts the identity `width ratio === realization ratio` with `===` rather than a tolerance.
+    // A form that is algebraically equal and numerically one ulp off would turn that gate into a
+    // tolerance argument, which is how exactness claims rot.
+    widthRatio: 'baseRealization(pos,d)/baseRealization(pos,100)',
+    // No new constant: `beta` above is the only opinion involved and it is unchanged. What the
+    // factor DOES force is a re-measured allowance where it compounds with M_deep — I23(d)'s
+    // painted-width drift cap — and that allowance is measured under the axis ON inside I42, never
+    // authored. Off by default (env.depthWidth); the default flip is a fixture ceremony (§0.4(c)).
+  },
+  // ---- the 3-bet SIZING axis (V3-PLAN item 9, METHODOLOGY §10.8; gate I44) ----------------------
+  // Every threshold at the vs-3-bet node assumed a pot-sized 3-bet. `s` is the 3-bet's size as a
+  // fraction of the pot-size raise, and the price it implies is EXACT ARITHMETIC on the game tree,
+  // not an opinion:
+  //
+  //   hero opens to `o` into blinds `b`; villain raises to  o + s*(b + 2o)
+  //   hero's call    c(s) = s*(b + 2o)
+  //   final pot      P(s) = (b + 2o) * (1 + 2s)
+  //   raw price      e(s) = c/P = s / (1 + 2s)          <- b and o CANCEL: the price is pure geometry
+  //
+  // so the price scales by e(s)/e(1) = 3s/(1+2s) and `vs3bet.breakeven` is left exactly where it
+  // is. At s = 1 the factor is 3/3 = 1 and the shipped 0.290 is returned by reference, bit for bit
+  // — which is I44's first clause and what keeps `sizing` a legal §0.4(a) axis.
+  sizing: {
+    // THE DOMAIN IS THE GAME'S, NOT AN AUTHORED WINDOW, and the top end is the interesting half:
+    // **the pot-limit maximum IS s = 1**. There is no such thing as a 1.2x-pot 3-bet in PLO, so
+    // the reference is the CEILING of this axis rather than a point in the middle of it, and
+    // `sizing` can only ever make a 3-bet smaller. That is an arithmetic identity of the game (the
+    // same identity V3-PLAN §6's phase-0 annotation records for the solver's 3/9/27/81 ladder), so
+    // the domain introduces no constant at the top.
+    //   The bottom, 0.25, is a judgement and is the only authored number here: below a quarter pot
+    // a "3-bet" is a min-click, and the face-up value range this node models (60/25/10/5 AA/KK/QQ)
+    // is not the range anybody min-3-bets. It is a display clamp, not a threshold — no decision
+    // reads it — which is why it is not carried as an opinion constant of its own.
+    min: 0.25, ref: 1, max: 1, detents: [0.5, 0.75, 1],
+    priceAt: 'breakeven*3s/(1+2s)',
+    // FLAGGED, AND IT CANNOT BE ANCHORED — said out loud rather than quietly held.
+    // `vs3bet.call` sits 7 points above the price "because a 3-bet pot is played out of position
+    // over three streets". That premium is a postflop claim, and a bigger 3-bet means a lower SPR,
+    // which means LESS postflop to be wrong about — so the premium should shrink as s rises. By
+    // how much is not measurable here: nothing in this repository measures postflop play, which is
+    // the same hole limitation 16 names. So the premium is HELD CONSTANT at its pot-sized
+    // calibration, the flag ships, and I44 measures the CONSEQUENCE (how the continue range moves
+    // when only the price moves) instead of inventing a coefficient to hide it.
+    premiumCalibratedAt: 1,
+    flag: 'the 7-pt call premium is calibrated at pot-size and held constant across the axis — unanchorable, bounded by gate I44',
   },
   // ---- the rake dial (V2-PLAN §3.2; every measurement in METHODOLOGY §5.2) ---------------------
   // CRUDE, and the plan says so. One fraction, applied two ways:
@@ -131,6 +191,31 @@ export const CONSTANTS = {
     // regeneration. 60 puts the default preset exactly on the cap's KNEE (3/60 = 5%), which is
     // where real 5%/3bb lobbies sit: they reach the cap in pots of 60bb and up.
     potBB: 60,
+    // ---- the rake-DEPTH coupling (V3-PLAN item 6, brief §5.3; gate I41) ------------------------
+    // THE DEFECT THIS FIXES, stated first: `potBB` above is a constant, so the model rakes a 250bb
+    // game at the same 5% it rakes a 40bb game. Preflop pot sizes really do not scale with depth —
+    // but the cap is measured against the FINAL pot, and the final pot does. `rakePotBB(env)`
+    // therefore scales the reference pot with the stack:
+    //
+    //     potBB(d) = potBB * (d / depth.ref) ^ potScale
+    //
+    // THE ANCHOR IS THE KNEE, and it is an identity rather than a fit: `potScale` multiplies a
+    // ratio that is 1 at d = 100, so potBB(100) = 60 = 3/0.05 EXACTLY — the existing constant
+    // re-described, not replaced, and the 5% preset still lands exactly on the cap's knee at the v1
+    // operating depth. Both straddle states are the identity there too (see `sealEnv`), which is
+    // what keeps I22 and the 100bb lanes of I32 untouched.
+    //
+    // `potScale` IS THE ONE NEW OPINION IN ITEM 6 AND IT SHIPS FLAGGED. 1 is linear: "the final pot
+    // scales with the effective stack", which is true when the stacks go in and progressively less
+    // true when they do not — i.e. it is a MODELING CHOICE about how often a deep pot plays for
+    // stacks, not a measurement, and nothing in this repository measures that. It is bounded by
+    // gate I41 rather than justified: the gate pins the knee identity, the 250bb reading
+    // (5.00% -> 2.00%, price 30.53% -> 29.59%), monotonicity in depth, and the exact arithmetic
+    // including the straddle-doubled cap unit. See `rake.flag` below and METHODOLOGY §5.2.
+    potScale: 1,
+    potBBAt: 'potBB*(d/100)^potScale',
+    // The flag, in the shipped data so the Method view renders it rather than transcribing it.
+    flag: 'potScale is unanchored opinion (linear) — bounded by gate I41, off by default (env.rakeDepth)',
   },
   // ---- the straddle (V2-PLAN §3.3; full write-up in METHODOLOGY §5.3) --------------------------
   // A UTG straddle is ONE fact — the preflop betting unit doubles — with three consequences this
@@ -209,6 +294,44 @@ export const CONSTANTS = {
   t4Band: 0.015,
   closeMargin: 2.0,
   adj: [2, -3, 4],
+  // ---- the §10 limitations register (V3-PLAN §10, P1 lane M's doc slot) ------------------------
+  // A REGISTER, NOT A SCORING CONSTANT, and the comment says so because the block it sits in
+  // opens with "everything the model knows" and this is not that. Nothing below reads it; change
+  // it and no tier moves.
+  //
+  // WHY IT IS HERE ANYWAY. METHODOLOGY §10's limitations are the honest half of this project and
+  // the Method view renders `model.constants` and nothing else from shipped data — the page's
+  // "Known weaknesses" list is hand-authored prose in the shell, which is exactly the transcription
+  // this repository's own rule forbids ("the Method view renders shipped data, never transcribed
+  // prose"). Carrying the two limitations v3 adds as DATA is the smallest honest fix available to
+  // a lane that does not own the shell: they reach the page through the machinery that already
+  // works, and the page's list can be re-pointed at this array later without a second source.
+  //
+  // THE TEETH. Each `note` must appear VERBATIM in docs/METHODOLOGY.md under the numbered entry it
+  // names — the grep-gate idiom, asserted by I41 (16) and I42 (17), which are the gates whose own
+  // flags cite these limitations as the reason a constant cannot be anchored. So a limitation
+  // edited on the page but not in the document, or vice versa, fails the build rather than shipping
+  // two versions of the same admission.
+  limitations: [
+    {
+      n: 16,
+      of: 'rho relevance decays with depth',
+      note: 'The measurement layer is all-in equity at showdown, so it describes a 40bb game well '
+        + 'and a 250bb game poorly: the deep end of the dial is exactly where the measurement stops '
+        + 'applying, and M_deep is a scoring-layer patch over a measurement-layer relevance problem '
+        + 'that no constant can fix.',
+      fix: 'the postflop/SPR model — no constant fixes this',
+      flagsItExplains: ['rake.potScale', 'sizing.premiumCalibratedAt'],
+    },
+    {
+      n: 17,
+      of: 'a percentile cut cannot change how many hands you play',
+      note: 'A percentile cut can change which hands you play but never how many, so every dial '
+        + 'that scales or shifts every cell moves the ordering and not the count; the absolute-EV '
+        + 'cut is the designated structural fix, and its gate is written to prove the fix bites.',
+      fix: 'the absolute-EV cut',
+    },
+  ],
 };
 
 // seats still to act, 6-max
@@ -234,6 +357,21 @@ export function positionDisabled(pos, node) {
  */
 export const OPERATING_POINT = Object.freeze({
   d: CONSTANTS.depth.ref, rakePct: CONSTANTS.rake.min, rakeCapBB: CONSTANTS.rake.capBB, straddle: false,
+  // ---- the v3 axes, at the LEGACY setting that makes each of them the identity ------------------
+  // V3-PLAN §0.4(a): a v3 mechanism enters as "a new axis inert at legacy settings". These three
+  // are that shape. They are OFF/at-reference here and their DEFAULTS ARE NOT FLIPPED in P1 — a
+  // flip moves the tiers on the shallow, deep and straddled lanes of I32's surface, and §0.4(c)
+  // says that is a deliberate `freeze-tiers.mjs --force` ceremony with the move-diff committed,
+  // which belongs to the B1 integration stage and not to a lane worktree.
+  //
+  //   rakeDepth   the rake-depth coupling (item 6). false = `potBB` is the flat 60 it has always
+  //               been. Note the coupling is the identity at 100bb in BOTH straddle states, so it
+  //               is only the 40bb and 250bb lanes that a flip would move.
+  //   depthWidth  the depth->width factor (item 6b). false = `widthFor` does not read depth, which
+  //               is precisely the defect brief §5.1 records as limitation 17.
+  //   sizing      the 3-bet size as a fraction of the pot-size raise (item 9). 1 = pot, and at
+  //               s = 1 every threshold is returned by reference, not recomputed.
+  rakeDepth: false, depthWidth: false, sizing: CONSTANTS.sizing.ref,
 });
 
 /**
@@ -243,7 +381,9 @@ export const OPERATING_POINT = Object.freeze({
  *   dEff      the depth the SCORING layer sees, in preflop units — a straddle halves it (§3.3),
  *             clamped to [40,250] for the reason `depthU` clamps. CONSEQUENCE, OWNED: the
  *             straddle's depth half saturates below 80bb, since 40/2 is off the bottom of the dial.
- *   rakeFrac  the fraction of a won pot the house takes, min(pct, cap/pot) — see CONSTANTS.rake.
+ *   rakePot   the reference raked pot in preflop units, `potBB` scaled by depth when `rakeDepth`
+ *             is on and the flat `potBB` when it is off (V3-PLAN item 6).
+ *   rakeFrac  the fraction of a won pot the house takes, min(pct, cap/(rakePot*unit)).
  */
 function sealEnv(e) {
   const D = CONSTANTS.depth, R = CONSTANTS.rake;
@@ -253,8 +393,18 @@ function sealEnv(e) {
   Object.defineProperty(e, 'dEff', {
     value: e.straddle ? Math.min(D.max, Math.max(D.min, e.d / unit)) : e.d,
   });
+  // The coupling reads the RAW depth `d`, not `dEff`, and that is load-bearing rather than a
+  // slip. `d` is the stack in BIG BLINDS and the cap is quoted in big blinds; `dEff` is the same
+  // stack re-expressed in preflop units, which is a change of unit and not a change of money. If
+  // the scale read `dEff` it would double-count the straddle — the `* unit` below is already the
+  // straddle's whole effect on this quantity (§5.3) — and the coupling would stop being the
+  // identity at 100bb straddled, which is the one thing that keeps I32's 100bb lanes untouched.
+  // Measured both ways before it was written: `dEff` moves d100/r5/s1 from 2.500% to 5.000%.
+  const scale = (e.rakeDepth && e.d !== D.ref) ? Math.pow(e.d / D.ref, R.potScale) : 1;
+  const rakePot = scale === 1 ? R.potBB : R.potBB * scale;
+  Object.defineProperty(e, 'rakePot', { value: rakePot });
   Object.defineProperty(e, 'rakeFrac', {
-    value: (pct <= 0 || e.rakeCapBB <= 0) ? 0 : Math.min(pct, e.rakeCapBB / (R.potBB * unit)),
+    value: (pct <= 0 || e.rakeCapBB <= 0) ? 0 : Math.min(pct, e.rakeCapBB / (rakePot * unit)),
   });
   return Object.freeze(e);
 }
@@ -272,14 +422,20 @@ export function envOf(s) {
   if (!s) return DEFAULT_ENV;
   if (s.__env === true) return s;
   if (s.env && s.env.__env === true) return s.env;   // an opts bag carrying an already-normalised one
-  const D = CONSTANTS.depth, R = CONSTANTS.rake;
+  const D = CONSTANTS.depth, R = CONSTANTS.rake, SZ = CONSTANTS.sizing;
   const rawD = s.d;
   const d = (rawD == null || !isFinite(rawD)) ? D.ref : Math.min(D.max, Math.max(D.min, rawD));
   const rakePct = (s.rakePct == null || !isFinite(s.rakePct)) ? R.min : Math.min(R.max, Math.max(R.min, s.rakePct));
   const rakeCapBB = (s.rakeCapBB == null || !isFinite(s.rakeCapBB)) ? R.capBB : Math.max(0, s.rakeCapBB);
   const straddle = !!s.straddle;
-  if (d === D.ref && rakePct === R.min && rakeCapBB === R.capBB && !straddle) return DEFAULT_ENV;
-  return sealEnv({ d, rakePct, rakeCapBB, straddle });
+  // The three v3 axes. `sizing` clamps to its own domain for the reason `d` does — outside it the
+  // price arithmetic is still exact but the RANGE model behind it is not describing the same game.
+  const rakeDepth = s.rakeDepth === true;
+  const depthWidth = s.depthWidth === true;
+  const sizing = (s.sizing == null || !isFinite(s.sizing)) ? SZ.ref : Math.min(SZ.max, Math.max(SZ.min, s.sizing));
+  if (d === D.ref && rakePct === R.min && rakeCapBB === R.capBB && !straddle
+    && !rakeDepth && !depthWidth && sizing === SZ.ref) return DEFAULT_ENV;
+  return sealEnv({ d, rakePct, rakeCapBB, straddle, rakeDepth, depthWidth, sizing });
 }
 
 /**
@@ -287,10 +443,17 @@ export function envOf(s) {
  * the solve/aggressive-set caches hand back another environment's answer — which is a silent wrong
  * answer rather than a crash. All four axes move a tier now (`straddle` was in the key before it
  * did anything, which is why turning it on cost nothing here).
+ *
+ * THE THREE v3 AXES ARE IN THE KEY FROM THE DAY THEY EXIST, not from the day their defaults flip.
+ * That is the trap this docstring has always described and V3-PLAN §7.2 predicts I32 catching: an
+ * axis that moves a number but not the key hands back another environment's answer, and the
+ * failure is silent. Adding them while they are still inert costs nothing measurable and means the
+ * B1 default flip is a one-line change to `OPERATING_POINT` rather than a cache audit.
  */
 export function envKey(env) {
   const e = envOf(env);
-  return `${e.d}|${e.rakePct}|${e.rakeCapBB}|${e.straddle ? 1 : 0}`;
+  return `${e.d}|${e.rakePct}|${e.rakeCapBB}|${e.straddle ? 1 : 0}`
+    + `|${e.rakeDepth ? 1 : 0}|${e.depthWidth ? 1 : 0}|${e.sizing}`;
 }
 
 /** is a UTG straddle posted? (V2-PLAN §3.3 ships the UTG form only) */
@@ -303,7 +466,52 @@ export function unitBB(env) { return straddleActive(env) ? CONSTANTS.straddle.un
 export function effectiveDepth(env) { return envOf(env).dEff; }
 
 /**
- * The fraction of a won pot the house takes: `min(rakePct/100, rakeCapBB / (potBB * unitBB))`.
+ * The reference raked pot in preflop units (V3-PLAN item 6, brief §5.3). `CONSTANTS.rake.potBB`
+ * flat when the coupling is off; `potBB * (d/100)^potScale` when it is on.
+ *
+ * Reads the RAW depth, never `dEff` — see `sealEnv` for why, and I41 for the gate that pins it.
+ * Exactly `potBB` at d = 100 whatever `potScale` is, because the ratio is 1 there and the branch
+ * in `sealEnv` returns the constant itself rather than `potBB * Math.pow(1, s)`.
+ */
+export function rakePotBB(env) { return envOf(env).rakePot; }
+
+/** is the rake-depth coupling on? (V3-PLAN item 6; legacy = off) */
+export function rakeDepthActive(env) { return envOf(env).rakeDepth === true; }
+
+/** is the depth->width factor on? (V3-PLAN item 6b; legacy = off) */
+export function depthWidthActive(env) { return envOf(env).depthWidth === true; }
+
+/** the 3-bet size as a fraction of the pot-size raise (V3-PLAN item 9; legacy = 1 = pot) */
+export function sizingOf(env) { return envOf(env).sizing; }
+
+/**
+ * The depth->width factor for a seat: `baseRealization(pos, dEff) / baseRealization(pos, ref)`.
+ *
+ * BRIEF §5.4's FREE ANCHOR, and the word free is doing real work — this introduces no constant.
+ * `beta` is already in the model and already gated (I23(f)); this is the ratio it already implies,
+ * read off the function that already computes it. Exactly 1 when the axis is off, and exactly 1 at
+ * the reference depth whether it is on or off, so `widthFor` is untouched at the operating point.
+ *
+ * Written as the ratio of two `baseRealization` calls, NOT as `Math.pow(baseR[pos], beta*u)`:
+ * measured, the two differ by one ulp at HJ and BB, and gate I42 asserts
+ * `width ratio === realization ratio` with `===`. Computing the factor from anything other than
+ * the function the identity is stated against would make that gate a tolerance argument.
+ *
+ * The signs are the brief's and they are the interesting half: at 250bb SB 0.9638 / BB 0.9749 /
+ * UTG 0.9894 / HJ 0.9965 tighten and CO 1.0070 / BTN 1.0206 loosen, because a seat whose base is
+ * under 1 loses more of its equity to depth and a seat whose base is over 1 gains — position
+ * compounds when there is money behind. Shallow the signs flip, for the same reason.
+ */
+export function depthWidthFactor(pos, env) {
+  const e = envOf(env);
+  if (e.depthWidth !== true) return 1;
+  const D = CONSTANTS.depth;
+  if (e.dEff === D.ref) return 1;
+  return baseRealization(pos, e.dEff) / baseRealization(pos, D.ref);
+}
+
+/**
+ * The fraction of a won pot the house takes: `min(rakePct/100, rakeCapBB / (rakePotBB * unitBB))`.
  * Exactly 0 at the v1 operating point, which is what makes every term below the identity there.
  *
  * The `unitBB` factor is the whole of V2-PLAN §3.3's "only the vs-3-bet absolute price recomputes
@@ -326,18 +534,46 @@ export function rakeFraction(env) { return envOf(env).rakeFrac; }
 export function rakeRhoFactor(env) { return 1 - rakeFraction(env); }
 
 /**
- * The vs-3-bet pot-odds breakeven. **Depth does not move this** — V2-PLAN §3.1 is explicit that the
- * 29% is a price, not a preference, and prices are set by the sizing, not by the stacks behind it.
- * **Rake does**, and that half is exact arithmetic rather than opinion:
+ * The vs-3-bet pot-odds breakeven at the sizing `s`, after rake.
+ *
+ * **Depth does not move this** — V2-PLAN §3.1 is explicit that the 29% is a price, not a
+ * preference, and prices are set by the sizing, not by the stacks behind it. Which is exactly why
+ * V3-PLAN item 9 makes the SIZING an axis: the sentence above was true and the model had no dial
+ * for the one thing it named.
+ *
+ * **Rake moves it**, and that half is exact arithmetic rather than opinion:
  *
  *   call c into a final pot P, collect P*(1-r) when you win
  *   e*(P*(1-r) - c) = (1-e)*c   =>   e = c / (P*(1-r)) = breakeven / (1 - r)
  *
- * so the 0.290 constant is untouched and the price is derived from it. 5% rake takes it to 30.5%.
+ * **Sizing moves it, and that half is exact too** (V3-PLAN item 9, gate I44). With hero opening to
+ * `o` into blinds `b` and villain 3-betting to `o + s*(b + 2o)`, hero calls `s*(b + 2o)` into a
+ * final pot of `(b + 2o)*(1 + 2s)`, so the raw price is `s/(1 + 2s)` — `b` and `o` CANCEL, and the
+ * price is pure geometry with no table assumption in it at all. The shipped 0.290 is that quantity
+ * at s = 1 (up to the rounding METHODOLOGY §7 records), so the sizing enters as the ratio
+ * `e(s)/e(1) = 3s/(1 + 2s)` and the constant is re-scaled rather than replaced.
+ *
+ * At s = 1 the constant is returned BY REFERENCE, not multiplied by a factor that happens to be 1
+ * — the same discipline `baseRealization` applies to its exponent, and I44's first clause
+ * ("pot-size = today bit-for-bit") is a claim about identity, not about rounding.
  */
 export function breakevenPrice(env) {
-  const r = rakeFraction(env);
-  return r === 0 ? CONSTANTS.vs3bet.breakeven : CONSTANTS.vs3bet.breakeven / (1 - r);
+  const e = envOf(env);
+  const r = e.rakeFrac;
+  const base = sizingPrice(e.sizing);
+  return r === 0 ? base : base / (1 - r);
+}
+
+/**
+ * The raw (unraked) vs-3-bet price at sizing `s`. Split out from `breakevenPrice` so gate I44 can
+ * assert the sizing arithmetic without a rake in the way, and so the sizing readout and the price
+ * readout cannot drift apart.
+ */
+export function sizingPrice(s) {
+  const K = CONSTANTS.vs3bet, SZ = CONSTANTS.sizing;
+  const x = (s == null || !isFinite(s)) ? SZ.ref : s;
+  if (x === SZ.ref) return K.breakeven;                    // pot-size: the shipped constant itself
+  return K.breakeven * (3 * x) / (1 + 2 * x);
 }
 
 /**
@@ -350,11 +586,22 @@ export function breakevenPrice(env) {
  * that price was DISPLAY-ONLY, quoted in the WHY panel and consulted by nothing, so raising it
  * alone would have made §3.2's own promise ("every marginal hand moves toward fold") false at the
  * only node where it can be true. Rejected alternative: leave the floor at 0.36 and change the text.
+ *
+ * V3-PLAN item 9 puts the SIZING through the same door, and the 7 points are the reason it needed a
+ * decision rather than a line of code. The premium is a postflop claim ("a 3-bet pot is played out
+ * of position over three streets"), and a bigger 3-bet buys a lower SPR — less postflop, so a
+ * smaller premium. By how much, nothing here can say: the measurement layer is all-in equity at
+ * showdown (limitation 16), which is exactly the quantity that cannot answer this. So the premium
+ * is HELD CONSTANT at its pot-sized calibration, shipped flagged as `sizing.flag`, and gate I44
+ * measures what that costs instead of a coefficient being invented to hide it.
+ *
+ * The branch is on the PRICE, not on the rake: at s != 1 with no rake the price has still moved,
+ * and a `rakeFraction(env) === 0` early return would silently ship the pot-sized floor.
  */
 export function callFloorAt(env) {
-  const r = rakeFraction(env);
-  return r === 0 ? CONSTANTS.vs3bet.call
-    : CONSTANTS.vs3bet.call + (breakevenPrice(env) - CONSTANTS.vs3bet.breakeven);
+  const price = breakevenPrice(env);
+  return price === CONSTANTS.vs3bet.breakeven ? CONSTANTS.vs3bet.call
+    : CONSTANTS.vs3bet.call + (price - CONSTANTS.vs3bet.breakeven);
 }
 
 /**
@@ -668,6 +915,126 @@ export function villainEq(model, key, cell, profile) {
  */
 export function seOfTrials(trials) { return trials > 0 ? 50 / Math.sqrt(trials) : Infinity; }
 
+// ---------------------------------------------------------------------------
+// 2c. the villain profile as a SHADOW MODEL (V3-PLAN item 8, gate I43)
+// ---------------------------------------------------------------------------
+/**
+ * FNV-1a over a string, 8 hex characters. Pure arithmetic — no Node APIs, no imports, which is why
+ * it is here rather than borrowed from `node:crypto`: this module is inlined into the page verbatim.
+ * It is a CACHE-KEY hash and nothing else; nothing security-shaped depends on it.
+ */
+export function fnv1a(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return ('0000000' + h.toString(16)).slice(-8);
+}
+
+/**
+ * The memo-key fragment for a villain profile. `'OFF'` when the profile is off — a CONSTANT, so the
+ * off keys are stable and the off path is one string comparison.
+ *
+ * Every axis that can move a number is in here, for the same reason `envKey` exists: the solve memo
+ * must not hand back another field's answer. `measured` contributes its own identity, because a
+ * Simulate result replaces the lattice for the cells it covers.
+ */
+export function villainKey(profile, model) {
+  const p = villainProfileOf(profile, model);
+  if (!p.on) return 'OFF';
+  let m = '-';
+  if (p.measured) {
+    m = p.measured.settingsHash || p.measured.hash;
+    if (!m) { let n = 0; for (const k in p.measured) if (Object.prototype.hasOwnProperty.call(p.measured, k)) n++; m = 'n' + n; }
+  }
+  return `ON|${p.v}|${p.q}|${m}`;
+}
+
+/**
+ * THE PROFILE-ON MACHINERY (V3-PLAN item 8). `villainEq` answers one cell at a time; the scoring
+ * pipeline wants a MODEL. So the profile is expressed as a SHADOW MODEL — the same object graph
+ * with a profiled `cells` map — which `solve` can be handed in place of the shipped one.
+ *
+ * This construction previously lived in `src/shell.html` and nowhere else, which meant the villain
+ * axis reached tiers through a path no gate could see: `scripts/lib/tier-fixture-v2.mjs` records
+ * exactly that, "the villain profile reaches tiers through `villainEq`, which the page calls and
+ * `solve` does not". Hoisting it here is what makes I43 possible at all, and it is the only reason
+ * the hoist happened — the page's copy is a duplicate of this, not a variant of it.
+ *
+ * THREE THINGS ARE LOAD-BEARING.
+ *
+ *  1. **OFF IS OBJECT IDENTITY.** With the profile off this returns THE MODEL ITSELF — the same
+ *     object, not an equal copy. `villainEq` returns `cell.eq`/`cell.rho` by reference for exactly
+ *     this reason, and I22/I32's claim is about identity, not about rounding. I43 asserts it with
+ *     `assert.equal`, never `deepEqual`: a deep-equal copy would satisfy a value check and still
+ *     be a different object under the memo, which is the failure mode, not the symptom.
+ *
+ *  2. **NOTHING MOVED IS ALSO OFF.** An off-lattice `q` is `supported: false` at every cell — the
+ *     accessor refuses to interpolate an axis with one measurement on it — so the profile is on and
+ *     no number has changed. The honest representation of that is the model itself, not a
+ *     hash-shifted twin that makes the caller re-solve 123 identical cells. The BADGE says the
+ *     profile is on; the numbers say they are the shipped ones, because they are.
+ *
+ *  3. **THE SHADOW WEARS A DIFFERENT `meta.hash`.** `solve` and `aggressiveSet` key their memos on
+ *     the first eight characters of it, so a shadow wearing the real hash would be handed the
+ *     unprofiled answer straight out of the cache — a silent wrong number, the same failure
+ *     `envKey` exists to prevent.
+ *
+ * @param {object} model   the shipped model (hydrated or not)
+ * @param {object|null} profile see `villainProfileOf`
+ * @returns {object} the model itself when the profile is off or inert, else a shadow model
+ */
+export function profiledModel(model, profile) {
+  const key = villainKey(profile, model);
+  if (key === 'OFF') return model;
+  hydrate(model);
+  const p = villainProfileOf(profile, model);
+  const cells = {};
+  let moved = 0;
+  for (const k of Object.keys(model.cells)) {
+    const c = model.cells[k];
+    if (!c.combos) { cells[k] = c; continue; }
+    const got = villainEq(model, k, c, p);
+    if (got.eq === c.eq) { cells[k] = c; continue; }   // unsupported — shipped, by reference
+    const nc = {};
+    for (const f in c) if (Object.prototype.hasOwnProperty.call(c, f)) nc[f] = c[f];
+    nc.eq = got.eq; nc.rho = got.rho; nc.vpSource = got.source;
+    cells[k] = nc; moved++;
+  }
+  if (!moved) return model;
+  const m = {};
+  for (const f in model) if (Object.prototype.hasOwnProperty.call(model, f)) m[f] = model[f];
+  m.meta = {};
+  for (const f in model.meta) if (Object.prototype.hasOwnProperty.call(model.meta, f)) m.meta[f] = model.meta[f];
+  m.meta.hash = fnv1a(key) + String(model.meta.hash).slice(8);
+  m.cells = cells;
+  return hydrate(m);
+}
+
+/**
+ * The profile the page LOADS with once item 8's default is flipped — v at the lattice's own centre
+ * point, q at the shipped discipline. Read from the DATA, never written out: the lattice lives in
+ * `model.constants.villainLattice` because the generator measured it, and a load default typed into
+ * this file could name a v the lattice does not carry.
+ *
+ * THE DEFAULT IS NOT FLIPPED HERE. `villainProfileOf` still treats anything without `on: true` as
+ * OFF, and every caller in this repository still passes nothing. V3-PLAN §5.1 makes the flip a
+ * fixture-re-freeze ceremony (§0.4(c)) at barrier B1, with the move-diff committed; what P1 ships
+ * is the machinery, the load-default definition, and I43 asserting both — so the flip is one line
+ * against a gate that already measures what the line does.
+ *
+ * `exact` is the claim I43's first clause turns into a gate: at this profile every live cell reads
+ * a MEASURED lattice row, so zero cells are labelled `interpolated` at load. A default that landed
+ * between lattice points would open the page on interpolated numbers under a measured-looking grid.
+ */
+export function villainLoadDefault(model) {
+  const V = (model && model.constants && model.constants.villainLattice) || {};
+  const pts = V.v || [];
+  if (!pts.length || V.discipline == null) return VILLAIN_OFF;
+  return { on: true, v: pts[(pts.length - 1) >> 1], q: V.discipline, measured: null };
+}
+
 /**
  * Aggressive target width for (pos, node, v). The straddle shifts the OPENING bases one seat
  * tighter (§3.3) and nothing else: `w3bet` has no seat base, so the vs-Raise width is untouched.
@@ -676,12 +1043,28 @@ export function seOfTrials(trials) { return trials > 0 ? 50 / Math.sqrt(trials) 
  */
 export function widthFor(pos, node, v, env) {
   const K = CONSTANTS;
-  if (node === 'raise') return K.w3bet[0] + K.w3bet[1] * v;
+  // V3-PLAN item 6b: the depth->width factor is applied LAST, as one multiplication on the finished
+  // width, at every node including vs-Raise. Two decisions are in that sentence.
+  //   WHY LAST. `(w * g) / w` is not `g` in IEEE-754, but `w * g` IS exactly `w * g` — so gate
+  // I42's exactness clause is stated as the PRODUCT identity `widthFor(deep) === widthFor(ref) * g`
+  // and holds bit for bit. Folding `g` into `b` alongside `seatWidthFactor` would leave only a
+  // 1e-15 claim, and §7.1 asks for the exact composition, not a tolerance.
+  //   WHY vs-RAISE TOO, where `seatWidthFactor` deliberately does not apply. The straddle's seat
+  // factor is a step along `baseRaise`'s own opening ladder, and `w3bet` has no seat base for it to
+  // act on (limitation 13). This factor is not that: it is the ratio of a SEAT's realization at two
+  // depths, which is defined for a seat whether or not its width has a seat base. Scoping it to the
+  // opening nodes would leave limitation 17 half-closed — depth still unable to change how many
+  // hands you play at the vs-Raise node — for a reason that does not apply to it.
+  const g = depthWidthFactor(pos, env);
+  if (node === 'raise') {
+    const w = K.w3bet[0] + K.w3bet[1] * v;
+    return g === 1 ? w : w * g;
+  }
   const f = seatWidthFactor(pos, env);
   const b = f === 1 ? K.baseRaise[pos] : K.baseRaise[pos] * f;
   const base = b * (1 + K.widthSlope * (v - 0.5));
-  if (node === 'limps') return base * (1 + K.isoValueFactor * Math.max(0, v - 0.5));
-  return base;
+  const w = node === 'limps' ? base * (1 + K.isoValueFactor * Math.max(0, v - 0.5)) : base;
+  return g === 1 ? w : w * g;
 }
 
 /** the passive-continue width (T3), 0 when the node has no T3 */

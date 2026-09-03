@@ -79,8 +79,13 @@ export function build(ctx) {
       //  (c) FALSE where it names the low rundowns, and asserted here in its falsified form, so it
       //      cannot be quietly restored. `RUN0_LOW x DS` — 5432ds and the wheel — gets WORSE with
       //      depth: its rank at 250 is worse than at 40 at 49 of 75 settings and better at 9. The
-      //      reason is measured, not modelled: RUN0_LOW carries `cooler` 0.4268, the HIGHEST in the
-      //      rundown band and well above the 0.40 bar, while its nu of 0.43 is a whisker over
+      //      reason is measured, not modelled: the RUN0_LOW ROW carries a combo-weighted `cooler`
+      //      of 0.4268 — the highest of the seven rundown rows (RUN1_TOPMID 0.3997, RUN1_BOTTOM
+      //      0.3924, RUN3 0.3896, RUN2 0.3846, RUN0_HIGH 0.3335, BROADWAY_RUN 0.2750) and the
+      //      figure `rowMean('RUN0_LOW')` prints in the detail line below. Read at the CELL, x DS
+      //      is 0.422 and x RB is 0.437; it is the row that is the band's worst, not one column of
+      //      it. Both readings are well above the 0.40 bar, while the cell's nu of 0.43 is a
+      //      whisker over
       //      nuBar — so the mu term overrules the lambda term and the low rundown is the one
       //      rundown the depth axis punishes. That is the correct poker answer (the low end of a
       //      straight is what gets stacked deep) and it is the single most useful thing the depth
@@ -95,6 +100,11 @@ export function build(ctx) {
       //  (e) And the model still holds together at the ends of the slider: I7, I8, I9, I13 and I19
       //      are re-run at 40 and 250 bb and all hold. Depth re-sorts the grid; it must not break
       //      the things that make the grid a grid.
+      //
+      //  (g) ADDED AT P1 (V3-PLAN item 7, brief §5.2). WHAT KIND of re-sort the dial is, asserted
+      //      rather than described, so "the docs and the numbers currently disagree" cannot recur.
+      //      §3.1's re-weight-or-re-describe rule is RUN against the measurement at the clause
+      //      below, with the candidate re-weightings and what each one breaks written out there.
       //
       // WHAT THIS GATE DELIBERATELY DOES NOT ASSERT. V2-PLAN §3.1's third anchor — "big-pair rows
       // with pair rank J/T demoted at 200 bb relative to 100 bb, VIA THE mu*cooler TERM
@@ -222,6 +232,69 @@ export function build(ctx) {
       const spreadWidens = spreadAt(P.CONSTANTS.depth.max) > spreadAt(P.CONSTANTS.depth.ref)
         && spreadAt(P.CONSTANTS.depth.ref) > spreadAt(P.CONSTANTS.depth.min);
 
+      // (g) WHAT KIND OF RE-SORT THE DIAL IS — V3-PLAN item 7, brief §5.2, decided here rather than
+      // described here.
+      //
+      // brief §5.2's finding: the dial is DOCUMENTED as a nut-potential re-sort and MEASURED as a
+      // cooler re-sort. CO RFI, 40 -> 250bb: corr(rank move, nu) = +0.191 against
+      // corr(rank move, cooler) = -0.414. "Either re-weight lambda/mu, or re-describe the dial. The
+      // docs and the numbers currently disagree."
+      //
+      // §3.1 SETS THE DECISION RULE, and it is a rule and not a preference: re-weight ONLY if a
+      // re-weighting keeps I23(a-c) green while making corr(rank move, nu) dominant; otherwise
+      // re-describe. THE RULE WAS RUN, ON THE MEASUREMENT, BEFORE ANY PROSE WAS WRITTEN — and
+      // re-run on THIS CLAUSE'S OWN BASIS before it was written down, which is why the shipped row
+      // reproduces the number the detail line prints rather than sitting a few points off it:
+      // 9,225 cell-settings, the three percentile nodes over the six-depth grid, rank(40) - rank(250).
+      // ONE TRAP, RECORDED because it silently produced a first version of this table in which all
+      // five rows were identical: `solve` memoises on model hash x envKey, and lambda/mu are
+      // CONSTANTS rather than axes, so they are not in that key. A sweep per candidate must call
+      // `P.clearSolveMemo()` first or every candidate reads the shipped weights' cached answer.
+      //
+      //     lambda  mu    corr(nu)  corr(cooler)  nu dominant?  I23(a)  I23(b)  I23(c)  RUN0_LOW w/b
+      //     0.25    0.60   +0.1770    -0.4162         no         pass    pass    pass    49 / 9  <- shipped
+      //     0.25    0.30   +0.2663    -0.2099         YES        pass    pass    FAIL     0 / 73
+      //     0.25    0.15   +0.3017    -0.0564         YES        pass    pass    FAIL     0 / 75
+      //     0.50    0.60   +0.3124    -0.2563         YES        pass    pass    FAIL     0 / 70
+      //     0.60    0.20   +0.3706    -0.0143         YES        pass    pass    FAIL     0 / 75
+      //
+      // EVERY re-weighting that makes nu dominant fails I23(c), and it fails it in the same place
+      // every time: `RUN0_LOW x DS` stops getting worse with depth (49 settings worse / 9 better at
+      // the shipped weights; 0 worse / 70-75 better at every candidate). That is not a coincidence
+      // to be tuned around — mu's dominance IS the RUN0_LOW finding. Turning the dial into a
+      // nut-potential re-sort deletes the single most useful thing it says.
+      //
+      // And the arithmetic is against it independently: lambda is anchored to kappa's own swing
+      // (2*lambda = 0.50 against 0.520, so depth carries 96% of the authority field size has over
+      // the same quantity) and mu to the two measurements' combo-weighted standard deviations
+      // (lambda * sd(nu)/sd(cooler) = 0.25 * 0.0831/0.0353 = 0.589, rounded to 0.60). Every
+      // candidate above breaks one anchor or the other, so a re-weighting does not merely fail
+      // I23(c) — it ships an unanchored constant, which brief §2.1 puts out of scope.
+      //
+      // SO THE DIAL IS RE-DESCRIBED, AND THE MEASUREMENT IS ASSERTED HERE so the docs and the
+      // numbers cannot re-diverge. METHODOLOGY §5.1 now says what this clause measures.
+      const corrOf = (xs, ys) => {
+        const n = xs.length;
+        let mx = 0, my = 0;
+        for (let i = 0; i < n; i++) { mx += xs[i]; my += ys[i]; }
+        mx /= n; my /= n;
+        let sxy = 0, sxx = 0, syy = 0;
+        for (let i = 0; i < n; i++) { const a = xs[i] - mx, b = ys[i] - my; sxy += a * b; sxx += a * a; syy += b * b; }
+        return sxy / Math.sqrt(sxx * syy);
+      };
+      const mv = [], mNu = [], mCo = [];
+      for (const s of flat) {
+        for (const k of Object.keys(s.out[0].cells)) {
+          const c = model.cells[k];
+          if (!c || !c.combos || c.cooler == null) continue;
+          mv.push(s.out[0].cells[k].rank - s.out[DGRID.length - 1].cells[k].rank);
+          mNu.push(c.nu); mCo.push(c.cooler);
+        }
+      }
+      const corrNu = corrOf(mv, mNu), corrCo = corrOf(mv, mCo);
+      // the shape brief §5.2 measured: nu positive, cooler negative and LARGER
+      const coolerDominates = Math.abs(corrCo) > Math.abs(corrNu) && corrCo < 0 && corrNu > 0;
+
       // (e) the structural invariants, at both ends of the slider
       const struct = [];
       for (const i of [0, DGRID.length - 1]) {
@@ -249,7 +322,7 @@ export function build(ctx) {
         && bwViol <= tolViol && hiDS >= tolNet && hiSS >= tolNet && loW > loB
         && muHits > 0 && muBigPair.length === 0 && bigDemotions > 0
         && drift <= tolDrift && minPainted >= tolFloor && struct.length === 0
-        && orderKept && spreadWidens;
+        && orderKept && spreadWidens && coolerDominates;
       G('I23', pass,
         `depth direction over d = ${DGRID.join('/')} bb at ${dSweep.length} (node, pos, VPIP) settings. ` +
         `(a) AA_DANGLER|RB (the AA72r class) never gains a tier as stacks deepen — ${aViol} violations ` +
@@ -259,8 +332,8 @@ export function build(ctx) {
         `(${bwViol} violations), and RUN0_HIGH|DS / |SS rank better at 250 than at 40 in ${hiDS} / ${hiSS} ` +
         `of ${flat.length} settings (floor ${tolNet}). (c) the plan's rundown claim is FALSE for the LOW ` +
         `rundowns and that is asserted, not dropped: RUN0_LOW|DS ranks worse at 250 than at 40 in ${loW} ` +
-        `settings against ${loB} better — its cooler ${rowMean('RUN0_LOW').toFixed(4)} is the highest in the ` +
-        `rundown band, so the mu ` +
+        `settings against ${loB} better — its ROW's combo-weighted cooler ${rowMean('RUN0_LOW').toFixed(4)} is ` +
+        `the highest of the seven rundown rows (the cell itself reads ${model.cells['RUN0_LOW|DS'].cooler}), so the mu ` +
         `term overrules the lambda term. mu-attributable demotions at 200bb: ${muHits} over ` +
         `${muCells.size} cells (${[...muCells.keys()].slice(0, 4).join(', ')}), NONE of them a big pair — ` +
         `the big-pair band's cooler is ${bandMean('BIGPAIR').toFixed(4)}, BELOW the ${KD.coolerBar} bar, so ` +
@@ -272,7 +345,18 @@ export function build(ctx) {
         `${(minPainted * 100).toFixed(1)}% (${minAt}, floor ${(tolFloor * 100).toFixed(0)}%` +
         `${fast ? ', widened from I12\'s 10%' : ' — I12\'s'}). (e) I7/I8/I9/I13/I19 all hold at 40 and 250 bb. ` +
         `(f) the seats keep their order at 40/100/250 and the best-to-worst realization spread ` +
-        `widens with depth: ${[P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max].map((d) => spreadAt(d).toFixed(4)).join(' -> ')}` +
+        `widens with depth: ${[P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max].map((d) => spreadAt(d).toFixed(4)).join(' -> ')}. ` +
+        `(g) WHAT KIND OF RE-SORT THIS IS, asserted rather than described (V3-PLAN item 7, brief §5.2). Over ` +
+        `${mv.length.toLocaleString()} cell-settings, rank movement 40 -> 250bb correlates ` +
+        `${corrNu >= 0 ? '+' : ''}${corrNu.toFixed(4)} with nu and ${corrCo.toFixed(4)} with cooler: **the depth ` +
+        `dial is a COOLER re-sort, not a nut-potential one**, and the docs now say so. §3.1's decision rule was ` +
+        `RUN, not assumed — every lambda/mu re-weighting that makes nu dominant (0.25/0.30, 0.25/0.15, 0.50/0.60, ` +
+        `0.60/0.20) FAILS clause (c) in the same place: RUN0_LOW|DS stops falling with depth (49 worse / 9 better ` +
+        `shipped, against 0 / 70-75 at every candidate), because mu's dominance IS the RUN0_LOW finding. Both ` +
+        `constants are also anchored elsewhere — 2*lambda = ${2 * KD.lambda} against kappa's 0.520 swing, and ` +
+        `mu = lambda * sd(nu)/sd(cooler) = 0.25 * 0.0831/0.0353 = 0.589 — so a re-weighting would ship an ` +
+        `UNANCHORED constant on top of a failed gate. The rule therefore says re-describe, and this clause is ` +
+        `what stops the description drifting back` +
         (aFirst ? ` — (a) FAILS at ${aFirst}` : '') +
         (aGain >= tolGain ? '' : ` — (a) FAILS: ${aGain} gains at 40bb, floor ${tolGain}`) +
         (aMoves ? '' : ' — (a) FAILS: AA_DANGLER|RB never moves; the depth dial is inert') +
@@ -286,7 +370,11 @@ export function build(ctx) {
         (minPainted >= tolFloor ? '' : ' — (d) FAILS: the painted range collapses below the floor') +
         (struct.length ? ` — (e) FAILS: ${struct.slice(0, 3).join('; ')}` : '') +
         (orderKept ? '' : ' — (f) FAILS: the depth exponent inverts the seat order (|beta| must stay under 1)') +
-        (spreadWidens ? '' : ' — (f) FAILS: the positional spread does not widen with depth'));
+        (spreadWidens ? '' : ' — (f) FAILS: the positional spread does not widen with depth') +
+        (coolerDominates ? '' : ` — (g) FAILS: the dial is no longer the cooler re-sort METHODOLOGY §5.1 describes ` +
+          `(nu ${corrNu.toFixed(4)}, cooler ${corrCo.toFixed(4)}). If lambda/mu were deliberately re-weighted, ` +
+          `re-run §3.1's rule — a re-weighting is legal ONLY if (a)-(c) stay green — and rewrite §5.1 in the same ` +
+          `commit. Do not widen this: the whole point is that the doc and the number move together`));
     }
 
     {

@@ -177,20 +177,20 @@ export const CATALOG = [
     prediction: 'offered for falsification: shallow+raked folds more than deep+raked at every seat.',
   },
   {
-    id: 'I41', status: 'reserved', runner: 'verify', phase: 'P1', plan: '§7.2',
+    id: 'I41', status: 'live', runner: 'verify', phase: 'P1', plan: '§7.2',
     claim: 'rake-depth: rakeFrac(100bb) = 5.00% identity, rakeFrac(250bb) = 2.00%, monotone in '
       + 'depth, exact arithmetic including the straddle-doubled cap unit; vs-3-bet price '
       + '30.53% -> 29.59% across the slider.',
     fails: 'the knee-at-100bb identity moving — which would break I22/I32 in the same run.',
   },
   {
-    id: 'I42', status: 'reserved', runner: 'verify', phase: 'P1', plan: '§7.2',
+    id: 'I42', status: 'live', runner: 'verify', phase: 'P1', plan: '§7.2',
     claim: 'depth-width exactness: width ratio = realization ratio exactly (the I26(f) idiom); '
       + 'seat signs per brief §5.4; compounding with M_deep bounded by a re-measured allowance.',
     fails: 'an authored allowance standing in for a re-measured one.',
   },
   {
-    id: 'I43', status: 'reserved', runner: 'verify', phase: 'P1', plan: '§5.1, §7.2',
+    id: 'I43', status: 'live', runner: 'verify', phase: 'P1', plan: '§5.1, §7.2',
     claim: 'default-on: at load defaults (v = 55 is a lattice point, q = 0.85) every tier is cut '
       + 'from measured rows — zero interpolated cells at load; OFF is object identity '
       + '(assert.equal); I6/I7/I13/I19 sweeps re-run under ON.',
@@ -198,7 +198,7 @@ export const CATALOG = [
     prediction: 'expected falsified: I8 (TRASH x RB never T1/T2) fails at tight-v profile-ON.',
   },
   {
-    id: 'I44', status: 'reserved', runner: 'verify', phase: 'P1', plan: '§7.2',
+    id: 'I44', status: 'live', runner: 'verify', phase: 'P1', plan: '§7.2',
     claim: 'sizing: pot-size = today bit-for-bit; the continue range narrows monotonically in sizing.',
     fails: 'the 7-pt premium\'s sizing-dependence being asserted rather than held constant + flagged.',
     prediction: 'expected falsified: I15\'s "RUN0_LOW x DS always continues" fails at large sizings '

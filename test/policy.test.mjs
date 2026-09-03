@@ -346,6 +346,60 @@ test('depth is in the solve and aggressive-set memo keys', { skip: !HAVE_MODEL }
   assert.notEqual(P.envKey({ rakePct: 5 }), P.envKey({ rakePct: 0 }));
 });
 
+// V3-PLAN §7.2's I32 trap, asserted at unit speed rather than only through a 26-second sweep: an
+// axis that moves a number but not the memo key hands back another environment's answer, silently.
+// Every v3 axis is checked here the day it is added, INCLUDING while it is still inert — the day it
+// stops being inert is too late, because by then the wrong answer is already cached.
+test('every v3 axis is in the memo key, inert or not', () => {
+  assert.notEqual(P.envKey({ d: 250, rakeDepth: true }), P.envKey({ d: 250 }));
+  assert.notEqual(P.envKey({ d: 250, depthWidth: true }), P.envKey({ d: 250 }));
+  assert.notEqual(P.envKey({ sizing: 0.5 }), P.envKey({ sizing: 1 }));
+  // and the legacy settings all collapse onto ONE key — the frozen default env, by identity, so a
+  // legacy-lane solve cannot be given a fresh cache line just because a caller spelled it out.
+  const legacy = P.envKey({});
+  assert.equal(P.envKey({ rakeDepth: false, depthWidth: false, sizing: 1 }), legacy);
+  assert.equal(P.envOf({ rakeDepth: false, depthWidth: false, sizing: 1 }), P.envOf({}));
+  assert.equal(P.envKey(P.OPERATING_POINT), legacy);
+});
+
+// The four P1 mechanisms' arithmetic, at the two points where being wrong is a wrong answer about
+// money or about identity. The sweeps live in gates I41-I44; these are the endpoints.
+test('the P1 axes are the identity at legacy settings and exact off them', () => {
+  const R = P.CONSTANTS.rake, D = P.CONSTANTS.depth, K = P.CONSTANTS.vs3bet, SZ = P.CONSTANTS.sizing;
+  // I41's knee: the coupled reference pot IS the flat one at 100bb, in both straddle states, and
+  // `===` rather than within a rounding — sealEnv returns the constant, never potBB * pow(1, s).
+  for (const straddle of [false, true]) {
+    assert.equal(P.rakePotBB({ d: D.ref, straddle, rakeDepth: true }), R.potBB);
+    assert.equal(P.rakeFraction({ d: D.ref, straddle, rakePct: R.preset, rakeDepth: true }),
+      P.rakeFraction({ d: D.ref, straddle, rakePct: R.preset }));
+  }
+  // and it reads the RAW depth, not dEff: a straddle must not double-count itself through the
+  // scale, because the `* unitBB` on the denominator is already its whole effect (METHODOLOGY §5.3).
+  assert.equal(P.rakePotBB({ d: 250, straddle: true, rakeDepth: true }), R.potBB * 2.5);
+  assert.equal(P.rakeFraction({ d: 250, rakePct: R.preset, rakeDepth: true }), 0.02);
+  // I42's factor: exactly 1 off-axis and at the reference, and the ratio of the two realizations
+  // (not pow(baseR, beta*u), which differs by an ulp) everywhere else.
+  for (const pos of P.POSITIONS) {
+    assert.equal(P.depthWidthFactor(pos, { d: 250 }), 1, 'the axis is off by default');
+    assert.equal(P.depthWidthFactor(pos, { d: D.ref, depthWidth: true }), 1, 'the knee');
+    const g = P.depthWidthFactor(pos, { d: 250, depthWidth: true });
+    assert.equal(g, P.baseRealization(pos, 250) / P.baseRealization(pos, D.ref));
+    assert.equal(g > 1, P.CONSTANTS.baseR[pos] > 1, `${pos}'s sign is baseR's own`);
+    assert.equal(P.widthFor(pos, 'rfi', 0.55, { d: 250, depthWidth: true }),
+      P.widthFor(pos, 'rfi', 0.55) * g, 'the product identity, bit for bit');
+  }
+  // I44's identity: pot-size returns the shipped constants BY REFERENCE, and s/(1+2s) off it.
+  assert.equal(P.sizingPrice(SZ.ref), K.breakeven);
+  assert.equal(P.breakevenPrice({ sizing: SZ.ref }), K.breakeven);
+  assert.equal(P.callFloorAt({ sizing: SZ.ref }), K.call);
+  assert.equal(P.sizingPrice(0.5), K.breakeven * 1.5 / 2);
+  // the 7-point premium is HELD CONSTANT across the axis — the flag, asserted rather than believed
+  for (const s of [0.25, 0.5, 0.75, 1]) {
+    assert.ok(Math.abs((P.callFloorAt({ sizing: s }) - P.breakevenPrice({ sizing: s }))
+      - (K.call - K.breakeven)) < 1e-15, `premium at s=${s}`);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // V2-PLAN §3.2 (rake) and §3.3 (straddle). These REPLACE the inertness test that stood here while
 // both were seams: the assertions changed, the coverage did not.
@@ -364,9 +418,17 @@ test('every knob is the exact identity at the v1 operating point', () => {
     assert.equal(P.seatWidthFactor(pos), 1);
     assert.equal(P.widthFor(pos, 'rfi', 0.55, undefined), P.widthFor(pos, 'rfi', 0.55));
   }
-  // and the env object still serialises to exactly the four axes the user set
+  // the three v3 axes are the identity here too, and their accessors say so
+  assert.equal(P.rakeDepthActive(), false);
+  assert.equal(P.depthWidthActive(), false);
+  assert.equal(P.sizingOf(), P.CONSTANTS.sizing.ref);
+  assert.equal(P.rakePotBB(), P.CONSTANTS.rake.potBB);
+  for (const pos of P.POSITIONS) assert.equal(P.depthWidthFactor(pos), 1);
+  // and the env object still serialises to exactly the axes the user set — never the derived
+  // quantities (`dEff`, `rakePot`, `rakeFrac`), which stay non-enumerable. The list grew by the
+  // three v3 axes at their legacy settings; what it must never grow by is a derived field.
   assert.deepEqual(JSON.parse(JSON.stringify(P.envOf({ d: 40, rakePct: 2, straddle: true }))),
-    { d: 40, rakePct: 2, rakeCapBB: 3, straddle: true });
+    { d: 40, rakePct: 2, rakeCapBB: 3, straddle: true, rakeDepth: false, depthWidth: false, sizing: 1 });
 });
 
 test('the rake fraction is min(pct, cap/pot), and the cap is the only absolute price', () => {
