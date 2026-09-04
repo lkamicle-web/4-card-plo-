@@ -180,6 +180,28 @@
 // model as an argument — that is what gates and tests use to fabricate models and prove clauses
 // can fail. `payoff(...)` is the convenience route bound to one process-wide model, resolved once.
 //
+// TWO ROUTES ON THE PURE SIDE (P3 B2), AND WHY THEY NEED A TAG. `makeMatrixPayoff(model, matrices)`
+// — below the @browser-cut, so the page's mirrored copy does not move by a byte — serves the
+// MEASURED PAIRWISE CHECKDOWN MATRIX (`scripts/lib/checkdown-matrix.mjs`, S-A's construction) inside
+// these same six keys. It is still checkdown, so `source` is still `'checkdown'` and `potMult` /
+// `invShare` are still the identities 1 and 0. That is precisely the problem the tag solves: three
+// I33 clauses — (c) the spr-0 identity, (h) card removal, and the monotonicity clause — key their
+// exemptions on `source === 'checkdown'`, and a matrix that answers to that string would clear all
+// three VACUOUSLY rather than firing them. So every accessor this file returns carries a `route`
+// property beside `modelHash`: `'projection'` for `makePayoff`, `'matrix'` for `makeMatrixPayoff`.
+// A function property, never a seventh return key and never a fifth argument — the six-key contract
+// and the arity of four are frozen and no ceremony is scheduled. An ABSENT tag reads as
+// `'projection'`, which is the strict reading, so forgetting it fails closed.
+//
+// WHAT THE TWO ROUTES ARE FOR, said plainly. The projection is what the PAGE serves (D10, both
+// variants) and it is exactly separable — `ev(A,B) - 0.5 = (a_A - a_B)/2` to 1.1e-16 — so it cannot
+// express a blocker or any pairwise structure. The matrix is what the SOLVER consumes at P3: 123x123
+// entries measured over 400,000 shared boards under two named seeds — a generated, committed
+// artifact, `data/checkdown-matrix.json` — diagonals exactly 0.5,
+// off-diagonals stored once and mirrored so the solved game stays exactly zero-sum, and 43 unordered
+// pairs that no board can deal at all — clause (h)'s first live case, returned `supported:false`
+// with the stored 0.5 on them rather than collapsed silently.
+//
 // BROWSER SAFETY. §2 says this file is "present in both builds", so it must survive
 // `build.mjs`'s `moduleToIife`: no top-level `import` and no export form beyond
 // `export const|let|function|class`. Everything Node-only — the `data/model.json` loader and its
@@ -408,6 +430,16 @@ export function makePayoff(model) {
     return evaluate(M, cells, potSize, spr, opts);
   };
   fn.modelHash = M.hash;
+  /* THE ROUTE TAG (P3 B2). Two accessor routes now serve `source:'checkdown'` — this projection and
+     the measured pairwise matrix below the @browser-cut — so the `source` string can no longer tell
+     them apart, and three I33 clauses ((c), (h) and the monotonicity clause) key their exemptions on
+     exactly that string. Without a tag the matrix would clear those clauses VACUOUSLY instead of
+     firing them, which is a green gate for the wrong reason. The tag is a function PROPERTY beside
+     `modelHash`, never a seventh return key and never a fifth argument: the six-key contract and the
+     arity are frozen and no ceremony is scheduled. An ABSENT tag reads as this route, which is the
+     failing-closed direction — a matrix route that forgot its tag is held to the projection's
+     identities and fails on them. */
+  fn.route = 'projection';
   return fn;
 }
 
@@ -464,3 +496,131 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 /** the shipped dataset, read once and only if `setDefaultModel` never ran */
 loadShippedModel = () => JSON.parse(readFileSync(resolve(ROOT, 'data/model.json'), 'utf8'));
+
+// ---------------------------------------------------------------------------
+// THE SECOND ROUTE — the measured pairwise checkdown matrix (V3-PLAN §3.3, barrier B2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bind the accessor to a MEASURED PAIRWISE CHECKDOWN MATRIX. The pure route's second door.
+ *
+ * WHY THIS IS A ROUTE AND NOT A NEW SOURCE. What comes back is still a checkdown — hero's share of
+ * the pot when the hand is dealt to showdown with no postflop betting — so `source` is still
+ * `'checkdown'`, I35's Grade-C label still fires on it, and the two pot keys are still the
+ * identities `potMult === 1` / `invShare === 0` that checkdown geometry forces. What CHANGES is that
+ * the number is measured PAIRWISE against a real opponent over real boards, instead of being the
+ * zero-sum projection of two vs-random-field readings. The projection is exactly separable
+ * (`ev(A,B) - 0.5 = (a_A - a_B)/2` to 1.1e-16) and therefore cannot express a blocker or any
+ * pairwise structure at all; this route can, and P3's baseline is solved on it.
+ *
+ * THE SIX KEYS DO NOT MOVE AND THE ARITY DOES NOT MOVE. The matrix arrives as an ARGUMENT to this
+ * factory, exactly the way the model does — no seventh return key, no fifth parameter, no ceremony.
+ * The returned function carries `.modelHash` (as `makePayoff`'s does) and `.route = 'matrix'`,
+ * function properties beside it. The route tag exists because three I33 clauses used to key their
+ * exemptions on `source === 'checkdown'` and both routes answer to that string; see the tag's own
+ * comment in `makePayoff`.
+ *
+ * WHAT COMES BACK, exit by exit:
+ *   heads-up, both cells in the matrix   `ev = E[i][j]`, `se` derived from THAT PAIR'S OWN
+ *                                        live-and-disjoint sample count — never a typed number and
+ *                                        never the shipped model's 100,000 — `supported: true`.
+ *   an UNDEALABLE pair (no board ever    the stored 0.5 (S-A's own value, which keeps the mirror
+ *   dealt it: n = 0)                     bit-exact and conserving), `se = Infinity` at n = 0 per the
+ *                                        shipped `seOfTrials(0)` convention, and `supported:false`.
+ *                                        This is I33 clause (h)'s first live case: 43 unordered
+ *                                        pairs — cells pinning five or more aces between them —
+ *                                        surfaced loudly rather than collapsed silently.
+ *   anything else                        the projection's own exit, unchanged: multiway, malformed,
+ *                                        or a cell the matrix does not carry. That is why
+ *                                        `cfr.liveCells` still yields the same 123 cells — the 22
+ *                                        the matrix omits carry zero combos and the projection
+ *                                        already answers them `supported:false`.
+ *
+ * `opts.ip` IS READ AND INERT, exactly as in the projection: a checkdown matrix is symmetric in
+ * position because a checkdown has no position. It stays in every memo key regardless (I33(g)) —
+ * inertness is a property of today's sources, not of the contract.
+ *
+ * `opts.seed` ADDRESSES WHICH SAMPLE ANSWERS, and this is the one place the two routes differ in
+ * their reading of the argument. A precomputed sample cannot be re-drawn on demand, so a seed here
+ * SELECTS rather than generates: a string equal to one of the supplied matrices' own seed names
+ * picks that matrix; anything else — absent, numeric, unknown — picks the PRIMARY, `matrices[0]`.
+ * That is what makes I35's two-seed PAYOFF axis non-vacuous (solve on A, solve on B, compare the
+ * values) while `payoff(cells, pot, spr, {seed: 4242})` still means "the shipped answer", and it
+ * keeps the arity at four: `opts` is the door §2 froze for exactly this.
+ *
+ * @param {object} model               a model, for `prepare` — the trial count, the ladders the
+ *                                     fallthrough exits read, and the hash
+ * @param {object|object[]} matrices   one or more built matrices (`checkdown-matrix.mjs`); the
+ *                                     first is the primary
+ */
+export function makeMatrixPayoff(model, matrices) {
+  const M = prepare(model);
+  const list = Array.isArray(matrices) ? matrices : [matrices];
+  if (!list.length) {
+    throw new TypeError('payoff: makeMatrixPayoff needs at least one built checkdown matrix — a '
+      + 'payoff route with no measurement behind it has no `se` to report');
+  }
+  const packs = [];
+  const bySeed = Object.create(null);
+  for (let s = 0; s < list.length; s++) {
+    const m = list[s];
+    const ok = m && typeof m === 'object' && Array.isArray(m.keys)
+      && typeof m.NC === 'number' && m.NC > 0
+      && m.E && m.E.length === m.NC * m.NC && m.N && m.N.length === m.NC * m.NC;
+    if (!ok) {
+      throw new TypeError('payoff: makeMatrixPayoff was handed something that is not a built '
+        + 'checkdown matrix (it needs keys, NC, E and the trial counts N)');
+    }
+    /* a prototype-less plain object, not a Map: `__proto__` and `constructor` are unknown cell
+       keys here for the same reason `cellOf` refuses them above, and a Map consulted beside a
+       request is the shape I33(g)'s detector is built to notice. This is a table read. */
+    const at = Object.create(null);
+    for (let i = 0; i < m.keys.length; i++) at[m.keys[i]] = i;
+    const pack = { m, at };
+    packs.push(pack);
+    const name = m.meta && typeof m.meta.seed === 'string' && m.meta.seed.length ? m.meta.seed : null;
+    if (name !== null && bySeed[name] === undefined) bySeed[name] = pack;
+  }
+  const primary = packs[0];
+
+  const fn = function payoff(cells, potSize, spr, opts) {
+    let pack = primary;
+    let optsOk = true;
+    if (opts !== undefined && opts !== null) {
+      if (typeof opts === 'object' && !Array.isArray(opts)) {
+        /* read and deliberately unused, the same line and the same reason as the projection's:
+           a checkdown matrix is position-inert because a checkdown has no position, and deleting
+           this read is how position starts re-entering through a global. */
+        const ip = !!opts.ip;
+        void ip;
+        optsOk = seedOk(opts.seed);
+        if (optsOk && typeof opts.seed === 'string' && bySeed[opts.seed] !== undefined) {
+          pack = bySeed[opts.seed];
+        }
+      } else {
+        optsOk = false;
+      }
+    }
+    const potOk = typeof potSize === 'number' && Number.isFinite(potSize) && potSize > 0;
+    const sprOk = typeof spr === 'number' && Number.isFinite(spr) && spr >= 0;
+    if (optsOk && potOk && sprOk && Array.isArray(cells) && cells.length === 2
+        && typeof cells[0] === 'string' && typeof cells[1] === 'string') {
+      const i = pack.at[cells[0]];
+      const j = pack.at[cells[1]];
+      if (i !== undefined && j !== undefined) {
+        const NC = pack.m.NC;
+        const ev = pack.m.E[i * NC + j];
+        /* the pair's OWN live-and-disjoint sample count. Not the model's trial count, not a
+           typed floor: I33(d) asks for the error bar of the trials that actually ran, and for an
+           undealable pair that count is 0, which `seOfShare` answers with Infinity — the shipped
+           seOfTrials(0) convention, and the loudest honest number there is. */
+        const n = pack.m.N[i * NC + j];
+        return finish(ev, seOfShare(ev, n), 'checkdown', n > 0, 1, 0);
+      }
+    }
+    return evaluate(M, cells, potSize, spr, opts);
+  };
+  fn.modelHash = M.hash;
+  fn.route = 'matrix';
+  return fn;
+}

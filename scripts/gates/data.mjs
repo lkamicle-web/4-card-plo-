@@ -119,6 +119,7 @@ export function build(ctx) {
       meta: b(model.meta) + b(model.rows) + b(model.cols) + b(model.bands) + b(model.constants) + b(model.benchmarks),
       order: model.order ? b(model.order) : 0,
       baseline: model.baselineTiers ? b(model.baselineTiers) : 0,
+      solver: model.constants && model.constants.solver ? b(model.constants.solver) : 0,
       total: b(model),
     };
     // Budgets, raised for the v2 payload (V2-PLAN §2.5), in the same spirit as build.mjs's own
@@ -182,21 +183,53 @@ export function build(ctx) {
     //                        `sizes.baseline` is 0, `core === total`, and this gate is bit-for-bit
     //                        as strict as it was. The day P3 emits the block, it gets its 12K and
     //                        nothing else does.
+    //
+    // P3 LANDED BOTH BLOCKS, and the SECOND one is a raise this gate had not reserved. Same idiom,
+    // stated the same way, and measured before it was granted:
+    //   baseline  12K  CLAIMED. Measured 11.5K of the 12K reserved above (`baselineQuant` = 0.01;
+    //                  the quantization's own byte table was offered as that constant's anchor,
+    //                  V3-PLAN §6 — the P3 red team refuted it AS AN ANCHOR, 6 memos of 6, so the
+    //                  constant now ships FLAGGED with its admission in the block itself and the
+    //                  table made binding by I36 clause (e); see docs/refutations/P3.md and
+    //                  scripts/lib/equilibrium.mjs). Nothing about the reservation changes — the
+    //                  block simply exists now, so `core` and `total` part company.
+    //   solver     3K  new. `constants.solver` — the four CFR+ constants with their ANCHORS, stamped
+    //                  from cfr.mjs by `stampConstants` (adjudication 10; §6's third leg, which
+    //                  docs/refutations/P2.md finding 6 recorded as the unmet one). Measured 2.3K,
+    //                  of which 2.2K is anchor prose, and the prose is the point: §6's contract is
+    //                  "named in `constants`, labeled in the Method view, bounded by a gate", and an
+    //                  anchor that lives only in a source comment is not on the page.
+    //   meta   13 -> 16K   the solver block lands inside the meta bucket, which was at 12.7K of 13K.
+    //   total 132 -> 135K
+    //                  BOTH RAISES ARE RESERVED, NOT GRANTED, and there are now two re-assertions
+    //                  rather than one: `core` (total minus BOTH new blocks) still faces the
+    //                  original 120K, and `metaCore` (the meta bucket minus the solver block) still
+    //                  faces the original 13K. Measured, those two readings are 115.9K and 12.7K —
+    //                  the same bytes, against the same ceilings, as the run before P3. No existing
+    //                  block gained one byte of headroom, and the gate prints all four numbers so
+    //                  that cannot be taken on trust.
     const BUD = {
-      cells: 65 * 1024, meta: 13 * 1024, order: 43 * 1024, baseline: 12 * 1024, total: 132 * 1024,
+      cells: 65 * 1024, meta: 16 * 1024, order: 43 * 1024,
+      baseline: 12 * 1024, solver: 3 * 1024, total: 135 * 1024,
     };
-    const CORE_BUDGET = BUD.total - BUD.baseline;   // the pre-raise 120K, still binding
-    const core = sizes.total - sizes.baseline;
+    const CORE_BUDGET = BUD.total - BUD.baseline - BUD.solver;   // the pre-raise 120K, still binding
+    const META_CORE_BUDGET = BUD.meta - BUD.solver;              // the pre-raise 13K, still binding
+    const core = sizes.total - sizes.baseline - sizes.solver;
+    const metaCore = sizes.meta - sizes.solver;
     const ok = sizes.cells <= BUD.cells && sizes.meta <= BUD.meta
       && sizes.order <= BUD.order && sizes.baseline <= BUD.baseline
+      && sizes.solver <= BUD.solver && metaCore <= META_CORE_BUDGET
       && core <= CORE_BUDGET && sizes.total <= BUD.total;
     G('D6', ok, `cells ${(sizes.cells / 1024).toFixed(1)}K/${BUD.cells / 1024}K · ` +
-      `meta+tables ${(sizes.meta / 1024).toFixed(1)}K/${BUD.meta / 1024}K · ` +
+      `meta+tables ${(sizes.meta / 1024).toFixed(1)}K/${BUD.meta / 1024}K ` +
+      `(of which core ${(metaCore / 1024).toFixed(1)}K/${META_CORE_BUDGET / 1024}K) · ` +
       `order ${(sizes.order / 1024).toFixed(1)}K/${BUD.order / 1024}K · ` +
       `baseline tiers ${(sizes.baseline / 1024).toFixed(1)}K/${BUD.baseline / 1024}K · ` +
+      `solver constants ${(sizes.solver / 1024).toFixed(1)}K/${BUD.solver / 1024}K · ` +
       `total ${(sizes.total / 1024).toFixed(1)}K/${BUD.total / 1024}K ` +
       `(of which core ${(core / 1024).toFixed(1)}K/${CORE_BUDGET / 1024}K — the baseline block's ` +
-      `12K is reserved for it and grants no other block headroom; ` +
+      `${BUD.baseline / 1024}K and the solver block's ${BUD.solver / 1024}K are reserved for them ` +
+      `and grant no other block headroom, which is what the two core readings prove; ` +
       `pretty-printed ${(Buffer.byteLength(JSON.stringify(model, null, 1)) / 1024).toFixed(1)}K). ` +
       `BINDING ON THE LITE ARTIFACT (§5.3): model.json is shared, and lite is the constraining consumer`);
     } },

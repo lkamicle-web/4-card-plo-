@@ -1,4 +1,5 @@
-// gate I33 — the payoff interface freeze (V3-PLAN §2), AMENDED at the P2 pre-stage.
+// gate I33 — the payoff interface freeze (V3-PLAN §2), AMENDED at the P2 pre-stage and run on BOTH
+// ACCESSOR ROUTES since P3's B2 pre-stage.
 //
 // Clauses (a)-(h) on scripts/lib/payoff.mjs, plus the separate monotonicity clause, which is no
 // longer written to be falsified because it HAS BEEN falsified — see (mono) below.
@@ -14,21 +15,41 @@
 //       and its failure mode is silent;
 //   (mono) REWRITTEN TO THE MEASUREMENT, per house style, never deleted and never widened.
 //
+// WHAT B2 CHANGED, AND THE TRAP IT WALKED INTO FIRST (V3-PLAN §3.3's `Adjudicated (P3 launch)`
+// block, §2's `Measured (P3 B2)` block). P3's solver consumes a MEASURED PAIRWISE CHECKDOWN MATRIX
+// (scripts/lib/checkdown-matrix.mjs, S-A's construction) served through this same accessor as
+// `makeMatrixPayoff`. It is checkdown, so `source` is 'checkdown' — and three clauses here, (c),
+// (h) and (mono), keyed their exemptions on exactly that string. Run as written, the matrix would
+// have CLEARED all three VACUOUSLY rather than firing them, and I33 would have been green for the
+// wrong reason on the one day it mattered. So each of the three is now keyed on the accessor's
+// `route` tag ('projection' | 'matrix'), which is a function property beside `modelHash` and not a
+// seventh return key: what distinguishes the two is not what they claim to be, it is whether they
+// DEAL CARDS. The tag itself is armed — a matrix route mislabelled 'projection' must fail.
+//
 // The whole v3 chain — CFR, the EV cut, the EV UI, the inspector — fans out against
-// this signature, so the freeze is a gate rather than a docstring. Pure arithmetic over the
-// shipped equity ladders: no Monte Carlo, which is why the largest gate in the repository is also
-// one of the cheapest.
+// this signature, so the freeze is a gate rather than a docstring. The projection half is pure
+// arithmetic over the shipped equity ladders; the matrix half is table reads over a pair of
+// matrices READ OFF DISK in `build()` — `data/checkdown-matrix.json`, the generated artifact
+// V3-PLAN §3.3's `Adjudicated (P3 relaunch)` block put there, at 400,000 boards per seed. Reading
+// costs milliseconds where building the pair costs ~40 s, which is the whole reason the artifact
+// exists; the read is timed under this family's own setup label so even that is named. The
+// artifact's own integrity is the `(artifact)` clause below, cheap enough to run every time.
 
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 
 import * as P from '../lib/policy.mjs';
 import * as PO from '../lib/payoff.mjs';
+import {
+  shippedMatrices, SEEDS, BOARDS, ARTIFACT, GENERATOR, sourceHash,
+} from '../lib/checkdown-matrix.mjs';
 import { ROOT } from './_shared.mjs';
 
 export const family = 'payoff';
 export const title = 'the V3-PLAN §2 payoff interface freeze — the unlock for every v3 chain';
 export const ids = ['I33'];
+export const setupLabel = 'read the two shipped checkdown matrices (400,000 boards each) off disk';
 
 // =================================================================================================
 // THE DETECTORS, at module scope.
@@ -110,32 +131,78 @@ export function ipMemoAliases(fn, cells, pot, spr) {
 }
 
 /**
- * (h) THE CARD-REMOVAL CLAUSE — which pairs are degenerate, structurally, from the cell keys.
- *
- * Two measured families, and no third invented one. `AA_*` x `AA_*`: the two cells pin all four
- * aces between them, so a large slice of (cell, cell, board) triples is impossible from the
- * observer's seat — S-B measured `AA_DANGLER|RB` x `AA_BIGPAIR|DS` degenerate on 12.56% of street
- * evaluations, mean 0.73% over 50 pairs, 4 of 50 over 1%. `AA_*` x `A_BLOCKED|*`: S-A independently
- * found 43 structurally UNDEALABLE pairs there, combo mass 3.6e-5.
+ * THE ROUTE TAG, read defensively. `'matrix'` only when the accessor says so; everything else —
+ * `'projection'`, absent, or nonsense — reads as the projection, which is the STRICT reading of
+ * every clause that keys on it. Forgetting the tag therefore fails closed, and mislabelling a
+ * matrix route as a projection is a fabricated violator this gate arms against below.
  */
-export function isDegeneratePair(a, b) {
-  const fam = (k) => (typeof k === 'string' ? k.split('|')[0] : '');
-  const aa = (f) => /^AA_/.test(f);
-  const blocked = (f) => f === 'A_BLOCKED';
-  const A = fam(a), B = fam(b);
-  return (aa(A) && aa(B)) || (aa(A) && blocked(B)) || (blocked(A) && aa(B));
+export function routeOf(fn) {
+  return (fn && fn.route === 'matrix') ? 'matrix' : 'projection';
 }
 
 /**
- * (h) THE DETECTOR. Any source that evaluates against DEALT BOARDS must surface degeneracy
- * honestly: a degenerate or undealable request comes back `supported:false` — which is what
- * "flagged" MEANS in a six-key return that carries no degeneracy-mass field — never a silent
- * collapse to a checkdown answer wearing `supported:true`.
+ * The number of aces a cell pins, as a FLOOR, read off the taxonomy's own ace cascade.
  *
- * `source:'checkdown'` is EXEMPT BY CONSTRUCTION and that exemption is the clause's own hinge: the
- * stub deals no cards at all, it reads shipped equity ladders, so there is no removal for it to get
- * wrong. The exemption is keyed on the shipped `source` datum, never on prose — the same rule I35's
- * Grade-C label runs on.
+ * `taxonomy.rowOf` opens with `if (aces >= 3) return 'A_BLOCKED'` and then `if (aces === 2)` for
+ * the five `AA_*` rows, so those two answers are the only ones that pin more than one ace and their
+ * floors are 3 and 2. Everything else is 0 here — not because those rows hold no ace (four of them
+ * hold exactly one) but because this predicate carries only what the MEASUREMENTS below found, and
+ * no third family is invented.
+ */
+export function aceFloor(key) {
+  const fam = typeof key === 'string' ? key.split('|')[0] : '';
+  if (fam === 'A_BLOCKED') return 3;      // ROW_META: "Trip/quad aces"
+  if (/^AA_/.test(fam)) return 2;
+  return 0;
+}
+
+/**
+ * (h) THE CARD-REMOVAL CLAUSE — which pairs are degenerate, structurally, from the cell keys.
+ *
+ * A pair is degenerate when the two cells pin FOUR OR MORE aces between them, which is the whole of
+ * the deck's supply. That covers the two measured families and, since P3's B2 pre-stage, the third
+ * one the MEASUREMENT found:
+ *
+ *   `AA_*` x `AA_*`        four aces — dealable, but a large slice of (cell, cell, board) triples is
+ *                          impossible from the observer's seat. S-B measured `AA_DANGLER|RB` x
+ *                          `AA_BIGPAIR|DS` degenerate on 12.56% of street evaluations, mean 0.73%
+ *                          over 50 pairs, 4 of 50 over 1%.
+ *   `AA_*` x `A_BLOCKED`   five aces — UNDEALABLE. S-A found 43 such pairs, combo mass 3.6e-5.
+ *   `A_BLOCKED` x          six aces — UNDEALABLE, and this one is the B2 finding. The previous
+ *   `A_BLOCKED`            predicate excluded it and `test/payoff.test.mjs` asserted its exclusion
+ *                          with the reason "one ace each is two aces, which is dealable" — a false
+ *                          statement about the taxonomy, where `A_BLOCKED` is "Trip/quad aces". The
+ *                          matrix measured `A_BLOCKED|RB` x `A_BLOCKED|SSA` as the 43rd undealable
+ *                          pair, so S-A's own memo undercounts its family too: 42 of the 43 are
+ *                          `AA_*` x `A_BLOCKED` and the last is `A_BLOCKED` x `A_BLOCKED`.
+ *
+ * Written as an ace SUM rather than as a family list, so it is derived from the taxonomy's rule
+ * instead of restating a list that was already wrong once.
+ */
+export function isDegeneratePair(a, b) {
+  return aceFloor(a) + aceFloor(b) >= 4;
+}
+
+/**
+ * (h) THE DETECTOR, RE-KEYED ON THE ROUTE AT B2. Any source that evaluates against DEALT BOARDS
+ * must surface degeneracy honestly: a degenerate or undealable request comes back `supported:false`
+ * — which is what "flagged" MEANS in a six-key return that carries no degeneracy-mass field —
+ * never a silent collapse to a checkdown answer wearing `supported:true`.
+ *
+ * WHAT B2 BROKE HERE, AND HOW IT IS FIXED. The exemption used to be `source === 'checkdown'`, on
+ * the reasoning that the stub deals no cards at all — it reads shipped equity ladders — so there is
+ * no removal for it to get wrong. The measured pairwise matrix DEALS 400,000 BOARDS and is still
+ * `source:'checkdown'`, so that exemption would have covered exactly the source it was written to
+ * catch. A source deals boards iff `route === 'matrix'` OR it claims a non-checkdown source; the
+ * complement — an untagged checkdown — is the projection, and it is exempt BY CONSTRUCTION.
+ *
+ * AND THE MATRIX'S OBLIGATION IS NOT THE COLLAPSER'S. Degeneracy is not undealability. The matrix
+ * samples only disjoint triples, so it never collapses; on a merely-degenerate-but-dealable pair
+ * (`AA_*` x `AA_*`) the honest answer IS `supported:true` with a bigger error bar, because the
+ * degeneracy has cost it samples and the `se` says so. What it must never do is claim support for a
+ * pair no board ever dealt. So the rule for a matrix route is stated in terms of its own sample:
+ * `supported` iff the pair's trial count is non-empty, which the accessor reports as a finite `se`.
+ * `undealableProblems` carries the structural half (which pairs, how many, what family).
  *
  * THE DEGENERACY SCOPE LIVES HERE, not in the caller's list, and that is what makes the clause
  * assertable rather than a tautology: hand it any pairs at all and only the degenerate ones are held
@@ -145,9 +212,23 @@ export function isDegeneratePair(a, b) {
  */
 export function removalProblems(fn, pairs) {
   const out = [];
+  const route = routeOf(fn);
   for (const [a, b] of pairs) {
     if (!isDegeneratePair(a, b)) continue;
     let r; try { r = fn([a, b], 10, 4, { ip: false }); } catch (e) { out.push(`${a} x ${b}: THREW ${e.message}`); continue; }
+    if (route === 'matrix') {
+      if (r.supported && !Number.isFinite(r.se)) {
+        out.push(`${a} x ${b}: a dealt-board route answered supported:true on a pair whose own `
+          + `sample is EMPTY (se ${r.se}) — that is the silent collapse in its matrix form, a `
+          + `number with no trial behind it wearing the flag that says a trial produced it`);
+      }
+      if (!r.supported && Number.isFinite(r.se)) {
+        out.push(`${a} x ${b}: flagged supported:false while its own sample is non-empty `
+          + `(se ${r.se}) — degeneracy is not undealability, and flagging a pair the boards DID `
+          + `deal hides the cost in the error bar instead of showing it`);
+      }
+      continue;
+    }
     if (r.source === 'checkdown') continue;
     if (r.supported) {
       out.push(`${a} x ${b}: source '${r.source}' deals boards and still answered a card-removal-`
@@ -156,6 +237,309 @@ export function removalProblems(fn, pairs) {
     }
   }
   return out;
+}
+
+/**
+ * (h)'s STRUCTURAL HALF, for a route that deals boards: exactly the pairs the measurement found
+ * undealable come back `supported:false`, and each of them for the reason the deck gives.
+ *
+ * The expected set is the MATRIX'S OWN `meta.impossiblePairs` — the pairs that produced not one
+ * disjoint draw in 400,000 shared boards — so nothing is typed here: a count of 43 unordered / 86
+ * ordered is REPORTED, never asserted as a literal. What IS asserted is set equality between what
+ * the measurement found and what the accessor flags, plus the structural reason (five or more aces
+ * between two hands, which is more than a deck holds) and the shape of the fallback: the stored 0.5,
+ * which conserves bit-exactly, carrying `se = Infinity` because n = 0 is the honest trial count.
+ */
+export function undealableProblems(fn, matrix) {
+  const out = [];
+  const want = Object.create(null);
+  /* `\u0000` as the separator, WRITTEN AS AN ESCAPE rather than typed as a raw byte: a cell key
+     can carry anything the taxonomy names, so the separator has to be a character a key cannot
+     hold — but a raw NUL in the source makes git call this file binary and `grep -I` skip it,
+     which is how a gate stops being readable by the tools people audit gates with. */
+  for (const pair of matrix.meta.impossiblePairs) {
+    want[`${pair[0]}\u0000${pair[1]}`] = true;
+    want[`${pair[1]}\u0000${pair[0]}`] = true;
+  }
+  const keys = matrix.keys;
+  /* the counters are the assertion; the messages are the first few examples of it. A detector that
+     pushed 15,000 strings on a broken route would drown the verifier's own report. */
+  const say = (s) => { if (out.length < 8) out.push(s); };
+  let flagged = 0, wrongFamily = 0, unflagged = 0, badFallback = 0, strayFlag = 0;
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = 0; j < keys.length; j++) {
+      if (i === j) continue;
+      const expected = want[`${keys[i]}\u0000${keys[j]}`] === true;
+      const r = fn([keys[i], keys[j]], 10, 4, { ip: false });
+      if (!r.supported) {
+        flagged++;
+        if (!expected) {
+          strayFlag++;
+          say(`${keys[i]} x ${keys[j]}: flagged unsupported, but the measurement dealt it`);
+        }
+        if (aceFloor(keys[i]) + aceFloor(keys[j]) < 5) {
+          wrongFamily++;
+          say(`${keys[i]} x ${keys[j]}: unsupported, but the two cells pin only `
+            + `${aceFloor(keys[i]) + aceFloor(keys[j])} aces between them — an undealable pair is one `
+            + `asking the deck for more aces than it has, and this is not that`);
+        }
+        if (!Object.is(r.ev, 0.5) || Number.isFinite(r.se)) {
+          badFallback++;
+          say(`${keys[i]} x ${keys[j]}: the flagged fallback is ev ${r.ev} / se ${r.se}, not the `
+            + `stored 0.5 at n = 0 — the value must conserve bit-exactly and the error bar must be `
+            + `Infinity, which is what a number no trial produced is worth`);
+        }
+      } else if (expected) {
+        unflagged++;
+        say(`${keys[i]} x ${keys[j]}: the measurement never dealt this pair and the accessor `
+          + `answered supported:true anyway — the silent collapse, exactly`);
+      }
+    }
+  }
+  return { problems: out, flagged, wrongFamily, unflagged, badFallback, strayFlag };
+}
+
+/**
+ * THE ARTIFACT CLAUSE'S DETECTOR — is the payoff table on disk the one this code would produce?
+ *
+ * WHY THIS IS A CLAUSE UNDER I33 AND NOT A GATE OF ITS OWN. V3-PLAN §3.3's `Adjudicated (P3
+ * relaunch)` block asks for "a cheap in-verify clause", and cheap is the operative word: the
+ * expensive claim — that the file rebuilds BYTE-FOR-BYTE from its own recorded inputs — is
+ * `node scripts/generate-checkdown-matrix.mjs --check`, ~40 s, run at the milestone close-out and
+ * never inside verify. A new gate id would also move EXPECTED_IDS, METHODOLOGY's gate count and the
+ * registry for something that is a property of I33's own source, so it lives here.
+ *
+ * WHAT IT CATCHES THAT `--check` WOULD CATCH LATER: the stale artifact. Edit the construction,
+ * forget to regenerate, and every clause below still passes — on the OLD matrix, which is no longer
+ * the matrix this checkout describes. `generatorHash` is what makes that visible on the same run:
+ * it is a hash of `checkdown-matrix.mjs` plus the generator, so the artifact says which code wrote
+ * it. `contentHash` is the file's own integrity, recomputed here the way `verify.mjs` recomputes
+ * `meta.hash`. The structural pair (antisymmetry to the bit, the diagonal at 0.5) is read STRAIGHT
+ * OFF THE STORED COUNTERS rather than through the accessor, which is what makes it a check on the
+ * FILE rather than a second reading of (b/matrix).
+ *
+ * Never throws: the loader throws (a half-read payoff table is wrong everywhere and must fail at
+ * the point of use), but a detector that threw could not be armed against a tampered copy.
+ */
+export function artifactProblems(text, liveKeys) {
+  const out = [];
+  let body;
+  try { body = JSON.parse(text); } catch (e) { return [`${ARTIFACT} is not JSON: ${e.message}`]; }
+  const meta = body.meta || {};
+  if (!(Array.isArray(meta.seeds) && meta.seeds.length === SEEDS.length
+        && meta.seeds.every((s, i) => s === SEEDS[i]))) {
+    out.push(`${ARTIFACT} records seeds [${meta.seeds}], the code names [${SEEDS}]`);
+  }
+  if (meta.boards !== BOARDS) {
+    out.push(`${ARTIFACT} was built at ${meta.boards} boards and the code says ${BOARDS} — the `
+      + `board count is the regime solver.twoSeedTolPot was anchored at, so a matrix at another `
+      + `count makes the payoff axis a different measurement than the one the gate quotes`);
+  }
+  if (meta.generator !== GENERATOR) out.push(`${ARTIFACT} names generator '${meta.generator}', not '${GENERATOR}'`);
+  const live = sourceHash();
+  if (meta.generatorHash !== live) {
+    out.push(`${ARTIFACT} is STALE: it was written by source hashing ${String(meta.generatorHash).slice(0, 16)} `
+      + `and this checkout hashes ${live.slice(0, 16)}. scripts/lib/checkdown-matrix.mjs or `
+      + `${GENERATOR} changed since it was generated — regenerate with \`node ${GENERATOR}\``);
+  }
+  const recomputed = createHash('sha256')
+    .update(JSON.stringify({ ...body, meta: { ...meta, contentHash: '' } })).digest('hex');
+  if (meta.contentHash !== recomputed) {
+    out.push(`${ARTIFACT} fails its own content hash (states ${String(meta.contentHash).slice(0, 16)}, `
+      + `computes ${recomputed.slice(0, 16)}) — the bytes were edited after they were generated`);
+  }
+  if (Array.isArray(liveKeys)) {
+    const got = Array.isArray(body.keys) ? body.keys.slice().sort().join(',') : '';
+    if (got !== liveKeys.slice().sort().join(',')) {
+      out.push(`${ARTIFACT} indexes ${Array.isArray(body.keys) ? body.keys.length : 0} cells and the `
+        + `model's live set has ${liveKeys.length}`);
+    }
+  }
+  const NC = Array.isArray(body.keys) ? body.keys.length : 0;
+  const np = (NC * (NC - 1)) / 2;
+  for (const sm of (Array.isArray(body.samples) ? body.samples : [])) {
+    for (const [f, want] of [['wins2', np], ['cnt', np], ['den', np], ['cellLive', NC]]) {
+      if (!(Array.isArray(sm[f]) && sm[f].length === want)) {
+        out.push(`${ARTIFACT}: sample ${sm.seed} carries ${sm[f] ? sm[f].length : 'no'} ${f}, not ${want}`);
+      }
+    }
+    if (Array.isArray(sm.wins2) && Array.isArray(sm.cnt)) {
+      /* ANTISYMMETRY AND THE DIAGONAL, read off the STORED COUNTERS. Both are exact by the storage
+         scheme — one entry per unordered pair, mirrored on the way out, and 0.5 written on the
+         diagonal by fiat — so the check is that the file still has that SHAPE: a triangle whose
+         every entry has 0 <= wins2 <= 2*cnt. An entry outside that is a table that can no longer
+         mirror to a zero-sum game, which is the invariant the solved value depends on. */
+      let bad2 = 0;
+      for (let k = 0; k < sm.wins2.length; k++) {
+        if (!(Number.isInteger(sm.wins2[k]) && Number.isInteger(sm.cnt[k])
+              && sm.wins2[k] >= 0 && sm.wins2[k] <= 2 * sm.cnt[k])) bad2++;
+      }
+      if (bad2) {
+        out.push(`${ARTIFACT}: sample ${sm.seed} has ${bad2} triangle entries outside `
+          + `0 <= wins2 <= 2*cnt — the stored counters no longer mirror to an antisymmetric matrix`);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The four ace-holding cell FAMILIES S-A named, and the reason they are named as families.
+ *
+ * S-A's finding: "ace-holding cells (BIGPAIR_ACE, ACE_JUNK, SMPAIR_ACE, ACE_RUN3) read ~0.6 pt LOW,
+ * because the shipped number conditions the villain on hero's aces being dead and the q-weighted sum
+ * does not". Even at 400,000 boards the per-cell reading is NOT robust — individual ace cells go
+ * positive, because the residual's own spread across cells is larger than the effect on any one of
+ * them — so the clause compares the four families' MEAN residual against the rest's, which is
+ * robust and was measured so on four independent seeds at 25,000 and again on the shipped pair. A
+ * per-cell sign assertion would be a coin flip dressed as a gate at any budget this repo can pay.
+ */
+export const ACE_FAMILIES = Object.freeze(['BIGPAIR_ACE', 'ACE_JUNK', 'SMPAIR_ACE', 'ACE_RUN3']);
+
+/**
+ * (c) THE Q-WEIGHTED MARGINAL RECONSTRUCTION, read through the ACCESSOR and not off the table.
+ *
+ * `sum_j q[j] * ev(i, j)` is hero's share against ONE opponent drawn from the whole population —
+ * the same quantity the shipped `cells[k].eq[0]` column measures. The two do not agree, and the
+ * disagreement is the point: the shipped number conditions the villain on hero's cards being dead
+ * and this sum uses the raw combo marginal `q`, so the residual IS the card-removal residual.
+ *
+ * Everything here is measured at spr 0, because that is the spr clause (c) is about.
+ */
+/**
+ * The shipped heads-up equity column, as a lookup — the comparand clause (c) measures against.
+ *
+ * EXPORTED FOR ONE REASON, and it is clause (e)'s. `scripts/generate-equilibrium.mjs` records the
+ * residual band in the artifact it writes, which means it needs this column; but its FILENAME
+ * matches (e)'s CONSUMER pattern, and (e) refuses any consumer whose text reads a payoff table
+ * directly — `model.cells[k].eq[0]` is exactly that text. The refusal is right and the need is
+ * real, so the column comes from the module that owns the comparison instead. `scripts/gates/` is
+ * out of (e)'s scope by directory (the walk skips it) for the reason stated there: a gate file
+ * asserting things about payoffs is not a product consumer of them.
+ *
+ * The alternative — letting the generator read the column inline — would have meant either a
+ * weakened (e) or a second opinion about what "the shipped column" is. This is neither.
+ */
+export function eq0Column(model) {
+  return (k) => model.cells[k].eq[0];
+}
+
+export function marginalResidual(fn, keys, q, eq0Of) {
+  const n = keys.length;
+  const resid = new Float64Array(n);
+  const recon = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let j = 0; j < n; j++) s += q[j] * fn([keys[i], keys[j]], 10, 0, { ip: false }).ev;
+    recon[i] = 100 * s;
+    resid[i] = recon[i] - eq0Of(keys[i]);
+  }
+  const isAce = (k) => ACE_FAMILIES.indexOf(String(k).split('|')[0]) >= 0;
+  let sum = 0, aceSum = 0, aceN = 0, restSum = 0, restN = 0, cons = 0;
+  const abs = [];
+  for (let i = 0; i < n; i++) {
+    sum += resid[i];
+    abs.push(Math.abs(resid[i]));
+    cons += q[i] * recon[i];
+    if (isAce(keys[i])) { aceSum += resid[i]; aceN++; } else { restSum += resid[i]; restN++; }
+  }
+  abs.sort((a, b) => a - b);
+  return {
+    resid, recon, n,
+    mean: sum / n,
+    p95: abs[Math.floor(0.95 * (abs.length - 1))],
+    max: abs[abs.length - 1],
+    aceMean: aceN ? aceSum / aceN : 0, aceN,
+    restMean: restN ? restSum / restN : 0, restN,
+    conservation: cons,
+  };
+}
+
+/**
+ * (c) THE CLAUSE, REWRITTEN TO THE MEASUREMENT for a source that is checkdown AND PAIRWISE.
+ *
+ * §2 wrote (c) as "any non-stub source equals checkdown eq within MC error at spr = 0", and every
+ * source was `source:'checkdown'` so the equity half had nothing to compare. The measured pairwise
+ * matrix IS a non-stub source — it is a different measurement of the same game — but it still says
+ * `'checkdown'`, so the clause is re-keyed on the ROUTE and rewritten to what a pairwise checkdown
+ * source actually owes: its q-weighted MARGINAL, compared to the shipped column.
+ *
+ * TWO ASSERTIONS, and no invented tolerance between them.
+ *
+ *   CONSERVATION. The combo-weighted mean of the reconstructed marginals must be 50, because the
+ *   matrix is antisymmetric and `sum_i sum_j q_i q_j E_ij` is 0.5 by that antisymmetry alone. Held
+ *   to an ACCUMULATION BOUND — `n^2` roundings of half an ulp on quantities of size ~100 — which is
+ *   an arithmetic fact about IEEE addition, not a number anybody chose.
+ *
+ *   THE SIGN PATTERN. Card removal predicts ace-holding cells read LOW: the shipped number gives
+ *   villain a deck with hero's aces already gone, and the q-weighted sum does not. So the four ace
+ *   families' MEAN residual must sit below the rest's. Measured on the shipped matrices: A −0.460
+ *   vs −0.032, B −0.288 vs −0.007 (S-A at 400k boards: mean −0.112, p95 0.577, max 0.827 overall).
+ *
+ * THE BAND IS REPORTED AND NEVER ASSERTED, for the reason the monotonicity clause gives about
+ * S-B's 50 pairs: one spike's table cannot license a tolerance. What bounds the clause instead is
+ * the pair of armed violators — a source that reproduces the column TOO PERFECTLY (residual 0
+ * everywhere, so the two family means coincide at 0) and one whose residual is UNSIGNED (a constant
+ * offset on every row: a real band, no family structure). Both make `aceMean < restMean` false.
+ */
+export function marginalProblems(fn, keys, q, eq0Of) {
+  const out = [];
+  const m = marginalResidual(fn, keys, q, eq0Of);
+  const consBound = 100 * keys.length * keys.length * Number.EPSILON;
+  if (!(Math.abs(m.conservation - 50) <= consBound)) {
+    out.push(`(c) the combo-weighted mean of the reconstructed marginals is ${m.conservation.toFixed(6)}, `
+      + `not 50 within the ${consBound.toExponential(2)} accumulation bound — an antisymmetric payoff `
+      + `conserves by construction, so this is the matrix having stopped being antisymmetric`);
+  }
+  if (!(m.aceMean < m.restMean)) {
+    out.push(`(c) the four ace-holding families read ${m.aceMean.toFixed(3)} pt against `
+      + `${m.restMean.toFixed(3)} pt for the other ${m.restN} cells. Card removal predicts them LOW: `
+      + `the shipped column conditions villain on hero's aces being dead and a q-weighted marginal `
+      + `does not. A source with no such signed structure is either reproducing the shipped column `
+      + `rather than measuring against it, or measuring something that is not card removal`);
+  }
+  return { problems: out, ...m };
+}
+
+/**
+ * (h)'s OTHER HALF: degeneracy that is surfaced in the ERROR BAR rather than in a flag.
+ *
+ * `AA_*` x `AA_*` pairs pin all four aces and are DEALABLE — S-A's boards deal them, just rarely
+ * (disjoint rate 0.07..0.16 against ~0.68 for a typical pair). The honest answer is therefore
+ * `supported:true` with a bigger `se`, and flagging them would hide the cost rather than show it.
+ * Asserted: every such pair is supported, and their MEAN `se` is strictly larger than the mean `se`
+ * of the non-degenerate pairs. The ratio is reported, never used as a bar.
+ */
+export function degenerateErrorBarProblems(fn, keys) {
+  const out = [];
+  let degSum = 0, degN = 0, restSum = 0, restN = 0, unsupported = 0;
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = 0; j < keys.length; j++) {
+      if (i === j) continue;
+      if (aceFloor(keys[i]) + aceFloor(keys[j]) >= 5) continue;   // undealable: not this clause's
+      const r = fn([keys[i], keys[j]], 10, 4, { ip: false });
+      if (!Number.isFinite(r.se)) continue;
+      if (isDegeneratePair(keys[i], keys[j])) {
+        degSum += r.se; degN++;
+        if (!r.supported) {
+          unsupported++;
+          if (out.length < 4) {
+            out.push(`${keys[i]} x ${keys[j]}: a DEALABLE degenerate pair came back supported:false — `
+              + `four shared aces make it rare, not impossible, and the cost belongs in the error bar`);
+          }
+        }
+      } else { restSum += r.se; restN++; }
+    }
+  }
+  const degMean = degN ? degSum / degN : 0;
+  const restMean = restN ? restSum / restN : 0;
+  if (degN && restN && !(degMean > restMean)) {
+    out.push(`(h) the four-ace pairs' mean se is ${degMean.toExponential(3)} against `
+      + `${restMean.toExponential(3)} for the rest — a source that deals boards sees FEWER disjoint `
+      + `triples on a degenerate pair, so an error bar that does not grow is an error bar that is not `
+      + `derived from the sample that actually ran`);
+  }
+  return { problems: out, degMean, degN, restMean, restN, unsupported, ratio: restMean ? degMean / restMean : 0 };
 }
 
 /** (mono) one monotonicity sweep: hero's ev against a fixed villain, walking hero up the eq[0] ladder */
@@ -177,27 +561,46 @@ export function monoRows(fn, byEq, villain, sprs, ips = [false, true]) {
 }
 
 /**
- * (mono) THE CLAUSE, REWRITTEN TO THE MEASUREMENT. §2 wrote "ev monotone in checkdown equity at
- * fixed spr" and predicted its own break; S-B broke it and measured how hard: inversions on 1.7% of
- * pairs at spr 1, 8.1% at spr 4, 15.9% IP / 20.5% OOP at spr 10, worst case 9.1 pt LESS checkdown
- * equity for 20.0 pt MORE ev. So the clause has two halves now, split by `source`:
+ * (mono) THE CLAUSE, REWRITTEN TO THE MEASUREMENT TWICE — by S-B at the P2 pre-stage, and by the
+ * pairwise matrix at B2. §2 wrote "ev monotone in checkdown equity at fixed spr" and predicted its
+ * own break; S-B broke it and measured how hard: inversions on 1.7% of pairs at spr 1, 8.1% at
+ * spr 4, 15.9% IP / 20.5% OOP at spr 10, worst case 9.1 pt LESS checkdown equity for 20.0 pt MORE
+ * ev. The clause is now THREE halves, and the split is by ROUTE where it used to be by `source`:
  *
- *   checkdown            0 inversions, REQUIRED. The stub is affine in eq[0] — strictly increasing
- *                        in hero's checkdown equity — so this is true by construction and stays
+ *   route 'projection'   0 inversions, REQUIRED. The stub is affine in eq[0] — strictly increasing
+ *   (source checkdown)   in hero's checkdown equity — so this is true by construction and stays
  *                        asserted: it is what catches the stub silently ceasing to be the stub.
+ *   route 'matrix'       inversions > 0, REQUIRED, and the COUNT IS REPORTED. This is B2's rewrite.
+ *   (source checkdown)   The old half was written for a source that is EXACTLY SEPARABLE —
+ *                        `ev(A,B) - 0.5 = (a_A - a_B)/2` to 1.1e-16 — and separability is precisely
+ *                        what makes zero inversions an identity. A measured PAIRWISE matrix is
+ *                        checkdown and NOT separable: it knows who the villain is, so hero's ev
+ *                        against a FIXED villain need not follow hero's equity against the FIELD.
+ *                        Measured on the shipped matrices: 55 of 122 steps invert at every spr,
+ *                        against `AA_BIGPAIR|RB`, worst 0.2807. Zero would mean the matrix had
+ *                        become separable — i.e. had stopped being the thing the projection is not.
  *   any other source,    inversions > 0, REQUIRED. Realization is exactly what checkdown equity
  *   at spr >= 4          does not measure, so a source that claims to model it and reproduces a
  *                        perfect ordering is not modelling it. ZERO inversions is the new failure.
  *
  * spr >= 4 is §2's own pre-registered threshold, not a number chosen here, and it is already a
- * sweep point. NO UPPER BOUND IS ASSERTED: S-B's band is REPORTED in the detail line, because
+ * sweep point; the matrix half is spr-independent because a checkdown is. NO UPPER BOUND IS
+ * ASSERTED ANYWHERE: S-B's band and the matrix's 55/122 are REPORTED in the detail line, because
  * asserting "inversions <= 20.5%" would invent a tolerance out of a single spike's 50 pairs. spr 1
  * is likewise reported and not asserted — 1.7% is too near zero to be a floor.
  */
 export function monoProblems(fn, byEq, villain, sprs) {
   const out = [];
+  const route = routeOf(fn);
   for (const row of monoRows(fn, byEq, villain, sprs)) {
-    if (row.source === 'checkdown') {
+    if (row.source === 'checkdown' && route === 'matrix') {
+      if (row.inversions === 0) {
+        out.push(`(mono) the MATRIX route is perfectly monotone in hero eq[0] at spr ${row.spr} `
+          + `ip=${row.ip} over ${row.steps} steps. Zero inversions is what SEPARABILITY looks like, `
+          + `and the projection stub is already separable to 1.1e-16 — a measured pairwise source `
+          + `that reproduces the field-equity ORDER exactly is not carrying any pairwise structure`);
+      }
+    } else if (row.source === 'checkdown') {
       if (row.inversions) {
         out.push(`(mono) 'checkdown' is strictly increasing in hero eq[0] BY CONSTRUCTION, and it `
           + `inverted ${row.inversions} of ${row.steps} steps at spr ${row.spr} ip=${row.ip} `
@@ -216,6 +619,15 @@ export function monoProblems(fn, byEq, villain, sprs) {
 
 export function build(ctx) {
   const { model, G } = ctx;
+
+  /* SETUP (timed under `setupLabel`): the two shipped checkdown matrices, 400,000 boards each
+     from their named seeds, READ from `data/checkdown-matrix.json`. Read here rather than inside
+     the section so the cost shows up in the verifier's timing table as its own row instead of being
+     charged to the clauses — and it is now a read of ~350 KB rather than a ~40 s build, which is
+     what V3-PLAN §3.3's `Adjudicated (P3 relaunch)` block bought by making the pair an artifact.
+     The pair is held once per process by `shippedMatrices`, so I35 solving on the same matrices
+     later in the run pays nothing. */
+  const MATRICES = shippedMatrices();
 
   return {
     sections: [
@@ -727,9 +1139,18 @@ export function build(ctx) {
     const hFires = removalProblems(collapser, degenerate).length === degenerate.length;
     const hClears = removalProblems(honest, degenerate).length === 0;
     const hControl = removalProblems(collapser, control).length === 0;
+    /* THE FAMILY PREDICATE, CORRECTED BY THE B2 MEASUREMENT and recorded rather than quietly fixed.
+       This list used to end `&& !isDegeneratePair('A_BLOCKED|RB', 'A_BLOCKED|SSA')`, with the reason
+       "one ace each is two aces, which is dealable" — a false statement about the taxonomy, where
+       `A_BLOCKED` is ROW_META's "Trip/quad aces". The matrix measured that very pair as the 43rd
+       undealable one: two cells pinning three aces apiece ask the deck for six. So the predicate is
+       an ace-floor SUM now, and the control moves to a pair that really is dealable — an ace-holding
+       row against an AA row is three aces, which the deck has. */
     const hFamilies = isDegeneratePair('AA_DANGLER|RB', 'AA_BIGPAIR|DS')
       && isDegeneratePair('AA_BIGPAIR|DS', 'A_BLOCKED|RB') && isDegeneratePair('A_BLOCKED|SSA', 'AA_DANGLER|DS')
-      && !isDegeneratePair('TRASH|RB', 'RUN2|DS') && !isDegeneratePair('A_BLOCKED|RB', 'A_BLOCKED|SSA');
+      && isDegeneratePair('A_BLOCKED|RB', 'A_BLOCKED|SSA')
+      && !isDegeneratePair('TRASH|RB', 'RUN2|DS') && !isDegeneratePair('A_BLOCKED|RB', 'ACE_JUNK|DS')
+      && aceFloor('A_BLOCKED|RB') === 3 && aceFloor('AA_BIGPAIR|DS') === 2 && aceFloor('TRASH|RB') === 0;
     if (!(hFires && hClears && hControl && hFamilies)) {
       bad.push(`(h) the card-removal clause is not armed: silent collapser caught on `
         + `${removalProblems(collapser, degenerate).length}/${degenerate.length} pairs (want all), `
@@ -776,6 +1197,222 @@ export function build(ctx) {
     if (!(monoFires && monoClears)) {
       bad.push(`(mono) the rewritten clause is not armed: a monotone 'model' source flagged `
         + `${monoFires}, an order-perturbing 'model' source cleared ${monoClears}`);
+    }
+
+    // =============================================================================================
+    // THE SECOND ROUTE (P3 B2) — every clause above, run again on the MEASURED PAIRWISE MATRIX
+    // =============================================================================================
+    // V3-PLAN §3.3's `Adjudicated (P3 launch)` block: P3's solver consumes the measured pairwise
+    // checkdown matrix, and barrier B2 says it may not until I33 passes ON THAT SOURCE. This is
+    // that pass. It is not a second gate and not a weaker one — the same clauses, the same armed
+    // idiom, on the source the solver actually eats.
+    //
+    // THE TRAP, RECORDED BECAUSE IT ALMOST SPRUNG. The matrix IS checkdown, so (c), (h) and (mono)
+    // — all three keyed on `source === 'checkdown'` — would have cleared VACUOUSLY. Three clauses
+    // reporting "nothing to compare" over the one source they were written for is a green gate that
+    // means nothing. Each is now keyed on `route`, and the tag is armed below: the matrix route
+    // relabelled 'projection' must FAIL, on its 86 unsupported returns and its 55 inversions.
+    const FM = PO.makeMatrixPayoff(model, MATRICES);
+    const MX0 = MATRICES[0];
+    const mKeys = MX0.keys;
+    const mq = MX0.q;
+
+    // -- the route tag itself, and the abstraction it addresses ---------------------------------
+    if (routeOf(F) !== 'projection' || F.route !== 'projection') {
+      bad.push(`(route) makePayoff's accessor reports route ${JSON.stringify(F.route)}, not 'projection'`);
+    }
+    if (routeOf(FM) !== 'matrix' || FM.route !== 'matrix') {
+      bad.push(`(route) makeMatrixPayoff's accessor reports route ${JSON.stringify(FM.route)}, not 'matrix'`);
+    }
+    if (mKeys.length !== live.length || mKeys.slice().sort().join(',') !== live.join(',')) {
+      bad.push(`(route) the matrix carries ${mKeys.length} cells and the model's live set has `
+        + `${live.length}; a payoff route whose domain is not the abstraction's is a silently `
+        + `narrowed game`);
+    }
+    if (!(MATRICES.length === 2 && MATRICES[0].meta.seed === SEEDS[0] && MATRICES[1].meta.seed === SEEDS[1]
+          && MATRICES[0].meta.boards === BOARDS && MATRICES[1].meta.boards === BOARDS)) {
+      bad.push(`(route) the shipped matrices are not the two named samples at ${BOARDS} boards `
+        + `(${MATRICES.map((m) => `${m.meta.seed}@${m.meta.boards}`).join(', ')})`);
+    }
+
+    // -- (artifact) the payoff table on disk is the one THIS code would produce -------------------
+    const artText = readFileSync(resolve(ROOT, ARTIFACT), 'utf8');
+    const artBody = JSON.parse(artText);
+    for (const why of artifactProblems(artText, live)) bad.push(`(artifact) ${why}`);
+    /* ARMED, three ways, against a TAMPERED COPY — the arming this clause needs, because everything
+       it asserts is a hash comparison and a hash comparison that silently always passes looks
+       exactly like one that works. One flipped trial count, one flipped hash byte, one moved board
+       count; each must be caught, and the real file must clear. */
+    const tamperCnt = JSON.parse(artText);
+    tamperCnt.samples[0].cnt[7] += 1;
+    const tamperHash = JSON.parse(artText);
+    tamperHash.meta.generatorHash = `0${tamperHash.meta.generatorHash.slice(1)}`;
+    const tamperBoards = JSON.parse(artText);
+    tamperBoards.meta.boards = BOARDS + 1;
+    const artFiresCnt = artifactProblems(JSON.stringify(tamperCnt), live).length > 0;
+    const artFiresHash = artifactProblems(JSON.stringify(tamperHash), live).length > 0;
+    const artFiresBoards = artifactProblems(JSON.stringify(tamperBoards), live).length > 0;
+    const artClears = artifactProblems(artText, live).length === 0;
+    if (!(artFiresCnt && artFiresHash && artFiresBoards)) {
+      bad.push(`(artifact) the clause is not armed: a flipped trial count flagged ${artFiresCnt}, a `
+        + `flipped generator hash flagged ${artFiresHash}, a moved board count flagged ${artFiresBoards}`);
+    }
+
+    // -- (a) on the matrix route: the same paths, the same shape, its own anchor -----------------
+    let mThrew = 0, mShapeBad = 0, mRangeBad = 0, mDetBad = 0, mPotBad = 0, mIdBad = 0;
+    for (const [why, cells, pot, spr, opts] of paths) {
+      let r = null;
+      try { r = FM(cells, pot, spr, opts); } catch (e) { mThrew++; bad.push(`(a/matrix) "${why}" THREW: ${e.message}`); continue; }
+      if (!shapeOf(r)) { mShapeBad++; if (bad.length < 20) bad.push(`(a/matrix) "${why}" broke the return shape`); }
+      if (!(Number.isFinite(r.ev) && r.ev >= 0 && r.ev <= 1)) {
+        mRangeBad++; if (bad.length < 20) bad.push(`(a/matrix) "${why}" returned ev ${r.ev}, outside [0,1]`);
+      }
+      if (!potOfOk(r, spr)) { mPotBad++; if (bad.length < 20) bad.push(`(a/matrix) "${why}" returned potMult ${r.potMult} / invShare ${r.invShare}`); }
+      if (!identityOf(r)) { mIdBad++; if (bad.length < 20) bad.push(`(a/matrix) "${why}" is 'checkdown' with a moved pot`); }
+      for (const ip of [false, true]) {
+        const o = (opts && typeof opts === 'object' && !Array.isArray(opts)) ? { ...opts, ip } : opts;
+        let x = null, y = null;
+        try { x = FM(cells, pot, spr, o); y = FM(cells, pot, spr, o); } catch { mDetBad++; continue; }
+        if (!same(x, y)) { mDetBad++; if (bad.length < 20) bad.push(`(a/matrix) "${why}" is not deterministic at ip=${ip}`); }
+      }
+    }
+    /* the matrix's own named anchor, read STRAIGHT OFF THE TABLE with no accessor code in the
+       middle — the counterpart of the projection's recompute-from-model.cells anchor above. A table
+       read is not a memo and this is what pins the row/column orientation, which is the one silent
+       bug a symmetric-looking matrix invites. */
+    const mAnchorPair = ['AA_BIGPAIR|DS', 'TRASH|RB'].every((k) => mKeys.indexOf(k) >= 0)
+      ? ['AA_BIGPAIR|DS', 'TRASH|RB'] : [mKeys[0], mKeys[mKeys.length - 1]];
+    const mAi = mKeys.indexOf(mAnchorPair[0]), mAj = mKeys.indexOf(mAnchorPair[1]);
+    const mAnchorWant = MX0.E[mAi * MX0.NC + mAj];
+    const mAnchorGot = FM(mAnchorPair, 10, 4, { ip: false }).ev;
+    const mAnchorOk = Object.is(mAnchorGot, mAnchorWant);
+    const mAnchorN = MX0.N[mAi * MX0.NC + mAj];
+    if (!mAnchorOk) {
+      bad.push(`(a/matrix) the anchor ${mAnchorPair.join(' vs ')} returned ${mAnchorGot} where the `
+        + `matrix stores ${mAnchorWant} — hero is the ROW, and a transposed read is the one bug a `
+        + `near-symmetric table hides`);
+    }
+    if (FM.modelHash !== model.meta.hash) {
+      bad.push(`(a/matrix) the matrix route reports modelHash ${JSON.stringify(FM.modelHash)}`);
+    }
+    if (FM.length !== 4) bad.push(`(a/matrix) arity is ${FM.length}, not 4 — the freeze is a test`);
+
+    // -- (b) conservation over every ordered heads-up pair, on the matrix -------------------------
+    // Off-diagonals are stored once and MIRRORED, diagonals are exactly 0.5, so this is an identity
+    // here for a structural reason rather than an arithmetic one — and it is what keeps the solved
+    // game exactly zero-sum, which is why `cfr.mjs` can treat a non-zero v1 + v2 as a solver bug.
+    let mWorstSum = 0, mSumBad = 0, mMinSe = Infinity, mMaxSe = 0, mInfSe = 0, mSeBad = 0, mPairs = 0;
+    let mSupported = 0, mUnsupported = 0;
+    for (let i = 0; i < mKeys.length; i++) {
+      for (let j = 0; j < mKeys.length; j++) {
+        if (i === j) continue;
+        mPairs++;
+        const ra = FM([mKeys[i], mKeys[j]], 10, 4, { ip: false });
+        const rb = FM([mKeys[j], mKeys[i]], 10, 4, { ip: false });
+        const dev = Math.abs(ra.ev + rb.ev - 1);
+        if (dev > mWorstSum) mWorstSum = dev;
+        if (dev > 2 * Math.hypot(ra.se, rb.se)) {
+          mSumBad++;
+          if (bad.length < 22) bad.push(`(b/matrix) ${mKeys[i]} vs ${mKeys[j]}: sum ${(ra.ev + rb.ev).toFixed(9)}`);
+        }
+        for (const r of [ra, rb]) {
+          if (!potOfOk(r, 4)) { mPotBad++; if (bad.length < 22) bad.push(`(a/matrix) ${mKeys[i]} vs ${mKeys[j]}: potMult ${r.potMult} / invShare ${r.invShare}`); }
+          if (!identityOf(r)) { mIdBad++; if (bad.length < 22) bad.push(`(a/matrix) ${mKeys[i]} vs ${mKeys[j]} is 'checkdown' with a moved pot`); }
+          if (!(r.se > 0)) { mSeBad++; if (bad.length < 22) bad.push(`(d/matrix) ${mKeys[i]}/${mKeys[j]} reported se ${r.se}`); }
+          if (Number.isFinite(r.se)) { if (r.se < mMinSe) mMinSe = r.se; if (r.se > mMaxSe) mMaxSe = r.se; } else mInfSe++;
+          if (r.supported) mSupported++; else mUnsupported++;
+        }
+      }
+    }
+    if (mSumBad) bad.push(`(b/matrix) conservation FAILS on ${mSumBad} of ${mPairs} ordered pairs`);
+    if (mSeBad) bad.push(`(d/matrix) se was not positive on ${mSeBad} sweep returns`);
+
+    // -- (c) the q-weighted marginal against the shipped column, and the spr-0 geometry -----------
+    const mMarg = marginalProblems(FM, mKeys, mq, eq0);
+    for (const why of mMarg.problems) { if (bad.length < 24) bad.push(why); }
+    let mSpr0Bad = 0, mSprMoved = 0, mSprReturns = 0;
+    for (let i = 0; i < mKeys.length; i++) {
+      const base = FM([mKeys[i], mKeys[(i + 7) % mKeys.length]], 10, 0, { ip: false });
+      if (!(Object.is(base.potMult, 1) && Object.is(base.invShare, 0))) {
+        mSpr0Bad++;
+        if (bad.length < 24) bad.push(`(c/matrix) ${mKeys[i]} at spr 0 reports a moved pot`);
+      }
+      for (const spr of SPRS) {
+        mSprReturns++;
+        if (!same(FM([mKeys[i], mKeys[(i + 7) % mKeys.length]], 10, spr, { ip: false }), base)) mSprMoved++;
+      }
+    }
+    if (mSpr0Bad) bad.push(`(c/matrix) ${mSpr0Bad} spr-0 returns report a moved pot`);
+    /* ARMED, two ways, and both are deterministic rather than a coin flip. `tooPerfect` cancels the
+       matrix's own residual row by row, so the reconstruction reproduces the shipped column exactly
+       and the two family means coincide at 0. `unsigned` replaces that residual with the SAME BAND
+       applied uniformly — a real disagreement with no card-removal structure in it. Neither is a
+       legal payoff; a fabricated violator never has to be. */
+    const mRow = Object.create(null);
+    for (let i = 0; i < mKeys.length; i++) mRow[mKeys[i]] = i;
+    const shift = (delta) => (c, pt, sp, o) => {
+      const r = FM(c, pt, sp, o);
+      const i = Array.isArray(c) && c.length === 2 ? mRow[c[0]] : undefined;
+      return i === undefined ? r : { ...r, ev: r.ev + delta(i) };
+    };
+    const tooPerfect = shift((i) => -mMarg.resid[i] / 100);
+    const unsigned = shift((i) => (-mMarg.resid[i] + mMarg.p95) / 100);
+    const cFiresPerfect = marginalProblems(tooPerfect, mKeys, mq, eq0).problems.length > 0;
+    const cFiresUnsigned = marginalProblems(unsigned, mKeys, mq, eq0).problems.length > 0;
+    const cClearsReal = mMarg.problems.length === 0;
+    if (!(cFiresPerfect && cFiresUnsigned)) {
+      bad.push(`(c/matrix) the marginal clause is not armed: a source reproducing the shipped column `
+        + `exactly flagged ${cFiresPerfect}, an unsigned same-size residual flagged ${cFiresUnsigned}`);
+    }
+
+    // -- (h) the card-removal clause, FIRST LIVE CASE ---------------------------------------------
+    // The stub was exempt by construction — it deals nothing. The matrix deals 400,000 boards, and
+    // the pairs it cannot deal are the ones asking the deck for five or six aces.
+    const mUnd = undealableProblems(FM, MX0);
+    for (const why of mUnd.problems) { if (bad.length < 26) bad.push(`(h/matrix) ${why}`); }
+    const mBar = degenerateErrorBarProblems(FM, mKeys);
+    for (const why of mBar.problems) { if (bad.length < 26) bad.push(`(h/matrix) ${why}`); }
+    for (const why of removalProblems(FM, [...degenerate, ...control])) { if (bad.length < 26) bad.push(`(h/matrix) ${why}`); }
+    const mUndUnordered = MX0.meta.impossiblePairs.length;
+    /* ARMED: the collapser in its matrix form — the same route claiming support for a pair no board
+       ever dealt. It must be caught on every one of them, and the honest route must clear. */
+    const mCollapser = (c, pt, sp, o) => ({ ...FM(c, pt, sp, o), supported: true });
+    mCollapser.route = 'matrix';
+    mCollapser.modelHash = FM.modelHash;
+    const hmFires = undealableProblems(mCollapser, MX0).unflagged === 2 * mUndUnordered;
+    const hmClears = mUnd.problems.length === 0;
+    const hmRemoval = removalProblems(mCollapser, degenerate).length > 0;
+    if (!(hmFires && hmClears && hmRemoval)) {
+      bad.push(`(h/matrix) the clause is not armed: a collapser claiming support on undealable pairs `
+        + `caught on ${undealableProblems(mCollapser, MX0).unflagged}/${2 * mUndUnordered} (want all, `
+        + `${hmFires}), the honest route cleared ${hmClears}, the removal detector fired ${hmRemoval}`);
+    }
+
+    // -- (mono) the matrix is checkdown and NOT separable, which is the whole point ----------------
+    const mMonoRows = monoRows(FM, byEq, monoVillain, SPRS);
+    const mInversions = mMonoRows.reduce((n, r) => n + r.inversions, 0);
+    const mSteps = mMonoRows.reduce((n, r) => n + r.steps, 0);
+    const mWorstInv = mMonoRows.reduce((w, r) => Math.max(w, r.worst), 0);
+    for (const why of monoProblems(FM, byEq, monoVillain, SPRS)) { if (bad.length < 28) bad.push(`${why}`); }
+
+    // -- THE TAG, ARMED. A matrix route wearing the projection's label must FAIL, and it must fail
+    // on the two clauses the tag re-keyed: (h)'s 86 unsupported returns and (mono)'s inversions.
+    // Without this, every rewrite above is a rewrite nobody can show was necessary.
+    const mislabelled = (c, pt, sp, o) => FM(c, pt, sp, o);
+    mislabelled.route = 'projection';
+    mislabelled.modelHash = FM.modelHash;
+    const tagMonoFires = monoProblems(mislabelled, byEq, monoVillain, SPRS).length > 0;
+    const tagRemovalFires = removalProblems(mislabelled, degenerate).length === 0;   // exempt again
+    /* and the opposite mislabel: the PROJECTION wearing the matrix tag shows zero inversions, which
+       the matrix half of (mono) is written to reject. */
+    const projAsMatrix = (c, pt, sp, o) => F(c, pt, sp, o);
+    projAsMatrix.route = 'matrix';
+    projAsMatrix.modelHash = F.modelHash;
+    const tagProjFires = monoProblems(projAsMatrix, byEq, monoVillain, SPRS).length > 0;
+    if (!(tagMonoFires && tagRemovalFires && tagProjFires)) {
+      bad.push(`(route) the tag is not armed: the matrix relabelled 'projection' flagged by (mono) `
+        + `${tagMonoFires} and silently re-exempted from (h) ${tagRemovalFires}; the projection `
+        + `relabelled 'matrix' flagged for perfect monotonicity ${tagProjFires}`);
     }
 
     G('I33', bad.length === 0,
@@ -888,7 +1525,102 @@ export function build(ctx) {
       + `perfectly is not modelling it. NO UPPER BOUND IS ASSERTED: S-B's band is reported here, `
       + `never as a tolerance, and spr 1's 1.7% is too near zero to be a floor. Armed: the stub `
       + `relabelled 'model' is monotone and is now FLAGGED (${monoFires}); a 'model' that perturbs `
-      + `the order at spr >= 4 clears (${monoClears})`
+      + `the order at spr >= 4 clears (${monoClears}). `
+      // ---------------------------------------------------------------------------------------
+      + `=== ROUTE 2 OF 2, THE MEASURED PAIRWISE CHECKDOWN MATRIX (P3 B2, V3-PLAN §3.3's `
+      + `Adjudicated block) — barrier B2 says the solver may not consume a real payoff until I33 `
+      + `passes ON THAT SOURCE, and this is that pass. Source: scripts/lib/checkdown-matrix.mjs, `
+      + `S-A's construction verbatim — ${BOARDS.toLocaleString()} shared boards, ONE draw per cell `
+      + `per board with a sit-out on collision (the corrected measure: redraw-on-collision read `
+      + `+1.16 pt high on average and +5.33 pt on RUN0_HIGH|RB), diagonals exactly 0.5, `
+      + `off-diagonals stored once and MIRRORED. Two independently NAMED samples, fixed before `
+      + `anything was solved on them: ${SEEDS.join(' and ')} — `
+      + `mean ${Math.round(MX0.meta.meanPairSamples).toLocaleString()} live-and-disjoint samples per `
+      + `pair. ZERO NEW CONSTANTS: ${BOARDS.toLocaleString()} is the regime solver.twoSeedTolPot's `
+      + `own anchor was MEASURED at (V3-PLAN §3.3's Adjudicated (P3 relaunch) block — the first B2 `
+      + `run shipped 25,000, the top of S-A's out-of-sample band, and the payoff axis read 0.1508% `
+      + `against a 0.15% gate anchored on a 400k measurement; the count moved to the anchor's regime `
+      + `rather than the tolerance moving to the count), and the seeds are names. `
+      + `(artifact) THE PAIR IS A SHIPPED, COMMITTED ARTIFACT (V3-PLAN §0.4 identity leg (b)), not a `
+      + `build product of this run: ${ARTIFACT}, ${(artText.length / 1024).toFixed(0)} KB of integer `
+      + `counters — E = (wins2/2)/cnt reconstructs BIT-IDENTICALLY, so the file records trials and `
+      + `not a rounding of results — written once by ${GENERATOR} and READ here in milliseconds `
+      + `where building it costs ~40 s, which is what keeps the verifier's wall the cost of the `
+      + `solves. Asserted every run: seeds and board count match the code, keys match the model's `
+      + `live set, generatorHash ${artBody.meta.generatorHash.slice(0, 16)} equals the live hash of `
+      + `checkdown-matrix.mjs + the generator (so a stale artifact is caught on the run that made it `
+      + `stale, not at the next --check), contentHash ${artBody.meta.contentHash.slice(0, 16)} `
+      + `recomputes, and every triangle entry satisfies 0 <= wins2 <= 2*cnt. Armed against a `
+      + `tampered copy three ways: a flipped trial count (${artFiresCnt}), a flipped generator hash `
+      + `(${artFiresHash}), a moved board count (${artFiresBoards}); the real file clears `
+      + `(${artClears}). NOT ASSERTED HERE, and deliberately: that the file rebuilds BYTE-FOR-BYTE `
+      + `from its own recorded inputs is \`node ${GENERATOR} --check\`, ~40 s, run at the milestone `
+      + `close-out beside the three checks rather than inside a 41.9 s wall. `
+      + `THE TRAP, RECORDED: the matrix IS checkdown, so (c), (h) and (mono) — all keyed on `
+      + `source === 'checkdown' — would have cleared VACUOUSLY over the one source they were written `
+      + `for. Each is re-keyed on the accessor's \`route\` tag ('projection' | 'matrix'), a function `
+      + `property beside modelHash, never a seventh return key and never a fifth argument. `
+      + `(a/matrix) the same ${paths.length} named paths (${mThrew} threw, ${mShapeBad} broke shape, `
+      + `${mRangeBad} outside [0,1], ${mDetBad} determinism failures) plus all `
+      + `${(mPairs * 2).toLocaleString()} sweep returns; the identities hold (${mPotBad} out of `
+      + `range, ${mIdBad} identity breaks) — the matrix is still checkdown, so potMult === 1 and `
+      + `invShare === 0 are still what checkdown IS; anchor ${mAnchorPair.join(' vs ')} = `
+      + `${mAnchorGot.toFixed(6)} read STRAIGHT OFF THE TABLE at n = ${mAnchorN.toLocaleString()} `
+      + `(hero is the ROW — a transposed read is the bug a near-symmetric table hides). `
+      + `(b/matrix) worst |ev(A,B)+ev(B,A)-1| = ${mWorstSum.toExponential(1)} over `
+      + `${mPairs.toLocaleString()} ordered pairs — an identity here because off-diagonals are `
+      + `stored once and mirrored, which is what keeps the solved game exactly zero-sum. `
+      + `(c/matrix) REWRITTEN TO THE MEASUREMENT: a pairwise checkdown source is compared to the `
+      + `shipped eq[0] column by its Q-WEIGHTED MARGINAL, not by equality. Residual (matrix minus `
+      + `shipped, pts): mean ${mMarg.mean.toFixed(3)}, p95 ${mMarg.p95.toFixed(3)}, max `
+      + `${mMarg.max.toFixed(3)} — S-A's own readings at the same 400k boards: mean -0.112 / p95 `
+      + `0.577 / max 0.827. REPORTED, `
+      + `NEVER ASSERTED: one spike's table cannot license a tolerance. What IS asserted is the SIGN `
+      + `PATTERN — the four ace-holding families (${ACE_FAMILIES.join(', ')}, ${mMarg.aceN} cells) `
+      + `read ${mMarg.aceMean.toFixed(3)} pt against ${mMarg.restMean.toFixed(3)} pt for the other `
+      + `${mMarg.restN}, because the shipped column conditions villain on hero's aces being dead and `
+      + `a q-weighted marginal does not — a FAMILY-MEAN comparison, since the per-cell sign is not `
+      + `robust at any budget this repo can pay — and CONSERVATION, combo-weighted mean `
+      + `${mMarg.conservation.toFixed(4)} against 50 within the accumulation bound. Armed both ways, `
+      + `deterministically: a source that cancels its own residual and reproduces the column exactly `
+      + `is flagged (${cFiresPerfect}), and so is one carrying the same band with no family `
+      + `structure (${cFiresUnsigned}); the real route clears (${cClearsReal}). The pot half is `
+      + `unchanged and holds: ${mSpr0Bad} moved pots at spr 0. Reported beside it: the matrix is `
+      + `spr-inert too — ${mSprMoved} of ${mSprReturns.toLocaleString()} returns move across `
+      + `spr {${SPRS.join(',')}} — because a checkdown has no stack to bet. `
+      + `(d/matrix) se comes from EACH PAIR'S OWN live-and-disjoint count, never the model's 100,000 `
+      + `and never typed: finite range ${mMinSe.toExponential(1)}..${mMaxSe.toExponential(1)} pot `
+      + `fractions over ${(mPairs * 2 - mInfSe).toLocaleString()} returns, and Infinity on the `
+      + `${mInfSe} whose sample is empty. `
+      + `(h/matrix) THE CARD-REMOVAL CLAUSE'S FIRST LIVE CASE. The stub deals nothing and was exempt `
+      + `by construction; this route deals ${BOARDS.toLocaleString()} boards. `
+      + `${mUndUnordered} unordered / ${mUnd.flagged} ordered pairs came back supported:false — `
+      + `exactly the set the measurement found undealable (${mUnd.strayFlag} strays, `
+      + `${mUnd.unflagged} silently collapsed, ${mUnd.wrongFamily} outside the family, `
+      + `${mUnd.badFallback} with a fallback that is not the conserving 0.5 at se Infinity), combo `
+      + `mass ${MX0.meta.impossibleMass.toExponential(2)}. The structural reason is asserted rather `
+      + `than the count: every one of them asks the deck for five or six aces. A FINDING, and it is `
+      + `S-A's own family description corrected — 42 of the 43 are AA_* x A_BLOCKED and the 43rd is `
+      + `A_BLOCKED|RB x A_BLOCKED|SSA, because A_BLOCKED is "Trip/quad aces" in the taxonomy, so two `
+      + `of those cells pin SIX aces; isDegeneratePair is now an ace-floor SUM >= 4 rather than a `
+      + `family list that had already been wrong once. AND THE OTHER HALF: the ${mBar.degN} ordered `
+      + `four-ace pairs are DEALABLE and stay supported (${mBar.unsupported} wrongly flagged), `
+      + `carrying a mean se of ${mBar.degMean.toExponential(2)} against `
+      + `${mBar.restMean.toExponential(2)} for the rest — ${mBar.ratio.toFixed(2)}x, which is what `
+      + `"degeneracy surfaced, never collapsed" looks like when the pair IS dealable: the cost lands `
+      + `in the error bar, not in a false flag. Armed: a collapser claiming support on the undealable `
+      + `pairs is caught on all of them (${hmFires}). `
+      + `(mono/matrix) REWRITTEN TO THE MEASUREMENT. The old checkdown half required ZERO inversions, `
+      + `and it was written for a source that is EXACTLY SEPARABLE — the projection's `
+      + `ev(A,B) - 0.5 = (a_A - a_B)/2 to 1.1e-16. A measured PAIRWISE matrix is checkdown and NOT `
+      + `separable, and falsifying that separability is why it exists: ${mInversions} of ${mSteps} `
+      + `steps invert against ${monoVillain} over ${byEq.length} cells x spr {${SPRS.join(',')}} x ip `
+      + `{off,on}, worst ${mWorstInv.toFixed(4)}. The count is REPORTED and bounded by NO tolerance; `
+      + `what is asserted is that it is not ZERO, because zero would mean the matrix had become `
+      + `separable. THE TAG IS ARMED, which is what makes all three rewrites necessary rather than `
+      + `convenient: the matrix relabelled 'projection' is flagged by (mono) (${tagMonoFires}) and `
+      + `is silently re-exempted from (h) (${tagRemovalFires}), and the projection relabelled `
+      + `'matrix' is flagged for reproducing the order perfectly (${tagProjFires})`
       + (bad.length ? ` — FAILS: ${bad.slice(0, 6).join('; ')}${bad.length > 6 ? ` (+${bad.length - 6} more)` : ''}` : ''));
     } },
     ],

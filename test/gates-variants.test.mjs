@@ -38,7 +38,12 @@ function page(variant, over = {}) {
   /* The newline between the packed ordering and the body matters: D10's declaration patterns are
      anchored on a real token boundary, so `<base64>const EQUILIBRIUM` is correctly NOT a match —
      it is not a declaration. Splicing the two together would test the regex, not the gate. */
-  return `${banner}\n<html>${model.order.packed}\n${over.body || ''}</html>`;
+  /* `baselineTiers` is in the shipped model since P3, and D10's positive half requires the lite
+     page to carry it (§5.3: the block is what buys lite a tier-level vs-GTO mode). So the minimal
+     passing artifact carries it too — `over.body` still isolates whatever defect a test is about,
+     and the lite-LEGAL test below drives the page that OMITS it. */
+  const core = over.omitBaseline ? '' : 'const M={baselineTiers:1};';
+  return `${banner}\n<html>${model.order.packed}\n${core}${over.body || ''}</html>`;
 }
 
 /** Run just this family and return its gates by id. */
@@ -96,30 +101,30 @@ test('D10 FAILS when there is no lite artifact at all — absence is not a skip'
   assert.match(g.D10.detail, /non-negotiable artifact/);
 });
 
-test('the baseline-tier block is lite-LEGAL, and the clause arms itself when it lands', () => {
-  // Today: absent from the model, so absent from the page, and that agrees.
-  assert.equal(model.baselineTiers, undefined);
+test('the baseline-tier block is lite-LEGAL, and the clause has ARMED ITSELF — the block landed', () => {
+  /* THE ROW FLIPPED SIDES AT P3, exactly as it was written to. It used to read "absent from the
+     model, so absent from the page, and that agrees", with the note that the day P3 emitted the
+     block the row would start REQUIRING it in lite. P3 emitted it (scripts/generate-equilibrium.mjs
+     writes model.baselineTiers), so what is pinned here is the requirement rather than the
+     agreement — and the failure direction is the one that matters: a lite page that DROPPED the
+     block fails, which is the opposite of a forbidden row and is what "lite-legal" means. */
+  assert.ok(model.baselineTiers, 'P3 ships the block; §5.3 is what buys lite its vs-GTO mode');
   assert.equal(run(base()).D10.pass, true);
-  // The day P3 emits it, a lite page WITHOUT it fails — the row is a requirement, not a permission
-  // that also happens to be satisfied by omission.
-  const withBlock = { ...model, baselineTiers: { q: [1, 2, 3] } };
+  const g = run(base({ lite: { omitBaseline: true } }));
+  assert.equal(g.D10.pass, false);
+  assert.match(g.D10.detail, /MISSING from lite: baselineTiers/);
+  /* ...and the row is still conditional on the model, not hard-coded: a model without the block
+     agrees with a page without it, which is what kept this gate honest for two phases. */
+  const noBlock = { ...model };
+  delete noBlock.baselineTiers;
   const gates = [];
   const built = variants.build({
-    model: withBlock, opts: base(), G: (id, pass, detail) => gates.push({ id, pass, detail }),
+    model: noBlock,
+    opts: base({ lite: { omitBaseline: true } }),
+    G: (id, pass, detail) => gates.push({ id, pass, detail }),
   });
   for (const s of built.sections) s.run();
-  const d10 = gates.find((g) => g.id === 'D10');
-  assert.equal(d10.pass, false);
-  assert.match(d10.detail, /MISSING from lite: baselineTiers/);
-  // …and a page that carries it passes, which is what "lite-legal" means.
-  const gates2 = [];
-  const built2 = variants.build({
-    model: withBlock,
-    opts: base({ lite: { body: 'const M={baselineTiers:[1]}' } }),
-    G: (id, pass, detail) => gates2.push({ id, pass, detail }),
-  });
-  for (const s of built2.sections) s.run();
-  assert.equal(gates2.find((g) => g.id === 'D10').pass, true);
+  assert.equal(gates.find((x) => x.id === 'D10').pass, true);
 });
 
 // ---------------------------------------------------------------------------
@@ -201,21 +206,48 @@ function d6(m) {
 const padCore = (m, kb) => ({ ...m, meta: { ...m.meta, _pad: 'x'.repeat(kb * 1024) } });
 const withBaseline = (m, kb) => ({ ...m, baselineTiers: { q: 'y'.repeat(kb * 1024) } });
 
-test('D6 passes today, and its detail names the baseline sub-budget and the core clause', () => {
+test('D6 passes today, and its detail names both sub-budgets and both core clauses', () => {
   const g = d6(model);
   assert.equal(g.pass, true, g.detail);
-  assert.match(g.detail, /baseline tiers 0\.0K\/12K/);
+  /* P3 FILLED BOTH RESERVATIONS, so the pins move from "0.0K" to a real reading. The baseline block
+     was reserved at P1 and claimed here; the solver-constants block is P3's own raise, made in the
+     same idiom. What is pinned is that BOTH core re-assertions are printed — the 120K payload core
+     and the 13K meta core — because those are the numbers that prove no existing block gained a
+     byte, and a detail line that stopped printing them would hide exactly that. */
+  assert.match(g.detail, /baseline tiers \d+\.\dK\/12K/);
+  assert.match(g.detail, /solver constants \d+\.\dK\/3K/);
   assert.match(g.detail, /of which core .*\/120K/);
+  assert.match(g.detail, /of which core .*\/13K/);
   assert.match(g.detail, /BINDING ON THE LITE ARTIFACT/);
 });
 
-test('THE RESERVATION BITES: core over 120K FAILS even though the 132K total is not reached', () => {
-  // 113.9K core + 10K padding = ~124K: under the new 132K total, over the reserved-out 120K core.
-  // Under the naive reading of "raise the total to 132" this would pass. It must not.
+test('THE RESERVATION BITES: core over 120K FAILS even though the 135K total is not reached', () => {
+  // 115.9K core + 10K padding = ~126K: under the 135K total, over the reserved-out 120K core.
+  // Under the naive reading of "raise the total" this would pass. It must not — and it must not for
+  // the solver block's raise either, which is why the assertion is on the CORE reading.
   const bloated = padCore(model, 10);
   const g = d6(bloated);
   assert.equal(g.pass, false, `expected FAIL, got: ${g.detail}`);
-  assert.match(g.detail, /total 12[0-9.]+K\/132K/);
+  assert.match(g.detail, /of which core 12[0-9.]+K\/120K/);
+});
+
+test('THE SECOND RESERVATION BITES: the meta bucket minus the solver block still faces 13K', () => {
+  /* P3's own raise, tested the same way P1's was. `meta` went 13K -> 16K to make room for
+     `constants.solver`, and the raise is RESERVED: `metaCore` (the bucket minus that block) still
+     faces the original 13K, so no other member of the meta bucket gained a byte. Padding `rows`
+     lands inside the bucket and outside the solver block, which is exactly the case that must
+     still fail. */
+  const bloated = { ...model, rows: [...model.rows, { key: 'PAD', pad: 'z'.repeat(1024) }] };
+  const g = d6(bloated);
+  assert.equal(g.pass, false, `expected FAIL, got: ${g.detail}`);
+  assert.match(g.detail, /of which core 1[3-9.]+K\/13K/);
+});
+
+test('a solver-constants block over its own 3K FAILS, and does not borrow from the meta core', () => {
+  const fat = { ...model, constants: { ...model.constants, solver: { ...model.constants.solver, pad: 'z'.repeat(4 * 1024) } } };
+  const g = d6(fat);
+  assert.equal(g.pass, false, `expected FAIL, got: ${g.detail}`);
+  assert.match(g.detail, /solver constants \d+\.\dK\/3K/);
 });
 
 test('the 12K is spendable by the baseline block and by nothing else', () => {

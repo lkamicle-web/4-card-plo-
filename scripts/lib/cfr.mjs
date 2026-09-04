@@ -108,10 +108,18 @@ export const EPSILON_BB = 5e-5;
  * Iteration cap.
  *
  * ANCHOR (S-A's measured convergence curve): exploitability first crosses 5e-5 bb at iteration 456
- * / 40 ms, so 2,000 is a 4x margin at 143 ms — 0.24% of the 60 s half-budget. On the checkdown stub
- * this module actually serves, the crossing is EARLIER still (measured: iteration 332 at T100, 316
- * at T40), so the same cap carries a larger margin here; I35 asserts the achieved exploitability at
- * the cap rather than trusting either curve.
+ * / 40 ms, so 2,000 is a 4x margin at 143 ms — 0.24% of the 60 s half-budget.
+ *
+ * THE MARGIN QUOTED AGAINST THE WORST SEED, not against seed 0 (docs/refutations/P2.md finding 2:
+ * S-A's 456 and this module's first re-measurement, 332 at T100 / 316 at T40 on the projection stub,
+ * are all SEED-0 readings, while the gate solves three seeds and depends on the worst). Worst-seed
+ * crossings, measured: PROJECTION stub ~662 (T100) / ~650 (T40) — a ~3x margin, not 4x. MEASURED
+ * PAIRWISE MATRIX (P3's baseline, the source the solver now consumes): worst exploitability over the
+ * three init seeds is 9.5e-6 bb at T100 and 4.6e-6 at T40, both already inside epsilon at the cap,
+ * with the seed-0 argmax settling at iteration 616 (T100) and 1,817 (T40) — the T40 figure is the
+ * one to know, because it sits above 0.9x the cap and is the reason no argmax-flapping assertion is
+ * made on this route. I35 asserts the achieved exploitability at the cap rather than trusting any
+ * of these curves.
  */
 export const ITER_CAP = 2000;
 
@@ -125,16 +133,21 @@ export const ITER_CAP = 2000;
 export const TWO_SEED_TOL_POT = 0.0015;
 
 /**
- * The two axes a "seed" moves, named because they are not the same claim and only one of them is
- * live today.
+ * The two axes a "seed" moves, named because they are not the same claim. Both are live since P3's
+ * B2 pre-stage; only `init` was live before it.
  *
  * `payoff`  — the seed threaded into `opts.seed` on every accessor call. This is S-A's own reading
- *             of the clause ("value spread across independent payoff samples"). Under a checkdown
- *             source the accessor is seed-inert, so the two samples are bit-identical and the
+ *             of the clause ("value spread across independent payoff samples"). Under the PROJECTION
+ *             stub the accessor is seed-inert, so the two samples are bit-identical and the
  *             spread is exactly 0 — a pass for a reason worth stating rather than a measurement.
  *             I35 CHECKS the inertness (it does not assume it) and arms the clause against a
  *             fabricated seed-sensitive source, so it is a real assertion the day a source is
- *             'simulated'.
+ *             'simulated'. THAT DAY ARRIVED AT B2, and this is the resolution of
+ *             docs/refutations/P2.md finding 3 (the tolerance was anchored against an axis nobody
+ *             was exercising): against the MEASURED PAIRWISE MATRIX `opts.seed` SELECTS which of two
+ *             independently sampled matrices answers, so the two solves are two payoff samples in
+ *             S-A's own sense. `solveHU`'s separate `payoffSeed` argument is what keeps the two axes
+ *             from confounding each other.
  * `init`    — the seed selecting the initial strategy, i.e. the simplex point used wherever
  *             cumulative regret is still all-zero. Non-vacuous today: it genuinely moves the
  *             trajectory, and asserting the runs converge to the same value is what I35's "fails if
@@ -179,14 +192,25 @@ export const CONSTANTS = Object.freeze([
   Object.freeze({
     name: 'solver.iterCap', value: ITER_CAP, unit: 'iterations', kind: 'anchored',
     anchor: "S-A's measured convergence curve: exploitability first crosses 5e-5 bb at iteration "
-      + '456 / 40 ms, so 2,000 is a 4x margin at 143 ms. On the checkdown stub the crossing is '
-      + 'iteration 332 (T100) / 316 (T40), so the margin here is larger still.',
+      + '456 / 40 ms, so 2,000 is a 4x margin at 143 ms. Quoted against the WORST SEED rather than '
+      + 'seed 0 (docs/refutations/P2.md finding 2): the projection stub crosses at ~662 (T100) / '
+      + '~650 (T40) over three seeds, a ~3x margin; on the SHIPPED 400,000-board pairwise matrices '
+      + 'the worst exploitability at the cap is 1.2e-5 bb over both depths and three seeds, with '
+      + 'seed-0 argmaxes settling at iteration 989 (T100) and 85 (T40).',
   }),
   Object.freeze({
     name: 'solver.twoSeedTolPot', value: TWO_SEED_TOL_POT, unit: 'fraction of the preflop pot',
     kind: 'anchored',
-    anchor: 'S-A: value spread across independent payoff samples 5.19e-4 bb = 0.035% of pot; gated '
-      + 'at 0.15%, ~4x the measurement, written to fail.',
+    anchor: 'S-A: value spread across independent payoff samples 5.19e-4 bb = 0.035% of pot at '
+      + '400,000 boards; gated at 0.15%, ~4x the measurement, written to fail. THE SHIPPED MATRICES '
+      + 'ARE BUILT AT THAT SAME 400,000 BOARDS so the margin is a measurement in the anchor\'s own '
+      + 'regime rather than an extrapolation out of it: the live payoff-axis spread reads 0.066% '
+      + '(T100) / 0.062% (T40) of pot, leaving 2.3x / 2.4x under this tolerance. The first B2 run '
+      + 'shipped 25,000-board matrices — the top of S-A\'s out-of-sample exploitability band, a '
+      + 'DIFFERENT S-A table — where per-entry se is ~4x and the axis read 0.151% / 0.157%, i.e. at '
+      + '~1x the gate; V3-PLAN §3.3\'s `Adjudicated (P3 relaunch)` block records that the board '
+      + 'count moved to the anchor\'s regime and this VALUE did not move at all. Spread falls as '
+      + 'boards^-1/2, which is the whole reason more boards is the non-weakening move.',
   }),
   Object.freeze({
     name: 'solver.sizingLadder', value: '3 / 9 / 27 / 81', unit: 'bb (raise-to)', kind: 'identity',
@@ -770,19 +794,31 @@ export const mirrorBound = (potMax) => 8 * potMax * Number.EPSILON;
  * and tests can fabricate one to prove a clause fails. It defaults to the frozen accessor bound to
  * `model` — the pure route, `makePayoff`, never the process-wide singleton, because a solver that
  * silently used another model's payoffs is precisely the failure the memo rule is about.
+ *
+ * `payoffSeed` SPLITS THE TWO SEED AXES, and P3's B2 pre-stage is why it exists. `TWO_SEED_AXES`
+ * names them — `payoff` (the seed threaded into `opts.seed` on every accessor call) and `init` (the
+ * simplex point used while regrets are all-zero) — but until B2 one argument fed both, which was
+ * harmless only while the payoff axis was inert. It is not inert against the measured pairwise
+ * matrix, where `opts.seed` SELECTS which of two independently sampled matrices answers: threading
+ * one seed into both would confound the two axes, and a STRING seed additionally seeds `initTables`
+ * with `x = 1` (a number coerced from a string is NaN, and `(NaN >>> 0) || 1` is 1), so the init
+ * axis would silently collapse at the same time. Absent, it defaults to `seed`, which is exactly the
+ * pre-B2 behaviour and is what keeps `test/cfr.test.mjs`'s threading test meaningful.
  */
-export function solveHU({ model, stack = 100, iters = ITER_CAP, seed = 0, payoff = null, trackFlips = false }) {
+export function solveHU({ model, stack = 100, iters = ITER_CAP, seed = 0, payoffSeed, payoff = null, trackFlips = false }) {
   const payoffFn = payoff || makePayoff(model);
   const modelHash = (payoff ? (payoff.modelHash || 'injected') : payoffFn.modelHash) || '';
+  const pSeed = payoffSeed === undefined || payoffSeed === null ? seed : payoffSeed;
   const tree = buildTree(stack);
   const live = liveCells(payoffFn, model);
   const { q, total } = chanceMeasure(model, live);
-  const matrices = payoffMatrices(payoffFn, live, tree, seed, modelHash);
+  const matrices = payoffMatrices(payoffFn, live, tree, pSeed, modelHash);
   const solved = solve({ matrices, tree, q, iters, seed, trackFlips });
   const ex = exploitability({ matrices, tree, q, avg: solved.avg });
   const source = dominantSource(matrices.sources);
   return {
-    tree, live, q, comboTotal: total, matrices, avg: solved.avg, iters, seed,
+    tree, live, q, comboTotal: total, matrices, avg: solved.avg, iters, seed, payoffSeed: pSeed,
+    route: payoffFn.route || 'projection',
     lastFlip: solved.lastFlip,
     value: ex.v, brSB: ex.brSB, brBB: ex.brBB, eps: ex.eps, bracketOk: ex.bracketOk,
     simplexError: simplexError(solved.avg, live.length),
@@ -873,6 +909,77 @@ export const SIXMAX = Object.freeze({
     + 'point", and I35 keeps that scope.',
   revisitWhen: 'a payoff source answers multiway requests with supported:true and constant-sum '
     + 'shares that depend on the opponents\' cells. I35 measures all three every run.',
+
+  /**
+   * THE RE-OPENING RULE, evaluated ONCE by measurement at P3's B2 pre-stage and frozen here.
+   *
+   * V3-PLAN §14 item 5 resolved "IN" at phase 0 on a WALL-TIME criterion; §3.3's `Adjudicated
+   * (P3 launch)` block overrides that with the payoff DOMAIN and states the rule: 6-max may be
+   * attempted only if ALL FOUR legs hold. This is that evaluation, recorded rather than repeated —
+   * a rule re-litigated every phase is a rule nobody decided. Leg (ii) is the one that fails, it
+   * fails structurally rather than narrowly, and building the k-way sampler that would satisfy it
+   * is a NEW MEASUREMENT outside the B2 pre-stage's remit.
+   *
+   * The consequence for the phase that writes I36, stated here so it can be quoted rather than
+   * re-derived: I36's positional-nesting clause (UTG within HJ within CO within BTN) is NOT
+   * MEASURABLE in the HU domain — the solved tree has exactly two seats, SB and BB, so there is no
+   * UTG/HJ/CO/BTN nesting for an equilibrium to exhibit or to violate. The clause is scoped to the
+   * measurement (the I15 precedent), never toleranced, and never quietly passed over zero units.
+   */
+  reopenRule: Object.freeze([
+    Object.freeze({
+      leg: 'i',
+      claim: '2-way terminals come from the measured pairwise matrix',
+      verdict: 'HOLDS',
+      measured: 'P3 serves scripts/lib/checkdown-matrix.mjs through payoff.mjs\'s makeMatrixPayoff '
+        + 'route (source \'checkdown\', route \'matrix\'), and every heads-up terminal in this tree '
+        + 'reads it through the frozen accessor — 123 live cells, 15,129 ordered pairs per terminal, '
+        + 'four terminals.',
+    }),
+    Object.freeze({
+      leg: 'ii',
+      claim: '3-way+ terminals come from a MEASURED k-way sampler that passes I33(b) '
+        + '(constant-sum over the k shares) and I33(h) (degeneracy surfaced, never collapsed)',
+      verdict: 'FAILS',
+      measured: 'No k-way sampler exists at HEAD and the pairwise matrix is not one: it scores '
+        + 'unordered CELL PAIRS on shared boards, so a multiway request still falls to the '
+        + 'accessor\'s flagged multiway exit. Measured on the matrix route by `multiwayProbe` over '
+        + '24 six-handed tuples: 0 of 144 returns supported, the six shares miss 1 by up to 0.445 '
+        + '(so I33(b) has no constant-sum game to check), and hero\'s share is bit-identical across '
+        + 'disjoint opponent sets (so no opponent\'s cell is in any payoff and I33(h) has no '
+        + 'k-way degeneracy to surface). Building one is a new measurement, not a wiring change.',
+    }),
+    Object.freeze({
+      leg: 'iii',
+      claim: 'zero new opinion constants',
+      verdict: 'HOLDS for the pairwise matrix; NOT EVALUABLE for a k-way sampler that does not exist',
+      measured: 'The matrix\'s board count (400,000) is the regime solver.twoSeedTolPot\'s own '
+        + 'anchor was measured at and its two seeds are NAMES, so the pairwise half introduces no '
+        + 'constant. What a k-way sampler would cost in constants cannot be measured before it is '
+        + 'written.',
+    }),
+    Object.freeze({
+      leg: 'iv',
+      claim: 'inside the pipeline budget and D9',
+      verdict: 'HOLDS for the pairwise matrix; NOT EVALUABLE for 6-max',
+      measured: 'METHODOLOGY states the pipeline budget as "6 minutes" hard against 188 s measured '
+        + 'on a 4-core box (V3-PLAN §3.2 quotes the same budget as 688 cpu-s; METHODOLOGY is the '
+        + 'living source of truth and its own words are quoted here). The two shipped matrices are '
+        + 'a generated, committed artifact (data/checkdown-matrix.json, ~307 KB) built OUTSIDE that '
+        + 'pipeline in ~21 s wall with the two seeds in parallel, and read back in milliseconds, so '
+        + 'they cost the pipeline nothing per run. A 6-max sampler\'s cost is unmeasured '
+        + 'because none exists, and D9 is not set at all — V3-PLAN §5.3 keeps full\'s budgets null '
+        + 'until a real data/equilibrium.json exists — so this leg cannot be cleared in the '
+        + 'direction that matters either.',
+    }),
+  ]),
+
+  /** the rule's own verdict: one failed leg is enough, and leg (ii) fails structurally */
+  reopenVerdict: 'UPHELD — leg (ii) fails, so SIXMAX and I35(d) stand. I36\'s positional-nesting '
+    + 'clause (UTG within HJ within CO within BTN) is NOT MEASURABLE in the HU domain: the solved '
+    + 'tree has exactly two seats, SB and BB, so there is no UTG/HJ/CO/BTN nesting for an '
+    + 'equilibrium to exhibit or to violate — scoped to the measurement (the I15 precedent), never '
+    + 'toleranced.',
 });
 
 /**

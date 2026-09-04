@@ -65,20 +65,59 @@ export class VariantError extends Error {
  * `regions` is the manifest gate D10 reads: exactly these `@inject:` regions may appear in this
  * variant's stripped source, and all of them must.
  *
- * `budgets` is deliberately NULL for full. The house rule is that a constant without an anchor is
- * not invented: lite's three numbers are the measured-plus-5% figures METHODOLOGY §9.11 derives and
- * they are carried over unchanged, but there is no measurement of a full artifact yet — the
- * equilibrium payload it is sized around does not exist. So the full build REPORTS its bytes and
- * asserts nothing, loudly, until D9 sets the number from the first real `data/equilibrium.json`.
- * A fabricated ceiling would be worse than an absent one: it would read as a checked claim.
+ * `budgets` WAS deliberately NULL for full, and P3 is the phase that fills it. The house rule is
+ * that a constant without an anchor is not invented: lite's three numbers are the measured-plus-5%
+ * figures METHODOLOGY §9.11 derives, and until `data/equilibrium.json` existed there was no
+ * measurement of a full artifact to derive full's from, so the full build REPORTED its bytes and
+ * asserted nothing, loudly. `test/variant.test.mjs` pinned the null so the flip would have to be a
+ * decision rather than a drift, and this is that decision, taken on P3's first real payload.
+ *
+ * FULL'S FOUR NUMBERS, and the two that are NOT measured+5%:
+ *
+ *   total  634 KB   HELD BELOW measured+5%, deliberately, and this line is a REPAIR. It was set
+ *                   from a measurement of 618,127 B taken before the vs-GTO block landed in the
+ *                   same phase, and never re-taken: the P3 red team measured the artifact at
+ *                   628,036 B and reconciled the 9,909 B gap to the byte against §9.11's own
+ *                   reading of the mode (docs/refutations/P3.md), so D9 was printing a measurement
+ *                   and a ceiling that could not both describe the same page. The number is NOT
+ *                   raised — a fresh measured+5% would be 646 KB — because a ceiling tighter than
+ *                   its own rule is the conservative direction and the artifact fits. What is
+ *                   fixed is the sentence: the live reading is 629,312 B = 614.6 KB, 3.2% under
+ *                   the 634 KB ceiling. The 600 KB page budget stays LITE's (§5.3) — this is a
+ *                   second number for a second artifact, not a raise of the first.
+ *   eq      73 KB   MEASURED 71,249 B = 69.6 KB; 73 KB = 74,752 B is 4.9% above it, one whole-KB
+ *                   step below the 74 KB a fresh measured+5% would round up to, and kept there for
+ *                   the same reason as `total`. (It WAS exactly measured+5% at 70,704 B; the P3
+ *                   red-team resolution added the baselineQuant flag to the payload, +545 B.) This
+ *                   is D9's own tripwire on the injected payload, and it is separate from `total`
+ *                   on purpose: the equilibrium block is the full build's dataset, so a solver
+ *                   payload that doubled would otherwise hide inside a page-sized ceiling.
+ *   app    388 KB   NOT measured+5% OF FULL — LITE'S NUMBER, adopted deliberately, and raised in
+ *                   lite's row rather than here. Full measures 0.2 KB over lite (one `<script>`
+ *                   wrapper and one bridge line): it is THE SAME APPLICATION CODE, so a fresh
+ *                   measured+5% here would hand the shared block ~18 KB of headroom the lite
+ *                   artifact does not have — the side-effect raise V3-PLAN §3.3's adjudication 12
+ *                   forbids. Full is held to lite's ceiling and whichever variant's app grows first
+ *                   fails first. THE RAISE ITSELF (360 -> 388 at P3) is lite's, paid for the vs-GTO
+ *                   colour mode at measured+5%, and it comes with `appCore`.
+ *   appCore 360 KB  THE PAID-RAISE CLAUSE, and the reason the raise above is not a gift. It binds
+ *                   the app payload MINUS the `@block:gto` region — the pre-raise ceiling, still
+ *                   facing the same bytes it faced before P3 (359.3 KB, 682 B of headroom). Same
+ *                   number in both variants, for the same reason `app` is.
+ *   modelCode 50 KB NOT measured+5%, for the same reason and more strictly: it is byte-identical
+ *                   between the variants — the same two inlined modules, the same minifier.
  */
 export const VARIANTS = {
   lite: {
     name: 'lite',
     out: 'index.html',
     regions: ['data', 'taxonomy', 'policy', 'engine'],
-    budgets: { total: 600 * 1024, app: 360 * 1024, modelCode: 50 * 1024 },
-    budgetSource: 'METHODOLOGY §9.11, measured + ~5% at the v2 phase-4 end',
+    budgets: { total: 600 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 50 * 1024 },
+    budgetSource: 'METHODOLOGY §9.11, measured + ~5% at the v2 phase-4 end; app raised to 388K at '
+      + 'P3 to pay for the vs-GTO colour mode (measured 377,993 B = 369.1K + 5% = 387.6K, rounded '
+      + 'up to the whole KB, 4.9% headroom), with appCore holding everything else to the 360K the '
+      + 'app block faced before the raise — the mode is bracketed @block:gto and build.mjs compiles '
+      + 'the shell twice to measure it, so both readings are printed and both are gated',
     /* The per-variant honesty sentence D11 grep-gates. One artifact, one claim: the lite page must
        not carry the full page's, and vice versa. Text is P5's to write (§5.2, §10); these are
        shaped placeholders carrying the load-bearing clause each variant owes the reader. */
@@ -88,8 +127,18 @@ export const VARIANTS = {
     name: 'full',
     out: 'index-full.html',
     regions: ['data', 'taxonomy', 'policy', 'engine', 'eq'],
-    budgets: null,
-    budgetSource: 'UNANCHORED — D9 sets it from the first measured data/equilibrium.json (+5%)',
+    budgets: { total: 634 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 50 * 1024, eq: 73 * 1024 },
+    budgetSource: 'D9, P3, both HELD BELOW measured+5% rather than re-derived up to it (the P3 red '
+      + 'team found total quoting a measurement taken before the vs-GTO block landed — '
+      + 'docs/refutations/P3.md): total 634K bounds a page measured at 629,312 B (614.6K), 3.2% of '
+      + 'headroom where a fresh measured+5% would give 646K; eq 73K = 74,752 B bounds a payload '
+      + 'measured at 71,249 B (69.6K), 4.9% above it, one whole-KB step under the 74K measured+5% '
+      + 'would round to. A ceiling tighter than its own rule is the conservative direction; the '
+      + 'stale figure it replaces was not. '
+      + 'app and modelCode are LITE\'s numbers, not a fresh measurement — the application code is '
+      + 'the same in both artifacts (full measures 359.7K against lite\'s 359.5K, the difference '
+      + 'being one script wrapper and one bridge line), and a measured+5% here would hand the '
+      + 'shared app block 17K of headroom lite does not have (V3-PLAN §3.3 adjudication 12)',
     claim: 'a self-contained offline page carrying the solved baseline as well as the measurement',
   },
 };
@@ -215,6 +264,69 @@ export function stripOnlyBlocks(src, variant, opts = {}) {
     droppedBytes: dropB.reduce((s, b) => s + b.bytes, 0),
     blocks,
   };
+}
+
+/**
+ * THE THIRD SEAM, and it is a MEASURING TAPE rather than a switch.
+ *
+ * `@block:<name>` … `@end:block` marks a region of source that ships in every variant — nothing is
+ * stripped from any artifact by it — so that the build can compile the shell a SECOND time with
+ * those regions removed and report what the named feature costs. V3-PLAN §3.3's adjudication 12
+ * requires that a raise to the app budget be stated, paid, and visible to the gate: the vs-GTO
+ * colour mode is marked `@block:gto`, the app ceiling was raised by its measured size + 5%, and a
+ * `core` ceiling holds everything else to the number it faced before the raise. Without the second
+ * compile the two readings would be an assertion; with it they are a measurement the build prints
+ * on every run.
+ *
+ * WHY NOT REUSE `@only:`. Those blocks are variant-conditional and their bytes are a fact about the
+ * artifact; these ship everywhere and their bytes are a fact about a FEATURE. Overloading one
+ * marker with both meanings would make "which lines are in this file" depend on which question was
+ * being asked, and D10's negative manifest reads the `@only:` census directly.
+ *
+ * The opening marker may carry prose after the name (the mode's block is a thirty-line comment),
+ * so the scan is by delimiter rather than by regex: the marker opens at `/* @block:<name>` or
+ * `<!-- @block:<name>` and the region ends at the matching `@end:block` in the same comment syntax.
+ * Nesting is refused for the same reason `@only:` refuses it.
+ *
+ * @param {string} src
+ * @param {string} name the block name, e.g. 'gto'
+ * @param {object} [opts]
+ * @returns {{text:string, blocks:number, bytes:number}} `bytes` is the SOURCE size removed; what
+ *          the build reports is the difference between two COMPILED shells, which is smaller.
+ */
+export function stripMarkedBlocks(src, name, opts = {}) {
+  const label = opts.label || 'shell';
+  const die = (m) => { throw new VariantError(`${label}: ${m}`); };
+  const opens = [`/* @block:${name}`, `<!-- @block:${name}`];
+  const closes = ['/* @end:block */', '<!-- @end:block -->'];
+  let out = '', at = 0, blocks = 0, bytes = 0;
+  for (;;) {
+    let i = -1, kind = -1;
+    for (let k = 0; k < opens.length; k++) {
+      const j = src.indexOf(opens[k], at);
+      if (j >= 0 && (i < 0 || j < i)) { i = j; kind = k; }
+    }
+    if (i < 0) break;
+    const close = closes[kind];
+    const j = src.indexOf(close, i);
+    if (j < 0) die(`@block:${name} opened at line ${lineOf(src, i)} is never closed by @end:block`);
+    const body = src.slice(i, j + close.length);
+    for (const o of opens) {
+      if (body.indexOf(o, 1) > 0) die(`@block:${name} at line ${lineOf(src, i)} contains another one — marked blocks do not nest`);
+    }
+    /* a region alone on its lines takes its whole lines with it, so the second compile does not
+       differ from the first by a trail of blank lines the first one never had */
+    let a = i, b = j + close.length;
+    while (a > 0 && (src[a - 1] === ' ' || src[a - 1] === '\t')) a--;
+    if (a === 0 || src[a - 1] === '\n') { if (src[b] === '\r') b++; if (src[b] === '\n') b++; } else a = i;
+    out += src.slice(at, a);
+    bytes += Buffer.byteLength(src.slice(a, b));
+    at = b;
+    blocks++;
+  }
+  if (!blocks) return { text: src, blocks: 0, bytes: 0 };
+  out += src.slice(at);
+  return { text: out, blocks, bytes };
 }
 
 /**

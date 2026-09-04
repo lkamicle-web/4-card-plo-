@@ -618,16 +618,25 @@ export const MODEL_SE = FIT.modelSe;
 const dot = (d, c) => { let v = 0; for (let i = 0; i < d.length; i++) v += d[i] * c[i]; return v; };
 
 /**
- * The two measured card-removal families, from I33 clause (h). Kept as a local copy DELIBERATELY:
+ * The measured card-removal families, from I33 clause (h). Kept as a local copy DELIBERATELY:
  * `scripts/gates/` is verification code and a library may not import it, so the test imports the
- * gate's own `isDegeneratePair` and asserts the two agree on all 504 ordered pairs of the live
- * cells. A copy that is proved equal to the original every run is not a second opinion.
+ * gate's own `isDegeneratePair` and asserts the two agree on every ordered pair of the live cells.
+ * A copy that is proved equal to the original every run is not a second opinion.
+ *
+ * REWRITTEN TO THE MEASUREMENT at P3's B2 pre-stage, in step with the gate. The old form listed
+ * families — `AA_*` x `AA_*` and `AA_*` x `A_BLOCKED` — and the list was incomplete: `A_BLOCKED` is
+ * the taxonomy's "Trip/quad aces" (`rowOf` returns it on `aces >= 3`), so two `A_BLOCKED` cells pin
+ * SIX aces between them and cannot be dealt at all. The measured pairwise matrix found exactly that
+ * pair, `A_BLOCKED|RB` x `A_BLOCKED|SSA`, as the 43rd structurally undealable one. Written as an ace
+ * SUM now, derived from the cascade rather than restating a list that had already been wrong.
  */
 export function isDegenerate(a, b) {
-  const fam = (k) => (typeof k === 'string' ? k.split('|')[0] : '');
-  const A = fam(a), B = fam(b);
-  const aa = (f) => /^AA_/.test(f);
-  return (aa(A) && aa(B)) || (aa(A) && B === 'A_BLOCKED') || (A === 'A_BLOCKED' && aa(B));
+  const floor = (k) => {
+    const f = typeof k === 'string' ? k.split('|')[0] : '';
+    if (f === 'A_BLOCKED') return 3;
+    return /^AA_/.test(f) ? 2 : 0;
+  };
+  return floor(a) + floor(b) >= 4;
 }
 
 /**

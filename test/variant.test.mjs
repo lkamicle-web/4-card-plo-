@@ -15,8 +15,8 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  VARIANTS, VARIANT_NAMES, stripOnlyBlocks, regionManifest, regionOwners, danglingSymbols,
-  VariantError,
+  VARIANTS, VARIANT_NAMES, stripOnlyBlocks, stripMarkedBlocks, regionManifest, regionOwners,
+  danglingSymbols, VariantError,
 } from '../scripts/lib/variant.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,12 +26,40 @@ const throwsWith = (fn, re) => assert.throws(fn, (e) => e instanceof VariantErro
 
 // ---------------------------------------------------------------------------
 test('INERTNESS — a source with no markers is identical under every variant', () => {
-  const src = readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8');
-  assert.ok(!/@only:/.test(src), 'precondition: the shipped shell carries no @only markers yet');
+  /* THE SHELL NOW CARRIES MARKERS, so the inertness claim is made where it can still be made: over
+     the shell with its two `@only:full` blocks REMOVED. Until P3 this test read the shipped shell
+     directly and asserted it had none — a fine precondition while the seam was unused, and a
+     precondition that had to expire the moment the seam was used for the thing it was built for
+     (V3-PLAN §5.3's `@inject:eq` region). What inertness actually claims is a property of the
+     STRIPPER — a source with no markers survives it untouched under every variant — and that is
+     what is asserted here, over the largest real source available. The shell's own two blocks are
+     covered by the census test below, which pins how many there are and what they are for. */
+  const shipped = readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8');
+  const src = stripOnlyBlocks(shipped, 'lite').text;
+  assert.ok(!/@only:/.test(src), 'the stripper left a marker behind in its own output');
   const outs = VARIANT_NAMES.map((v) => strip(src, v));
   for (const o of outs) assert.equal(o, src, 'an unmarked source must survive stripping untouched');
   const census = stripOnlyBlocks(src, 'lite');
   assert.deepEqual([census.kept, census.dropped, census.blocks.length], [0, 0, 0]);
+});
+
+test("the shell's own @only blocks are exactly the full-only equilibrium seam (§5.3)", () => {
+  /* THE CENSUS, pinned. P3 is the first phase to use the `@only:` seam in the shipped shell, and
+     §3.3's own instruction is that the equilibrium seam and one Method-view row are the ONLY edits
+     that step makes to src/shell.html — p3-ui owns the rest. A count is how that stays true: a
+     third block appearing here is either the UI step landing early or a block nobody diffed. */
+  const shipped = readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8');
+  const lite = stripOnlyBlocks(shipped, 'lite');
+  const full = stripOnlyBlocks(shipped, 'full');
+  assert.equal(lite.blocks.length, 2, 'the shell carries exactly two @only blocks');
+  assert.deepEqual(lite.blocks.map((b) => b.variant), ['full', 'full']);
+  assert.deepEqual([lite.kept, lite.dropped], [0, 2], 'lite keeps neither');
+  assert.deepEqual([full.kept, full.dropped], [2, 0], 'full keeps both');
+  /* ...and what they contain: the injected region, and the window bridge that makes it reachable
+     from the page. Both are refused in lite by D10's negative manifest, from the other side. */
+  assert.match(full.blocks[0].body, /@inject:eq/);
+  assert.match(full.blocks[1].body, /window\.EQUILIBRIUM = EQUILIBRIUM/);
+  assert.ok(!/@inject:eq/.test(lite.text), 'the lite source must not even see the region marker');
 });
 
 test('INERTNESS holds for the degenerate inputs too', () => {
@@ -155,12 +183,45 @@ test('lite is a subset of full, region for region — full = lite + its own payl
   assert.deepEqual(VARIANTS.full.regions.filter((r) => !VARIANTS.lite.regions.includes(r)), ['eq']);
 });
 
-test('lite carries the METHODOLOGY §9.11 budgets and full asserts nothing yet', () => {
-  assert.deepEqual(VARIANTS.lite.budgets, { total: 600 * 1024, app: 360 * 1024, modelCode: 50 * 1024 });
-  // The house rule: an unanchored constant is not invented. When D9 lands, this flips — and this
-  // test is where the flip has to be made deliberately rather than noticed later.
-  assert.equal(VARIANTS.full.budgets, null);
-  assert.match(VARIANTS.full.budgetSource, /UNANCHORED/);
+test('lite carries the METHODOLOGY §9.11 budgets, and full\'s are D9\'s — set from a measurement', () => {
+  /* THE APP CEILING WAS RAISED AT P3, AND THE RAISE IS PINNED HERE BECAUSE IT MUST BE A DECISION.
+     `app` 360 -> 388 KB pays for the vs-GTO colour mode: measured 377,993 B = 369.1 KB with the
+     mode in, + 5%, rounded up to the whole KB, in the D6 idiom V3-PLAN §3.3's adjudication 12
+     requires (stated, paid, visible to the gate). `appCore` is the other half of that requirement:
+     the app payload MINUS the `@block:gto` region, still facing the 360 KB the app block faced
+     before the raise, so the raise buys exactly one feature and no existing block gains a byte.
+     Both numbers, and the relation between them, are pinned — a later phase that wants more app
+     headroom has to come back to this line. */
+  assert.deepEqual(VARIANTS.lite.budgets,
+    { total: 600 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 50 * 1024 });
+  assert.ok(VARIANTS.lite.budgets.app > VARIANTS.lite.budgets.appCore,
+    'the raise is a raise: app must exceed the pre-raise ceiling core is still held to');
+  assert.match(VARIANTS.lite.budgetSource, /vs-GTO/, 'the raise names what it bought');
+  assert.match(VARIANTS.lite.budgetSource, /5%/, 'and the rule it was set by');
+  /* THE NULL PIN, FLIPPED — DELIBERATELY, WHICH IS WHY IT EXISTED.
+     Until P3 this read `assert.equal(VARIANTS.full.budgets, null)` with the note "when D9 lands,
+     this flips — and this test is where the flip has to be made deliberately rather than noticed
+     later". D9 has landed (scripts/gates/baseline.mjs), on the first `data/equilibrium.json` that
+     ever existed to measure, and this is that flip.
+     What is pinned now is the shape of the decision rather than a number nobody can check here:
+     `total` and `eq` are measured+5% and must EXCEED the artifacts they bound (a budget below its
+     own measurement is not a budget), while `app` and `modelCode` must be LITE'S NUMBERS EXACTLY —
+     V3-PLAN §3.3's adjudication 12 forbids the shared app block acquiring headroom as a side
+     effect of a second variant existing, and equality is how that is said in a test. */
+  const B = VARIANTS.full.budgets;
+  assert.ok(B && typeof B === 'object', 'full\'s budgets are no longer null: D9 set them at P3');
+  assert.equal(B.app, VARIANTS.lite.budgets.app, 'full must not get more app headroom than lite');
+  assert.equal(B.appCore, VARIANTS.lite.budgets.appCore, 'nor a softer core ceiling');
+  assert.equal(B.modelCode, VARIANTS.lite.budgets.modelCode);
+  assert.ok(B.total > VARIANTS.lite.budgets.total, 'full carries a payload lite does not');
+  assert.ok(B.eq > 0, 'the equilibrium payload has its own tripwire (§5.3)');
+  assert.ok(!/UNANCHORED/.test(VARIANTS.full.budgetSource), 'the unanchored note must go with the null');
+  assert.match(VARIANTS.full.budgetSource, /measured/i);
+  assert.match(VARIANTS.full.budgetSource, /5%/);
+  // the measurements the numbers were taken from must still be under them
+  const bytes = (f) => readFileSync(resolve(ROOT, f)).length;
+  assert.ok(bytes('index-full.html') <= B.total, 'the artifact is over the budget set from it');
+  assert.ok(bytes('data/equilibrium.json') <= B.eq, 'the payload is over the budget set from it');
 });
 
 test('each variant has its own claim sentence — no two artifacts make the same claim', () => {
@@ -234,4 +295,53 @@ test('a source with no @only blocks produces no findings and does no work', () =
 test('every dangling name is reported once, however many times it is called', () => {
   const src = '/* @only:full */\nfunction f(){}\n/* @end:only */\nf(); f(); f();';
   assert.equal(dang(src, 'lite').length, 1);
+});
+
+// --- @block: the measuring tape (P3, V3-PLAN §3.3 adjudication 12) ----------
+//
+// This seam ships nothing and strips nothing from an artifact. It exists so the build can compile
+// the shell twice and REPORT what one named feature costs, which is what turns "the app budget was
+// raised to pay for the vs-GTO mode" from a claim into two printed numbers.
+
+test('a marked block is removed whole, in either comment syntax, and the rest is untouched', () => {
+  const js = 'a\n/* @block:gto — prose after the name is allowed */\nB();\n/* @end:block */\nc\n';
+  const r = stripMarkedBlocks(js, 'gto');
+  assert.equal(r.blocks, 1);
+  assert.equal(r.text, 'a\nc\n', 'a block alone on its lines takes its whole lines');
+  assert.ok(r.bytes > 40 && r.bytes < Buffer.byteLength(js));
+  const html = 'x<!-- @block:gto -->y<!-- @end:block -->z';
+  assert.equal(stripMarkedBlocks(html, 'gto').text, 'xz');
+});
+
+test('a source with no marked block is returned unchanged, byte for byte', () => {
+  const src = 'nothing marked here /* @only:full */ or here /* @end:only */\n';
+  const r = stripMarkedBlocks(src, 'gto');
+  assert.equal(r.text, src);
+  assert.equal(r.blocks, 0);
+  assert.equal(r.bytes, 0);
+});
+
+test('an unclosed or nested marked block is a build failure with a line number', () => {
+  throwsWith(() => stripMarkedBlocks('a\nb\n/* @block:gto */\nc\n', 'gto'), /never closed by @end:block/);
+  throwsWith(() => stripMarkedBlocks('a\n/* @block:gto */\n/* @block:gto */\nx\n/* @end:block */\n', 'gto'),
+    /do not nest/);
+});
+
+test('the names are independent: cutting one block leaves another alone', () => {
+  const src = '/* @block:gto */g/* @end:block */\n/* @block:other */o/* @end:block */\n';
+  assert.equal(stripMarkedBlocks(src, 'gto').text, '/* @block:other */o/* @end:block */\n');
+  assert.equal(stripMarkedBlocks(src, 'other').text, '/* @block:gto */g/* @end:block */\n');
+});
+
+test('the shell carries the vs-GTO block, and cutting it is cheaper than the app it pays for', () => {
+  const shell = readFileSync(resolve(ROOT, 'src', 'shell.html'), 'utf8');
+  const r = stripMarkedBlocks(shell, 'gto');
+  assert.ok(r.blocks >= 10, `the mode is marked in ${r.blocks} places; a drop to one means it was inlined somewhere`);
+  assert.ok(r.bytes > 5000, 'the marked source is the mode, not a marker census');
+  assert.ok(!/@block:gto/.test(r.text) && !/@end:block/.test(r.text), 'the cut consumes its own markers');
+  // both variants must cut identically: the mode is shared code, not a full-only surface
+  for (const v of VARIANT_NAMES) {
+    const only = stripOnlyBlocks(shell, v).text;
+    assert.ok(stripMarkedBlocks(only, 'gto').blocks >= 10, `${v} carries the whole mode`);
+  }
 });

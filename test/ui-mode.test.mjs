@@ -36,7 +36,10 @@ assert.ok(a > 0 && b > a, 'src/shell.html must carry the @mode-logic markers');
 const SRC = SHELL.slice(a, b);
 const MODES = new Function(`${SRC}\nreturn MODES;`)();
 
-const ALL_CAPS = { pinned: true, payoff: true, equilibrium: true };
+/* P3: vs-GTO asks two questions — does this BUILD have a baseline (`equilibrium`, the shared-core
+   block) and does it cover this SEAT (`baseCovered`, three of twenty-four (pos, node) pairs, because
+   the baseline is heads-up). A snapshot that says yes to both is the "everything available" one. */
+const ALL_CAPS = { pinned: true, payoff: true, equilibrium: true, baseCovered: true, baseWhy: '' };
 
 // ---------------------------------------------------------------- self-containment and shape
 
@@ -224,4 +227,179 @@ test('every ramp mode has a hatch for every one of its buckets', () => {
         `k${k} must be wired into the automatic small-row channel`);
     }
   }
+});
+
+// ================================================================ vs-GTO (P3, V3-PLAN §8 item 13)
+//
+// The mode's page-side half is not in @mode-logic — it cannot be: it reads the shipped baseline
+// block, the model's raw tiers and the injected payload, and @mode-logic is pinned self-contained.
+// So these read the SHELL SOURCE and the SHIPPED BLOCK, which is where the claims actually live.
+
+const BT = MODEL.baselineTiers;
+/* the mode's source, and the source with every one of its marked regions removed: the second is
+   what `scripts/build.mjs` compiles to produce the `core` reading the raised app ceiling is paid
+   against, so "the mode is entirely inside its markers" is a checkable claim rather than a habit */
+const CUT = (() => {
+  let out = '', at = 0, n = 0;
+  for (;;) {
+    const i = SHELL.indexOf('/* @block:gto', at) < 0 ? -1 : SHELL.indexOf('/* @block:gto', at);
+    if (i < 0) break;
+    const j = SHELL.indexOf('/* @end:block */', i);
+    assert.ok(j > i, 'every @block:gto must be closed by @end:block');
+    out += SHELL.slice(at, i);
+    at = j + '/* @end:block */'.length;
+    n++;
+  }
+  return { text: out + SHELL.slice(at), blocks: n };
+})();
+
+test('the shipped baseline is heads-up: 3 of 24 (pos, node) pairs, the rest carrying one reason', () => {
+  assert.ok(BT && BT.nodes && BT.order, 'P3 ships the shared-core baseline block');
+  const cov = BT.coverage;
+  assert.equal(cov.length, 24, 'six positions x four nodes, none omitted from the map');
+  const on = cov.filter((c) => c.covered);
+  assert.equal(on.length, 3, 'SB rfi, BB vs-raise, SB vs-3-bet — and nothing else (adjudication 8)');
+  assert.deepEqual(on.map((c) => `${c.pos}|${c.node}`).sort(), ['BB|raise', 'SB|3bet', 'SB|rfi']);
+  for (const c of cov.filter((x) => !x.covered)) {
+    assert.equal(c.reason, BT.notCovered, `${c.pos}|${c.node} must carry the block's own reason`);
+  }
+  assert.deepEqual(Object.keys(BT.nodes).sort(), ['BB|raise', 'SB|3bet', 'SB|rfi']);
+  assert.equal(BT.nodes['BB|raise'].raiser, 'SB', 'the only opener in a heads-up tree is the button');
+});
+
+test('the disablement reason and the label are READ off the block, never typed in the page', () => {
+  // I35 clause (f) and adjudication 8: the words on screen are the payload's.
+  // Checked against the CODE, comments removed — the same slice the self-containment test takes at
+  // the top of this file. A comment may quote the payload's phrasing (this one does, to explain why
+  // the order of the legend line matters); it is stripped by the build and can never reach a
+  // surface. What must not exist is a STRING LITERAL, because that is a copy that can drift.
+  const CODE = SHELL.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '');
+  assert.ok(!CODE.includes(BT.notCovered), 'the "baseline is HU" reason must not be a page literal');
+  assert.ok(!CODE.includes(BT.label), 'the checkdown label must not be a page literal either');
+  const blk = SHELL.slice(SHELL.indexOf('var BASE = (function ()'), SHELL.indexOf('var RAMP_GTO'));
+  assert.match(blk, /bt\.notCovered/, 'the reason comes off the block');
+  assert.match(blk, /label: bt\.label/, 'and so does the label');
+  // and both reach a surface
+  assert.match(SHELL, /BASE\.label/, 'the label renders where the baseline paints');
+  assert.match(SHELL, /c\.baseWhy = a\.why/, 'the reason reaches the capability snapshot');
+  // the cap list is rendered from the shipped arrays (I35 clause (e)), not from prose
+  assert.match(SHELL, /bb2\.caps && bb2\.caps\.modelled/, 'the Method view renders the shipped cap list');
+  assert.match(SHELL, /bb2\.caps && bb2\.caps\.omitted/);
+  for (const cap of BT.caps.omitted) assert.ok(!CODE.includes(cap), `"${cap.slice(0, 24)}…" must not be typed in the page`);
+});
+
+test('vs-GTO fails in two different ways, and each names the thing that is missing', () => {
+  const noBuild = MODES.availability('gto', { ...ALL_CAPS, equilibrium: false });
+  assert.equal(noBuild.available, false);
+  assert.match(noBuild.reason, /baselineTiers/, 'the build failure names the block that is absent');
+  const noSeat = MODES.availability('gto', { ...ALL_CAPS, baseCovered: false, baseWhy: 'baseline is HU — x' });
+  assert.equal(noSeat.available, false);
+  assert.equal(noSeat.reason, 'baseline is HU — x', 'the seat failure is the shipped reason verbatim');
+  // and a snapshot that forgot to say still disables
+  assert.equal(MODES.availability('gto', { ...ALL_CAPS, baseCovered: false }).available, false);
+  assert.equal(MODES.resolve('gto', { ...ALL_CAPS, baseCovered: false }), 'action');
+});
+
+test('the diverging ramp: five signed buckets, mirror-paired hatches, agreement bare', () => {
+  const m = MODES.byKey('gto');
+  assert.equal(m.kind, 'diverging');
+  assert.equal(m.steps, 5, 'one bucket per whole action step on a three-level scale, plus agreement');
+  const map = /var GTO_K = \[([\d, ]+)\]/.exec(SHELL);
+  assert.ok(map, 'the bucket -> class map must be readable from the source');
+  const K = map[1].split(',').map((x) => +x.trim());
+  assert.equal(K.length, m.steps);
+  assert.equal(K[2], 0, 'agreement is the BARE class — "no pattern" is this page\'s way of saying nothing to see');
+  assert.equal(new Set(K).size, K.length, 'no two buckets may share a hatch');
+  // the mirror pairs: one step either side, then two steps either side
+  assert.deepEqual([K[1], K[3]].sort(), [1, 2], '45° vs -45° at one step');
+  assert.deepEqual([K[0], K[4]].sort(), [3, 4], '90° vs 0° at two steps');
+  for (const k of K) {
+    if (k === 0) continue;
+    assert.ok(SHELL.includes(`.k${k}::after{background:`), `bucket class k${k} needs its hatch`);
+    assert.ok(SHELL.includes(`.hatch .cell.k${k}::after`), `k${k} must be in the colorblind toggle`);
+    assert.ok(SHELL.includes(`.tiny .cell.k${k}::after`), `k${k} must be in the small-row channel`);
+  }
+  const ramp = /var RAMP_GTO = \[([^\]]+)\]/.exec(SHELL);
+  assert.ok(ramp && ramp[1].split(',').length === m.steps, 'one colour per bucket');
+  assert.match(SHELL, /sc\.classes \? sc\.classes\[i\] : i/, 'the legend swatch carries the CELL\'s class, not the index');
+});
+
+test('I13 in vs-GTO: every live cell lands in exactly one bucket, and the combos still sum', () => {
+  // The mode's arithmetic, run here over the SHIPPED baseline: the aggression scale is fold 0,
+  // call 1, raise 2, the baseline's value is its own weights against its own tierOf, and the paint
+  // is bucket(model - baseline, -2.5, 2.5, 5). If any of that could produce a value outside the
+  // five buckets, a cell would paint with no class and drop out of the partition.
+  const agg = (t) => (5 - (t === 'T4' ? 3 : +t.slice(1))) / 2;
+  const live = Object.keys(MODEL.cells).filter((k) => MODEL.cells[k].combos > 0);
+  assert.deepEqual([...BT.order].sort(), [...live].sort(),
+    'the block covers exactly the live cell space — no cell can be painted without a reading');
+  const total = live.reduce((n, k) => n + MODEL.cells[k].combos, 0);
+  assert.equal(total, MODEL.meta.comboTotal);
+  for (const nodeKey of Object.keys(BT.nodes)) {
+    const nd = BT.nodes[nodeKey], N = nd.actions.length;
+    const byBucket = new Map();
+    for (let i = 0; i < BT.order.length; i++) {
+      let b = 0, sum = 0;
+      for (let a = 0; a < N; a++) {
+        const w = nd.w[i * N + a] * BT.quant;
+        sum += w;
+        b += w * agg(nd.tierOf[nd.actions[a]]);
+      }
+      assert.ok(Math.abs(sum - 1) < 1e-9, `${nodeKey} ${BT.order[i]}: the row must be a distribution`);
+      assert.ok(b >= 0 && b <= 2, `${nodeKey} ${BT.order[i]}: aggression ${b} is off the three-level scale`);
+      // every raw model tier the page can hold, against this row
+      for (const t of ['T1', 'T2', 'T3', 'T5']) {
+        const k = MODES.bucket(agg(t) - b, -2.5, 2.5, 5);
+        assert.ok(Number.isInteger(k) && k >= 0 && k < 5, `${nodeKey} ${BT.order[i]} ${t}: bucket ${k}`);
+      }
+      const k0 = MODES.bucket(agg('T1') - b, -2.5, 2.5, 5);
+      byBucket.set(k0, (byBucket.get(k0) || 0) + MODEL.cells[BT.order[i]].combos);
+    }
+    const summed = [...byBucket.values()].reduce((x, y) => x + y, 0);
+    assert.equal(summed, total, `${nodeKey}: the vs-GTO ramp partitions the same combos the tiers do`);
+  }
+});
+
+test('the comparand is the RAW model tier, and the page says so where it differs', () => {
+  const blk = SHELL.slice(SHELL.indexOf('function gtoOf('), SHELL.indexOf('/** The paint: five buckets'));
+  assert.match(blk, /e\.preDisplay/, 'the model side reads preDisplay — the action before the post-passes');
+  assert.ok(!/ev\.tier\[/.test(blk), 'and never the painted tier, which is what §14 item 4 forbids');
+  assert.match(blk, /e\.promoted/, 'the pass that moved this cell is carried, so the inspector can say so');
+  assert.match(SHELL, /the grid shows this cell after the/, 'and it does say so');
+  assert.match(SHELL, /RAW tier/, 'the verdict line names the comparand');
+});
+
+test('T2 is read as the band it splits, which is the node\'s own label question', () => {
+  const blk = SHELL.slice(SHELL.indexOf('  function agg(t, node)'), SHELL.indexOf('  return { block: bt'));
+  assert.match(blk, /NODEBY\[node\]\.t2 === NODEBY\[node\]\.t1/,
+    'T2 folds into T1 exactly where the node labels them the same action, which is RFI and vs-Raise');
+  // the shipped block agrees that T2 has no counterpart
+  assert.ok(/T2 never appears/.test(BT.encoding), 'the baseline itself records that it has no T2');
+  for (const n of Object.keys(BT.nodes)) {
+    assert.deepEqual(Object.values(BT.nodes[n].tierOf).sort(), [...new Set(Object.values(BT.nodes[n].tierOf))].sort());
+    assert.ok(!Object.values(BT.nodes[n].tierOf).includes('T2'));
+  }
+});
+
+test('the full-only depth renders disabled with a named reason in lite', () => {
+  const blk = SHELL.slice(SHELL.indexOf('function buildGtoDepth('), SHELL.indexOf('function syncGtoDepth('));
+  assert.match(blk, /aria-disabled/, 'the missing solve renders dimmed, not hidden');
+  assert.ok(!/b\.hidden/.test(blk), 'the chip itself is never hidden — the reason is the deliverable');
+  assert.match(blk, /data\/equilibrium\.json/, 'the reason names the artifact that carries it');
+  assert.match(blk, /aria-label/, 'and it reaches the accessible name');
+  const dep = SHELL.slice(SHELL.indexOf('  function depths()'), SHELL.indexOf('  /** One cell\'s action weights'));
+  assert.match(dep, /window\.EQUILIBRIUM/, 'full reads its depths off the injected payload');
+  assert.match(dep, /exact: true/, 'and marks them as the exact strategies they are');
+  assert.match(dep, /bt\.stack/, 'lite reads its one depth off the shared-core block');
+});
+
+test('the mode is entirely inside its markers — the raise pays for exactly this', () => {
+  assert.ok(CUT.blocks >= 10, `expected the mode to be marked in several places, found ${CUT.blocks}`);
+  for (const sym of ['BASE', 'RAMP_GTO', 'GTO_K', 'gtoOf', 'gtoPaint', 'gtoReadout', 'gtoScale',
+    'gtoWhy', 'gtoBaseText', 'gtoGap', 'gtoDepth', 'buildGtoDepth', 'syncGtoDepth', 'gtoD']) {
+    assert.ok(!new RegExp(`(^|[^\\w$.])${sym}\\b`).test(CUT.text),
+      `${sym} survives the @block:gto cut — a byte of the mode outside its markers is a raise the gate cannot see`);
+  }
+  // and what is left still parses as the page it was before the mode
+  assert.ok(CUT.text.includes('function paintOf('), 'the cut removes the mode, not the mode\'s host');
 });

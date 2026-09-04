@@ -51,6 +51,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 
 import * as P from './lib/policy.mjs';
+import { solverBlock } from './lib/equilibrium.mjs';
 import { ROOT } from './gates/_shared.mjs';
 import {
   REGISTRY, EXPECTED_IDS,
@@ -142,6 +143,21 @@ export function verifyModel(model, opts = {}) {
  * the code no longer defines is preserved rather than dropped: this function refreshes, it does not
  * prune, because pruning a measurement nobody remembers is how data gets lost.
  *
+ * THE THIRD SOURCE, added at P3 (V3-PLAN §3.3's adjudication 10, §6's third leg, and
+ * docs/refutations/P2.md finding 6): `constants.solver`, from `scripts/lib/cfr.mjs`'s own
+ * `CONSTANTS` export, assembled by `solverBlock()`. It is stamped AUTHORITATIVELY rather than
+ * carried across like a measured key, and the difference matters — a block that had drifted would
+ * otherwise be preserved by the very function whose job is to keep the shipped constants equal to
+ * the code's. P2 could not stamp it (the solver constants existed but no model write was due), and
+ * the gap was real: the Method view renders `model.constants` and nothing else, so until this line
+ * the page could not show four numbers the repository was actually solving with. I35's constants
+ * clause reads the block back off the file AND out of every built page, so this stamp and that gate
+ * are the two halves of one statement.
+ *
+ * This is the SURGICAL path, and P3 uses no other: no Monte Carlo runs, `cells` / `rows` / `cols` /
+ * `bands` / `order` / `benchmarks` are not touched, and adjudication 11 requires a key-by-key
+ * comparison proving exactly that.
+ *
  * Called from the CLI before `verifyModel`, so D6/D7 measure the payload as it will be written.
  */
 export function stampConstants(model) {
@@ -149,11 +165,14 @@ export function stampConstants(model) {
   const before = model.constants || {};
   const has = (k) => Object.prototype.hasOwnProperty.call(live, k);
   const measured = {};
-  for (const k of Object.keys(before)) if (!has(k)) measured[k] = before[k];
+  for (const k of Object.keys(before)) if (!has(k) && k !== 'solver') measured[k] = before[k];
   const added = Object.keys(live).filter((k) => !Object.prototype.hasOwnProperty.call(before, k));
   const changed = Object.keys(live).filter((k) => Object.prototype.hasOwnProperty.call(before, k)
     && JSON.stringify(before[k]) !== JSON.stringify(live[k]));
-  model.constants = { ...live, ...measured };
+  const solver = solverBlock();
+  if (!Object.prototype.hasOwnProperty.call(before, 'solver')) added.push('solver');
+  else if (JSON.stringify(before.solver) !== JSON.stringify(solver)) changed.push('solver');
+  model.constants = { ...live, ...measured, solver };
   return { added, changed, kept: Object.keys(measured) };
 }
 

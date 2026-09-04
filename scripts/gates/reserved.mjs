@@ -119,9 +119,16 @@ export const CATALOG = [
       + 'opts.ip in EVERY payoff memo key, beside the model hash, comment-stripped text scan over '
       + 'scripts/ + src/ plus the page\'s @payoff-page block, with a dynamic aliasing probe beside '
       + 'it; (h) NEW: the card-removal clause — supported:false\'s real domain is shared-rank '
-      + 'degeneracy, and a dealt-board source must flag it rather than collapse to checkdown.',
+      + 'degeneracy, and a dealt-board source must flag it rather than collapse to checkdown. '
+      + 'EXTENDED at P3\'s B2 pre-stage: every clause runs on BOTH accessor routes — the '
+      + 'projection stub the page serves and the MEASURED PAIRWISE CHECKDOWN MATRIX the solver '
+      + 'consumes. Both answer source:\'checkdown\', so (c), (h) and the monotonicity clause are '
+      + 'now keyed on the accessor\'s `route` tag rather than on that string, or all three would '
+      + 'clear vacuously over the one source they were written for; the tag itself is armed.',
     fails: 'a consumer reading a payoff table directly; an unflagged out-of-domain number; a payoff '
-      + 'memo key without ip; a dealt-board source answering a degenerate pair supported:true.',
+      + 'memo key without ip; a dealt-board source answering a degenerate pair supported:true; a '
+      + 'matrix route whose q-weighted marginal reproduces the shipped column too perfectly, or '
+      + 'whose residual carries no card-removal sign; a matrix route showing zero inversions.',
     prediction: 'monotonicity FALSIFIED (phase 0, S-B): 1.7% of pairs at spr 1, 8.1% at spr 4, '
       + '15.9% IP / 20.5% OOP at spr 10, worst 9.1 pt less checkdown equity for 20.0 pt more ev. '
       + 'The clause is rewritten to the measurement, not deleted: checkdown must still show ZERO '
@@ -143,7 +150,10 @@ export const CATALOG = [
       + 'disclosure clauses with teeth: the on-screen cap/sizing list must match the solver\'s '
       + 'actual tree, derived from shipped data; and whenever the equilibrium surface\'s payoff '
       + 'source is \'checkdown\', the "a game where postflop does not exist" label must render, '
-      + 'derived from that shipped source datum, never prose.',
+      + 'derived from that shipped source datum, never prose. EXTENDED at P3\'s B2 pre-stage: the '
+      + 'solver is run on BOTH payoff routes, the two-seed PAYOFF axis is LIVE against two '
+      + 'independently named checkdown matrices, and the unsupported-return count on the matrix '
+      + 'route is rewritten to the measurement (the undealable pairs) rather than to zero.',
     fails: 'convergence that is abstraction-sensitive; a label keyed off prose or off `supported` '
       + 'rather than off `source` (the §2 phase-0 annotation names that trap).',
     note: 'S-B graded C, so the checkdown-label clause is load-bearing rather than defensive. '
@@ -159,12 +169,29 @@ export const CATALOG = [
       + 'clause (d) re-measures the three facts that justify it and fails if any stops holding.',
   },
   {
-    id: 'I36', status: 'reserved', runner: 'verify', phase: 'P3', plan: '§3.3, §7.2',
+    id: 'I36', status: 'live', runner: 'verify', phase: 'P3', plan: '§3.3, §7.2, §14 item 4',
     claim: 'equilibrium anchors: AA_BIGPAIR x DS opens everywhere; TRASH x RB never opens UTG; '
       + 'emergent positional nesting UTG subset HJ subset CO subset BTN.',
     fails: 'nesting holding only because a post-pass imposed it — the comparand is raw model tiers.',
     prediction: 'expected falsified: nesting fails at some seat pair; the failure forces the '
       + 'raw-vs-post-passed vs-GTO display decision and ships as a finding.',
+    note: 'LIVE at P3 (scripts/gates/baseline.mjs), SCOPED TO THE MEASUREMENT and asserted on the '
+      + 'SHIPPED tiers (model.baselineTiers) rather than on a solve nobody sees. The solved tree '
+      + 'has two seats, so: "opens everywhere" is read over the three (pos, node) pairs that exist '
+      + '— AA_BIGPAIR|DS opens purely at SB, continues purely at BB, 4-bets purely facing the '
+      + '3-bet; "never opens UTG" has NO UTG and is scoped to SB, the BUTTON and the loosest '
+      + 'opening seat in the game, which makes it the STRONGER reading — TRASH|RB folds there, '
+      + 'purely, FALSIFYING the P3 launch block\'s expectation that it would open (88.86% is '
+      + 'combo-weighted and the 11% it folds is the bottom of the range, so the model\'s clause is '
+      + 'corroborated rather than contradicted). THE NESTING CLAUSE IS RECORDED NOT MEASURABLE, '
+      + 'never passed and never toleranced (the I15 precedent): the reason is quoted from cfr.mjs\'s '
+      + 'SIXMAX.reopenVerdict, and the clause FAILS the day a payload covers two seats of the '
+      + 'UTG/HJ/CO/BTN chain — at which point §7.2\'s prediction becomes testable. It is NOT '
+      + 'TESTABLE this milestone. What the display decision was made on instead: the post-passes '
+      + 'MEASURED on the equilibrium, and SUIT MONOTONICITY IS VIOLATED — 7 of 369 shipped tier '
+      + 'readings, worst SB rfi RUN1_TOPMID SS->SSA (RAISE to FOLD) — while the AA-band pass is '
+      + 'not violated at all. So an equilibrium does violate an imposition the display makes, which '
+      + 'is §3.3\'s sentence coming true rather than a defensive clause.',
   },
   {
     id: 'I37', status: 'reserved', runner: 'verify', phase: 'P4', plan: '§6, §7.2',
@@ -264,12 +291,24 @@ export const CATALOG = [
     fails: 'a per-hand number reaching the sort — the exact regression §2.4 recorded.',
   },
   {
-    id: 'D9', status: 'reserved', runner: 'verify', phase: 'P3', plan: '§5.3, §7.2',
+    id: 'D9', status: 'live', runner: 'verify', phase: 'P3', plan: '§5.3, §7.2',
     claim: 'full-only data/equilibrium.json byte budget, measured+5%, retuned once per phase.',
     fails: 'a budget set before the first real payload exists.',
-    note: 'S-D blocker: full\'s size budgets are unanchored today; VARIANTS.full.budgets === null '
-      + 'is pinned by a test so the flip must be deliberate, and D9 must refuse a payload carrying '
-      + 'meta.synthetic: true.',
+    note: 'LIVE at P3 (scripts/gates/baseline.mjs). S-D\'s blocker is discharged rather than '
+      + 'dropped: full\'s budgets were null until a payload existed to measure, test/variant.test.mjs '
+      + 'pinned that null so the flip had to be a decision, and P3 took it on the first real '
+      + 'data/equilibrium.json — eq 73K from a measured 70,573 B + 5%, total 634K from a measured '
+      + '617,694 B + 5%, both rounded up to the whole KB. app and modelCode are NOT re-measured: '
+      + 'they are lite\'s numbers, because the application code is the same in both artifacts and a '
+      + 'fresh measured+5% would hand the shared block 17K of headroom lite does not have (V3-PLAN '
+      + '§3.3 adjudication 12). Five clauses: the meta.synthetic refusal (§5.3, and S-D\'s prototype '
+      + 'payload carries that flag precisely so shipping it is loud), the payload budget, the full '
+      + 'page\'s own total-size tripwire, the injected copy matching the file by contentHash (a '
+      + 'budget on a payload the page does not carry measures nothing), and the matrix SHIPPING '
+      + 'DECISION re-applied to its own measurement — §3.3 deferred "embed or reference by content '
+      + 'hash" to this gate and it came out REFERENCE, because a faithful embedding (the artifact\'s '
+      + 'integer counters, the only encoding that reconstructs the served numbers bit-identically) '
+      + 'costs 102,001 B against a 67,379 B payload, a 2.51x ratio.',
   },
   {
     id: 'D10', status: 'live', runner: 'verify', phase: 'P1', plan: '§5.3, §7.2',

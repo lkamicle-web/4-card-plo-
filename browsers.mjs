@@ -77,11 +77,49 @@ const flag = (n, d) => {
   return hit ? (hit.includes('=') ? hit.slice(hit.indexOf('=') + 1) : true) : d;
 };
 const PLAYWRIGHT = process.env.RUNDOWN_PLAYWRIGHT || 'playwright';
-const PAGE = resolve(HERE, argv.filter((a) => !a.startsWith('--'))[0] || VARIANTS.lite.out);
+const positional = argv.filter((a) => !a.startsWith('--'))[0];
 
 /** engine -> the gate id §7.2 reserved for it. chromium is the reference row, and owns no id. */
 const GATE = { firefox: 'SF', webkit: 'SS', chromium: null };
 const ENGINES = String(flag('engines', 'chromium,firefox,webkit')).split(',').map((s) => s.trim()).filter(Boolean);
+
+// ---------------------------------------------------------------------------
+/* THE PER-VARIANT LOOP — smoke.mjs's idiom, verbatim in shape, and NEW AT P3.
+   Until P3 only one artifact was ever built, so `browsers.mjs` defaulted to lite
+   and that was every artifact there was. P3 builds `index-full.html` for real,
+   and a browser harness that checks one of two shipped pages reports a fact
+   about the repository that is only half true — the same argument §5.3 makes
+   for the per-variant smoke run, which S-D measured as non-optional because a
+   dangling call into a stripped block BUILDS CLEAN and only fails in a browser.
+   The full artifact carries a 69 KB payload lite does not; whether it still
+   boots on file:// is a browser question, and this is the harness that asks it.
+
+   A variant that has not been built is SKIPPED BY NAME, so "1 of 2 ran" cannot
+   be read as "2 of 2 passed". A page named explicitly runs alone, which is what
+   an ad-hoc invocation and the `--engines=` re-runs want. Each variant runs in
+   its own process, exactly as smoke.mjs and build.mjs --check do, so a crash in
+   one is a failure of that variant rather than of the harness. */
+if (!positional) {
+  const { spawnSync } = await import('node:child_process');
+  const built = VARIANT_NAMES.filter((v) => existsSync(resolve(HERE, VARIANTS[v].out)));
+  const skipped = VARIANT_NAMES.filter((v) => !built.includes(v));
+  if (!built.length) {
+    console.error('browsers: no artifact has been built — run node scripts/build.mjs first');
+    process.exit(1);
+  }
+  const failedVariants = [];
+  for (const v of built) {
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), VARIANTS[v].out, ...argv],
+      { stdio: 'inherit', cwd: HERE });
+    if (r.status !== 0) failedVariants.push(v);
+  }
+  console.log(`\nbrowsers: ${built.length - failedVariants.length}/${built.length} variants green`
+    + (failedVariants.length ? ` · FAILED: ${failedVariants.join(', ')}` : '')
+    + (skipped.length ? ` · not built: ${skipped.join(', ')}` : ''));
+  process.exit(failedVariants.length ? 1 : 0);
+}
+
+const PAGE = resolve(HERE, positional);
 
 /* The one disclosure read as literal page text (F3). Kept here, next to the
    assertion, so a change to the sentence in src/shell.html fails this gate

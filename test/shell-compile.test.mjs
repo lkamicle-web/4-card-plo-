@@ -13,6 +13,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { compileShellScripts, ShellCompileError } from '../scripts/lib/shell-compile.mjs';
+import { stripOnlyBlocks } from '../scripts/lib/variant.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -116,14 +117,28 @@ test('a syntax error is blamed on the shell, and a minifier slip on the minifier
 });
 
 test('the real shell compiles, and its numbers are the ones the build reports', () => {
-  const shell = readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8');
+  /* READ AS THE BUILD READS IT: the `@only:` stripper runs BEFORE this compiler (variant.mjs's
+     ORDER property — a full-only <script> must never be minified for a lite build it is not in),
+     so compiling the raw shell would be compiling a source no build ever sees. `full` is the
+     variant with every region, which makes this the strictest reading of the five. */
+  const shell = stripOnlyBlocks(readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8'), 'full').text;
   const r = compileShellScripts(shell, { label: 'src/shell.html' });
   assert.equal(r.blocks, 3, 'bridge + simulate engine + application');
-  assert.deepEqual(r.skipped, ['inject', 'inject', 'inject', 'inject'],
-    'data, taxonomy, policy and engine are all spliced, not compiled');
+  /* FIVE spliced regions since P3: `eq` joined data/taxonomy/policy/engine (V3-PLAN §5.3). Under
+     `lite` there would be four, which is the point of the seam — the count is asserted per variant
+     rather than as a constant of the shell. */
+  assert.deepEqual(r.skipped, ['inject', 'inject', 'inject', 'inject', 'inject'],
+    'data, taxonomy, policy, engine and eq are all spliced, not compiled');
+  assert.deepEqual(
+    compileShellScripts(stripOnlyBlocks(readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8'), 'lite').text,
+      { label: 'src/shell.html' }).skipped,
+    ['inject', 'inject', 'inject', 'inject'],
+    'lite never sees the eq region at all — D10\'s build-time half',
+  );
   assert.ok(r.after < r.before * 0.85, `${r.before} -> ${r.after} is a real saving`);
   for (const m of ['@inject:data', '@end:data', '@inject:taxonomy', '@end:taxonomy',
-    '@inject:policy', '@end:policy', '@inject:engine', '@end:engine']) {
+    '@inject:policy', '@end:policy', '@inject:engine', '@end:engine',
+    '@inject:eq', '@end:eq']) {
     assert.ok(r.html.includes(m), `${m} survives compilation for the splice`);
   }
 });

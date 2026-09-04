@@ -25,12 +25,12 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as P from '../scripts/lib/policy.mjs';
-import { payoff, makePayoff, setDefaultModel, SOURCES, RESULT_KEYS } from '../scripts/lib/payoff.mjs';
+import { payoff, makePayoff, makeMatrixPayoff, setDefaultModel, SOURCES, RESULT_KEYS } from '../scripts/lib/payoff.mjs';
 /* The amended clauses are armed against THE GATE'S OWN DETECTORS, not against a second copy of
    them written here. A harness that re-implements a detector proves only that the harness's copy
    fires; importing them is what makes these tests say something about the gate that runs. */
 import { memoProblems, ipMemoAliases, stripComments, MEMO_SCOPE, isDegeneratePair, removalProblems,
-  monoProblems, monoRows } from '../scripts/gates/payoff.mjs';
+  monoProblems, monoRows, routeOf, aceFloor } from '../scripts/gates/payoff.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MODEL_PATH = resolve(ROOT, 'data/model.json');
@@ -396,11 +396,26 @@ test('a keyless memo aliases the two positions onto one object, and the real acc
 test('the degeneracy families are the measured ones, and nothing else', { skip: !HAVE }, () => {
   // S-B: AA_DANGLER|RB x AA_BIGPAIR|DS is degenerate on 12.56% of street evaluations (the four
   // aces are shared), mean 0.73% over 50 pairs, 4/50 over 1%. S-A: 43 structurally undealable
-  // pairs, AA_* x A_BLOCKED, combo mass 3.6e-5. Two families, no invented third.
-  assert.ok(isDegeneratePair('AA_DANGLER|RB', 'AA_BIGPAIR|DS'), "S-B's own named pair");
-  assert.ok(isDegeneratePair('AA_BIGPAIR|DS', 'A_BLOCKED|RB') && isDegeneratePair('A_BLOCKED|SSA', 'AA_DANGLER|DS'));
+  // pairs, combo mass 3.6e-5. No invented family — but one CORRECTED family, at P3's B2 pre-stage.
+  //
+  // THE CORRECTION, recorded here because this test is where the wrong belief was written down.
+  // This file used to assert `!isDegeneratePair('A_BLOCKED|RB', 'A_BLOCKED|SSA')` with the reason
+  // "one ace each is two aces, which is dealable". That is a false statement about the taxonomy:
+  // `A_BLOCKED` is ROW_META's "Trip/quad aces" and `taxonomy.rowOf` returns it on `aces >= 3`, so
+  // two such cells ask the deck for SIX aces. The measured matrix confirms it — that pair is the
+  // 43rd structurally undealable one, and S-A's own "all AA_* x A_BLOCKED" description undercounts
+  // its family: 42 of the 43 are AA_* x A_BLOCKED and the last is A_BLOCKED x A_BLOCKED. The
+  // predicate is an ace-floor SUM now, derived from the cascade rather than restating a list.
+  assert.equal(aceFloor('A_BLOCKED|RB'), 3, 'ROW_META: "Trip/quad aces"');
+  assert.equal(aceFloor('AA_BIGPAIR|DS'), 2);
+  assert.equal(aceFloor('ACE_JUNK|DS'), 0, 'rows holding one ace carry no floor here — no invented family');
+  assert.ok(isDegeneratePair('AA_DANGLER|RB', 'AA_BIGPAIR|DS'), "S-B's own named pair: four aces");
+  assert.ok(isDegeneratePair('AA_BIGPAIR|DS', 'A_BLOCKED|RB') && isDegeneratePair('A_BLOCKED|SSA', 'AA_DANGLER|DS'),
+    'five aces: S-A\'s undealable family');
+  assert.ok(isDegeneratePair('A_BLOCKED|RB', 'A_BLOCKED|SSA'),
+    'six aces: the pair the B2 measurement found and the old family list missed');
   assert.ok(!isDegeneratePair('TRASH|RB', 'RUN2|DS'), 'two ace-free cells share no ranks structurally');
-  assert.ok(!isDegeneratePair('A_BLOCKED|RB', 'A_BLOCKED|SSA'), 'one ace each is two aces, which is dealable');
+  assert.ok(!isDegeneratePair('A_BLOCKED|RB', 'ACE_JUNK|DS'), 'three aces plus one is four, which the deck has');
   const degen = [];
   for (const a of LIVE) for (const b of LIVE) if (a !== b && isDegeneratePair(a, b)) degen.push([a, b]);
   assert.ok(degen.length > 0 && degen.length < LIVE.length * (LIVE.length - 1) / 10,
@@ -428,6 +443,118 @@ test('a source that silently collapses a degenerate pair is caught; one that fla
   // the stub deals nothing and is exempt BY CONSTRUCTION — asserted, not assumed
   assert.equal(removalProblems(payoff, degen).length, 0);
   for (const [a, b] of degen) assert.equal(payoff([a, b], 10, 4, { ip: false }).source, 'checkdown');
+});
+
+// ---------------------------------------------------------------------------
+// P3 B2: the second route, and the tag that keeps three clauses from clearing vacuously
+// ---------------------------------------------------------------------------
+
+/** a hand-built two-cell matrix — the accessor's contract, tested without paying for a 25k build */
+function tinyMatrix(keys, E, N, seed) {
+  const NC = keys.length;
+  return {
+    NC, keys, q: Float64Array.from(keys, () => 1 / NC), combos: Float64Array.from(keys, () => 1),
+    E: Float64Array.from(E), N: Int32Array.from(N),
+    R: new Float64Array(NC * NC), D: Int32Array.from(N), cellLive: Int32Array.from(keys, () => 10),
+    meta: { seed, boards: 1, impossiblePairs: [], impossibleMass: 0 },
+  };
+}
+
+test('the two pure routes are tagged, and an absent tag reads as the strict one', { skip: !HAVE }, () => {
+  // Both routes answer `source: 'checkdown'` — the matrix IS a checkdown — so the `source` string
+  // cannot tell them apart, and clauses (c), (h) and (mono) all keyed their exemptions on it.
+  const proj = makePayoff(M);
+  assert.equal(proj.route, 'projection', 'a function PROPERTY beside modelHash, never a seventh key');
+  assert.equal(routeOf(proj), 'projection');
+  assert.equal(routeOf(() => {}), 'projection', 'an untagged accessor is held to the strict reading');
+  assert.equal(routeOf(null), 'projection');
+  assert.equal(proj.length, 4, 'the tag does not touch the arity');
+  assert.deepEqual(Object.keys(proj([LIVE[0], LIVE[1]], 10, 4, { ip: true })), [...RESULT_KEYS],
+    'nor the six keys');
+});
+
+test('makeMatrixPayoff serves the matrix inside the frozen six keys, and falls through everywhere else', { skip: !HAVE }, () => {
+  const a = LIVE[0], b = LIVE[1];
+  const m = tinyMatrix([a, b], [0.5, 0.62, 0.38, 0.5], [10, 400, 400, 10], 'unit/A');
+  const fn = makeMatrixPayoff(M, m);
+  assert.equal(fn.route, 'matrix');
+  assert.equal(fn.length, 4, 'arity stays four — `opts` is the door, not a fifth argument');
+  assert.equal(fn.modelHash, M.meta.hash);
+
+  const r = fn([a, b], 10, 4, { ip: false });
+  assert.deepEqual(Object.keys(r), [...RESULT_KEYS]);
+  assert.equal(r.ev, 0.62, 'hero is the ROW');
+  assert.equal(fn([b, a], 10, 4, { ip: false }).ev, 0.38, 'and the mirror is the stored complement');
+  assert.equal(r.source, 'checkdown', 'still a checkdown, so the label clause still fires');
+  assert.equal(r.supported, true);
+  assert.ok(Object.is(r.potMult, 1) && Object.is(r.invShare, 0), 'the pot identities are unmoved');
+  assert.ok(Math.abs(r.se - Math.sqrt(0.62 * 0.38 / 400)) < 1e-15,
+    'se comes from THAT PAIR\'S own trial count, not from meta.trials.cell');
+  assert.ok(Math.abs(r.se - payoff([a, b], 10, 4, { ip: false }).se) > 1e-9,
+    'and it is a different number from the projection\'s, or it was not derived at all');
+
+  // position is read and inert, exactly as in the projection
+  assert.deepStrictEqual(fn([a, b], 10, 4, { ip: true }), fn([a, b], 10, 4, { ip: false }));
+  // spr and potSize are validated and unused: a checkdown has no stack to bet
+  for (const spr of [0, 1, 13, 400]) assert.equal(fn([a, b], 7, spr, {}).ev, 0.62);
+
+  // everything the matrix does not carry falls through to the projection's own exit
+  for (const cells of [[a, b, LIVE[2]], [a], [], null, 'x', [a, 'NOPE|XX'], [a, LIVE[7]]]) {
+    const x = fn(cells, 10, 4, {});
+    assert.deepEqual(Object.keys(x), [...RESULT_KEYS], 'six keys on every exit');
+    assert.deepStrictEqual(x, payoff(cells, 10, 4, {}), 'the fallthrough IS the projection');
+  }
+  assert.throws(() => makeMatrixPayoff(M, []), TypeError, 'a route with no measurement behind it');
+  assert.throws(() => makeMatrixPayoff(M, { keys: ['x'] }), TypeError);
+});
+
+test('an undealable pair is flagged loudly, with the conserving value and an honest Infinity', { skip: !HAVE }, () => {
+  const a = LIVE[0], b = LIVE[1];
+  const m = tinyMatrix([a, b], [0.5, 0.5, 0.5, 0.5], [10, 0, 0, 10], 'unit/A');
+  const fn = makeMatrixPayoff(M, m);
+  const r = fn([a, b], 10, 4, { ip: false });
+  assert.equal(r.supported, false, 'clause (h): never a silent collapse');
+  assert.equal(r.ev, 0.5, 'the stored value, which conserves bit-exactly');
+  assert.equal(r.se, Infinity, 'n = 0, the shipped seOfTrials(0) convention — never a typed floor');
+  assert.equal(fn([a, b], 10, 4).ev + fn([b, a], 10, 4).ev, 1, 'and the flagged pair still conserves');
+});
+
+test('opts.seed SELECTS a precomputed sample; it cannot generate one', { skip: !HAVE }, () => {
+  const a = LIVE[0], b = LIVE[1];
+  const A = tinyMatrix([a, b], [0.5, 0.60, 0.40, 0.5], [10, 400, 400, 10], 'unit/A');
+  const B = tinyMatrix([a, b], [0.5, 0.70, 0.30, 0.5], [10, 400, 400, 10], 'unit/B');
+  const fn = makeMatrixPayoff(M, [A, B]);
+  assert.equal(fn([a, b], 10, 4, { seed: 'unit/A' }).ev, 0.60);
+  assert.equal(fn([a, b], 10, 4, { seed: 'unit/B' }).ev, 0.70, 'a named sample is addressable');
+  for (const opts of [undefined, {}, { seed: 4242 }, { seed: 'nobody/named-this' }]) {
+    assert.equal(fn([a, b], 10, 4, opts).ev, 0.60,
+      'absent, numeric or unknown selects the PRIMARY — a precomputed sample cannot be re-drawn on demand');
+  }
+});
+
+test('clause (h) is re-keyed on the route, or the matrix would clear it by claiming to be checkdown', { skip: !HAVE }, () => {
+  // The trap, as an assertion. `removalProblems` exempts a source that deals no cards, and it used
+  // to identify one by `source === 'checkdown'`. The matrix deals 400,000 boards and says
+  // 'checkdown', so without the route tag it would be exempted from the clause written for it.
+  const degen = [];
+  for (const a of LIVE) for (const b of LIVE) if (a !== b && isDegeneratePair(a, b)) degen.push([a, b]);
+  assert.ok(degen.length > 400);
+  // the projection: exempt, and still exempt
+  assert.equal(removalProblems(payoff, degen).length, 0);
+  // a matrix route claiming support for a pair with an EMPTY sample is the collapse, in its matrix form
+  const collapser = (c, p, s, o) => ({ ...payoff(c, p, s, o), se: Infinity, supported: true });
+  collapser.route = 'matrix';
+  assert.equal(removalProblems(collapser, degen).length, degen.length, 'every degenerate pair, not some');
+  // ...and the same function untagged is exempt again, which is exactly why the tag has to be armed
+  const untagged = (c, p, s, o) => ({ ...payoff(c, p, s, o), se: Infinity, supported: true });
+  assert.equal(removalProblems(untagged, degen).length, 0);
+  // the honest matrix shape — supported iff the sample is non-empty — clears
+  const honest = (c, p, s, o) => {
+    const d = Array.isArray(c) && c.length === 2 && isDegeneratePair(c[0], c[1]);
+    return { ...payoff(c, p, s, o), se: d ? Infinity : 0.01, supported: !d };
+  };
+  honest.route = 'matrix';
+  assert.equal(removalProblems(honest, degen).length, 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -470,6 +597,35 @@ test('a NON-checkdown source that is perfectly monotone at spr >= 4 is the new f
   // spr 1 is REPORTED, not asserted: 1.7% is too near zero to serve as a floor
   const quietLow = monoProblems(asModel, sorted, 'AA_BIGPAIR|RB', [0, 1]);
   assert.equal(quietLow.length, 0, 'below spr 4 a monotone non-checkdown source is not asserted against');
+});
+
+test('the monotonicity clause is split by ROUTE, because both routes say `checkdown`', { skip: !HAVE }, () => {
+  // The projection is EXACTLY SEPARABLE — ev(A,B) - 0.5 = (a_A - a_B)/2 — and zero inversions is
+  // an identity of that separability, not a property of checkdown. A measured PAIRWISE matrix is
+  // checkdown and not separable, so it inverts, and that is what it exists to do. Split by `source`
+  // the matrix would be held to the projection's identity and fail; split by route each is held to
+  // its own measurement, and the two mislabels are what prove the split is load-bearing.
+  const sorted = [...LIVE].sort((x, y) => M.cells[x].eq[0] - M.cells[y].eq[0]);
+  const SPRS = [0, 1, 4, 13];
+  assert.equal(monoProblems(payoff, sorted, 'AA_BIGPAIR|RB', SPRS).length, 0, 'the projection: zero, by identity');
+  // the projection wearing the matrix tag: perfectly monotone, which the matrix half rejects
+  const projAsMatrix = (c, p, s, o) => payoff(c, p, s, o);
+  projAsMatrix.route = 'matrix';
+  const flagged = monoProblems(projAsMatrix, sorted, 'AA_BIGPAIR|RB', SPRS);
+  assert.ok(flagged.length > 0, 'zero inversions from a route claiming to be pairwise is separability');
+  assert.match(flagged[0], /perfectly monotone/);
+  // a pairwise-shaped route that DOES invert clears; the same function untagged FAILS the strict half
+  const jolt = (k) => { let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) >>> 0; return ((h % 1000) / 1000 - 0.5) * 0.2; };
+  const pairwise = (c, p, s, o) => {
+    const r = payoff(c, p, s, o);
+    return Array.isArray(c) && c.length === 2 ? { ...r, ev: Math.min(1, Math.max(0, r.ev + jolt(String(c[0])))) } : r;
+  };
+  const tagged = (c, p, s, o) => pairwise(c, p, s, o);
+  tagged.route = 'matrix';
+  assert.equal(monoProblems(tagged, sorted, 'AA_BIGPAIR|RB', SPRS).length, 0,
+    'a route that carries pairwise structure clears the matrix half');
+  assert.ok(monoProblems(pairwise, sorted, 'AA_BIGPAIR|RB', SPRS).length > 0,
+    'and the SAME function untagged is held to the projection identity and fails — the tag fails closed');
 });
 
 test('the stub is spr-inert, which is what "checkdown" means — reported, not a claim about the future', { skip: !HAVE }, () => {

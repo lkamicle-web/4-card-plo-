@@ -508,6 +508,66 @@ if (VARIANT_NAME === 'lite') {
 console.log(`  ..    baseline-tier block ${globals.baselineTiers ? 'present' : 'not yet emitted (P3)'} `
   + '— lite-legal either way (§5.3)');
 
+/* 8 — THE vs-GTO COLOUR MODE, PER VARIANT (V3-PLAN §8 item 13, §3.3 adjudication 8) ----
+   Two claims a grep cannot make. The CHIP's state is the disablement idiom at runtime: live at the
+   three heads-up seats the baseline covers, dimmed-with-a-reason at the other twenty-one, and the
+   reason has to be the SHIPPED one rather than a sentence the page composed. The DEPTH chips are
+   the per-variant half: lite ships one solved stack and renders the other disabled by name, full
+   ships both live — which is the one place the two artifacts' UI legitimately differs, so it is
+   the one place a variant-blind harness would miss a regression. */
+const gto = await page.evaluate(() => {
+  const R = window.__rundown, out = {};
+  const chip = () => {
+    const b = document.querySelector('.modesw button[data-mode=gto]');
+    return { dis: b.getAttribute('aria-disabled'), pressed: b.getAttribute('aria-pressed'), title: b.title };
+  };
+  out.block = R.gtoState();
+  R.setPos('SB'); R.setNode('rfi'); R.setMode('gto');
+  out.on = { chip: chip(), active: R.colorMode().active, readout: R.modeReadout('gto') };
+  const ramp = document.querySelector('.ramp');
+  out.legend = { hidden: ramp.hidden, mid: ramp.querySelector('.mid').textContent,
+    steps: [...ramp.querySelectorAll('.steps i')].map((i) => i.className) };
+  const dep = [...document.querySelectorAll('.encline .modesw')][1];
+  out.depths = dep && !dep.hidden
+    ? [...dep.querySelectorAll('button')].map((b) => ({ t: b.textContent, dis: b.getAttribute('aria-disabled'), why: b.title }))
+    : null;
+  /* every live cell must carry a bucket class in this mode — I13's partition, at runtime */
+  out.painted = [...document.querySelectorAll('.cell:not(.void)')].filter((c) => /\bk\d\b/.test(c.className)).length;
+  out.live = document.querySelectorAll('.cell:not(.void)').length;
+  R.setPos('UTG');
+  out.off = { chip: chip(), active: R.colorMode().active,
+    mid: document.querySelector('.ramp').querySelector('.mid').textContent };
+  R.setPos('SB'); R.setMode('action'); R.setV(55);
+  return out;
+});
+const seats = gto.block && gto.block.notCovered;
+check(gto.on.chip.dis === 'false' && gto.on.chip.pressed === 'true' && gto.on.active === 'gto',
+  'vs-GTO is live at SB x RFI, one of the three seats the heads-up baseline covers',
+  `${gto.on.chip.dis} / ${gto.on.chip.pressed} / active ${gto.on.active} · ${gto.on.readout}`);
+check(gto.painted === gto.live && gto.live === 123,
+  'I13 in vs-GTO: every live cell carries a bucket class', `${gto.painted} of ${gto.live}`);
+check(gto.legend.mid.includes(gto.block.label) && gto.legend.mid.includes(gto.block.domainLabel),
+  'the legend renders the SHIPPED label wherever the baseline paints (I35 clause (f))', gto.legend.mid);
+check(gto.legend.steps.join(',') === 'k3,k1,k0,k2,k4',
+  'the diverging ramp carries the cells\' own hatch classes, agreement bare', gto.legend.steps.join(','));
+check(gto.off.chip.dis === 'true' && gto.off.active === 'action' && gto.off.chip.title.includes(seats)
+  && gto.off.mid.includes(seats),
+  'at UTG the chip and the legend disable with the block\'s own reason, and the grid falls back',
+  `${gto.off.chip.title} · legend: ${gto.off.mid}`);
+const dep = gto.depths || [];
+const offDepths = dep.filter((d) => d.dis === 'true');
+if (VARIANT_NAME === 'lite') {
+  check(dep.length === 2 && offDepths.length === 1 && offDepths[0].why.includes('data/equilibrium.json'),
+    'lite renders the full-only solved depth disabled, naming the artifact that carries it',
+    dep.map((d) => `${d.t}:${d.dis}`).join(' '));
+} else {
+  check(dep.length === 2 && offDepths.length === 0,
+    `${VARIANT_NAME} carries both solved depths live, off the injected payload`,
+    dep.map((d) => `${d.t}:${d.dis}`).join(' '));
+}
+console.log(`  ..    baseline ${gto.block.domainLabel} · ${gto.block.source} · quant ${gto.block.quant} · `
+  + `depths ${dep.map((d) => d.t).join('/') || 'none'}`);
+
 /* screenshots ------------------------------------------------------------ */
 if (SHOTS) {
   for (const [w, h] of [[1440, 900], [1024, 768], [390, 844]]) {

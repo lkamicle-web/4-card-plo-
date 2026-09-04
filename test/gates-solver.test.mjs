@@ -71,14 +71,31 @@ test('I35 is wired into the registry: family, EXPECTED_IDS, and catalog status a
 test('I35 sits before D10/D11, so the P1 report stays a strict prefix', () => {
   const i = EXPECTED_IDS.indexOf('I35');
   assert.ok(i > EXPECTED_IDS.indexOf('I44'), 'appended after lane M, not interleaved');
-  assert.ok(i < EXPECTED_IDS.indexOf('D10'), 'the artifact-reading family stays last');
-  assert.equal(i, EXPECTED_IDS.length - 3);
+  assert.ok(i < EXPECTED_IDS.indexOf('D10'), 'the artifact-reading families stay last');
+  // P3 appended I36 and D9 after D10/D11, in their own family, for the same prefix argument the
+  // list has now used four times: the 53-gate report stays a strict prefix of the 55-gate one, and
+  // I35's own position — third from the end at P2 — is unchanged relative to everything before it.
+  assert.equal(i, EXPECTED_IDS.length - 5);
+  assert.deepEqual(EXPECTED_IDS.slice(i), ['I35', 'D10', 'D11', 'I36', 'D9']);
 });
 
 // ---------------------------------------------------------------------------
 // the baseline — without this, every failure below proves nothing
 // ---------------------------------------------------------------------------
 
+/* THE BLOCKER THIS TEST CARRIED, AND HOW IT WAS RESOLVED — kept as a record, because the resolution
+   is the whole lesson (V3-PLAN §3.3's `Adjudicated (P3 launch)` and `Adjudicated (P3 relaunch)`
+   blocks). The two-seed PAYOFF axis went live at the B2 pre-stage against two measured checkdown
+   matrices built at 25,000 boards, and it BREACHED its gate: 0.1508% of pot at T100, 0.1568% at
+   T40, against 0.15%. The cause was not the solver and not an unlucky seed pair — `twoSeedTolPot`
+   is anchored on a spread S-A measured at 400,000 boards, spread falls as boards^-1/2, and 25,000
+   came from a DIFFERENT S-A table (the out-of-sample exploitability band). This assertion was left
+   standing and RED on purpose while that was true.
+   The resolution moved the MEASUREMENT into the anchor's regime rather than moving the anchor: the
+   shipped matrices are built at S-A's own 400,000 boards, as a generated committed artifact
+   (`data/checkdown-matrix.json`) so verify still pays milliseconds, and the axis now reads 0.066%
+   (T100) / 0.062% (T40) — 2.3x / 2.4x under a gate whose value 0.0015 never moved. Nothing was
+   widened, no seed was reconsidered, and no clause was deleted. Do not soften it. */
 test('I35 PASSES on the shipped model — the baseline the failures are measured against', () => {
   const g = runGate(MODEL);
   assert.equal(g.pass, true, g.detail);
@@ -89,9 +106,20 @@ test('I35 PASSES on the shipped model — the baseline the failures are measured
   assert.match(g.detail, /BB-POSITIVE/);
   assert.match(g.detail, /3\/9\/27\/81/);
   assert.match(g.detail, /the ladder is RE-DERIVED from the pot-limit rule, not read back/);
-  // the two disclosure clauses report their zero unit counts rather than passing quietly
-  assert.match(g.detail, /0 on-screen lists exist to check/);
-  assert.match(g.detail, /0 shipped constants blocks to check/);
+  /* THE TWO DISCLOSURE CLAUSES NOW HAVE SHIPPED SURFACES — the assertion that changed at P3, and
+     the reason it changed. At P2 these read `0 on-screen lists exist to check` and `0 shipped
+     constants blocks to check`, because neither existed and the clauses said so rather than passing
+     quietly. P3 emits data/equilibrium.json, model.baselineTiers and model.constants.solver, so the
+     counts are non-zero and the pin moves with them — a pin on "0" would now be asserting that P3's
+     own deliverable had not landed. What is pinned instead is that every count is non-zero AND that
+     each surface is NAMED, so a clause that quietly stopped finding a surface cannot read as a pass. */
+  assert.match(g.detail, /(\d+) SHIPPED cap lists checked against that tree/);
+  assert.ok(Number(/(\d+) SHIPPED cap lists/.exec(g.detail)[1]) > 0, 'the cap-list clause found no surface');
+  assert.ok(Number(/: (\d+) shipped solver-constants blocks/.exec(g.detail)[1]) > 0, 'the constants clause found no block');
+  assert.ok(Number(/and (\d+) shipped label surfaces/.exec(g.detail)[1]) > 0, 'the label clause found no surface');
+  assert.match(g.detail, /data\/equilibrium\.json caps/);
+  assert.match(g.detail, /data\/model\.json constants\.solver/);
+  assert.match(g.detail, /data\/model\.json baselineTiers/);
 });
 
 // ---------------------------------------------------------------------------

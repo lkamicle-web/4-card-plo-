@@ -723,7 +723,11 @@ test('(h) every card-removal-degenerate pair comes back flagged, and the scope a
     if (x === y) continue;
     if (isDegeneratePair(x, y)) degenerate.push([x, y]); else if (control.length < 64) control.push([x, y]);
   }
-  assert.equal(degenerate.length, 504, 'the two measured families over the 123 live cells');
+  /* 506, not 504, since P3's B2 pre-stage: the measured pairwise matrix found `A_BLOCKED|RB` x
+     `A_BLOCKED|SSA` structurally undealable, and I33(h)'s predicate was rewritten to the ace
+     arithmetic that explains it — `A_BLOCKED` is the taxonomy's "Trip/quad aces", so two of those
+     cells ask the deck for six. The two ordered pairs that adds are the correction. */
+  assert.equal(degenerate.length, 506, 'the measured families over the 123 live cells');
   assert.deepEqual(removalProblems(F, [...degenerate, ...control]), [],
     'a degenerate pair came back supported:true from a source whose coefficients were fitted to a '
     + 'reference that could not deal those boards');

@@ -67,7 +67,8 @@ import { minify, JsminError } from './lib/jsmin.mjs';
 import { buildSimBundle, asJsString } from './lib/sim-bundle.mjs';
 import { compileShellScripts, ShellCompileError } from './lib/shell-compile.mjs';
 import {
-  VARIANTS, VARIANT_NAMES, stripOnlyBlocks, regionManifest, danglingSymbols, VariantError,
+  VARIANTS, VARIANT_NAMES, stripOnlyBlocks, stripMarkedBlocks, regionManifest, danglingSymbols,
+  VariantError,
 } from './lib/variant.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -303,6 +304,28 @@ catch (e) {
   throw e;
 }
 
+/* THE SECOND COMPILE, and it is a MEASUREMENT (V3-PLAN §3.3 adjudication 12).
+   The vs-GTO colour mode is marked `@block:gto` in the shell. Compiling the shell again with those
+   regions removed — through the same stripper and the same minifier, so the two numbers are
+   comparable — gives the mode's cost in the artifact's own bytes rather than in source lines. The
+   build then reports TWO app readings: `app`, which is what ships and which the raised ceiling
+   binds, and `core`, which is `app` minus this mode and which the PRE-RAISE ceiling still binds.
+   That is what makes the raise paid rather than granted: no other block can grow into it.
+   Skipped under --no-minify, where neither number means what the budgets were calibrated against. */
+let blockBytes = 0;
+if (!NO_MINIFY) {
+  try {
+    const cut = stripMarkedBlocks(only.text, 'gto', { label: rel(SOURCE_PATH) });
+    if (cut.blocks) {
+      const core = compileShellScripts(cut.text, { label: rel(SOURCE_PATH), noMinify: false });
+      blockBytes = Buffer.byteLength(shell.html) - Buffer.byteLength(core.html);
+    }
+  } catch (e) {
+    if (e instanceof VariantError || e instanceof ShellCompileError) die(e.message);
+    throw e;
+  }
+}
+
 /* The Simulate engine (V2-PLAN §4). Two strings, not one, and the reason is in sim-bundle.mjs:
    the KERNEL half is safe to evaluate on the main thread and is what the rAF fallback runs, while
    the ENTRY half installs `self.onmessage` and would clobber `window.onmessage` outside a worker.
@@ -403,10 +426,15 @@ const eqBytes = blocks.eq === null ? 0 : Buffer.byteLength(blocks.eq);
    silently blow a budget calibrated against markup+CSS+JS. It is reported on its own line and
    gated on its own (D9). At lite this term is 0 and every number below is what it was. */
 const app = total - dataBytes - modelCode - eqBytes;
+/* `core` is the app block minus the marked vs-GTO mode — the quantity the 360 KB ceiling was
+   calibrated against, still facing it after the raise. */
+const appCore = app - blockBytes;
 const report = `${rel(OUT_PATH)} [${VARIANT_NAME}] ${(total / 1024).toFixed(1)} KB `
   + `(data ${(dataBytes / 1024).toFixed(1)} + model code ${(modelCode / 1024).toFixed(1)} `
   + (eqBytes ? `+ equilibrium ${(eqBytes / 1024).toFixed(1)} ` : '')
-  + `+ app ${(app / 1024).toFixed(1)} KB, of which sim engine ${(engineBytes / 1024).toFixed(1)})`;
+  + `+ app ${(app / 1024).toFixed(1)} KB, of which sim engine ${(engineBytes / 1024).toFixed(1)}`
+  + (blockBytes ? `, vs-GTO ${(blockBytes / 1024).toFixed(1)} -> core ${(appCore / 1024).toFixed(1)}` : '')
+  + `)`;
 
 // Budgets. Three numbers, set 2026-08-30 against the finished v2 page — the phase-4 end retune,
 // done once and in one place rather than nudged per change. (History: v1 ran 400 KB total / 245 KB
@@ -478,9 +506,24 @@ const kb = (b) => (b / 1024).toFixed(1);
 if (BUDGETS) {
   if (total > BUDGETS.total) sizeProblems.push(`${rel(OUT_PATH)} is ${kb(total)} KB, budget ${BUDGETS.total / 1024} KB`);
   if (app > BUDGETS.app) sizeProblems.push(`app CSS+JS+markup is ${kb(app)} KB, budget ${BUDGETS.app / 1024} KB`);
+  /* THE PAID-RAISE CLAUSE (adjudication 12). `app` rose to pay for the vs-GTO mode; `core` is the
+     same payload minus that mode, held to the ceiling `app` faced before the raise, so the raise
+     buys exactly one feature and nothing else can drift into it. It binds whether or not the block
+     is present: with the mode removed entirely, core === app and this is the old gate verbatim. */
+  if (BUDGETS.appCore != null && appCore > BUDGETS.appCore) {
+    sizeProblems.push(`app minus the vs-GTO block is ${kb(appCore)} KB, budget ${BUDGETS.appCore / 1024} KB `
+      + `(the pre-raise app ceiling — the raise pays for the marked block, not for the rest)`);
+  }
   if (modelCode > BUDGETS.modelCode) {
     sizeProblems.push(`inlined model code is ${kb(modelCode)} KB, budget ${BUDGETS.modelCode / 1024} KB`
       + (NO_MINIFY ? ' (this build passed --no-minify; the budget assumes stripping)' : ''));
+  }
+  /* THE EQUILIBRIUM PAYLOAD'S OWN TRIPWIRE (gate D9, V3-PLAN §5.3). Separate from `total` on
+     purpose: the injected baseline is the full build's DATASET, so a solver payload that doubled
+     would otherwise be invisible inside a page-sized ceiling until it broke the page-sized ceiling.
+     Only full carries an `eq` budget; lite has no `eq` region and this term is 0 there. */
+  if (BUDGETS.eq != null && eqBytes > BUDGETS.eq) {
+    sizeProblems.push(`the injected equilibrium payload is ${kb(eqBytes)} KB, budget ${BUDGETS.eq / 1024} KB (D9)`);
   }
 } else {
   console.error(`build: [${VARIANT_NAME}] SIZE NOT GATED — ${VARIANT.budgetSource}. `

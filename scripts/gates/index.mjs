@@ -37,6 +37,7 @@ import * as env from './env.mjs';
 import * as couplings from './couplings.mjs';
 import * as solver from './solver.mjs';
 import * as variants from './variants.mjs';
+import * as baseline from './baseline.mjs';
 import { CATALOG } from './reserved.mjs';
 
 export const REGISTRY = [
@@ -52,6 +53,7 @@ export const REGISTRY = [
   couplings,     // I41 I42 I43 I44            the v3 axes (P1 lane M)
   solver,        // I35                        the CFR+ engine (P2 lane cfr)
   variants,      // D10 D11                    the dual build, read off the artifacts on disk
+  baseline,      // I36 D9                     the P3 equilibrium baseline, off its own artifacts
 ];
 
 /**
@@ -98,6 +100,14 @@ export const EXPECTED_IDS = [
   'I35',
   // P1 lane I (V3-PLAN §5.3, item 16). Last, for the reason given above the list.
   'D10', 'D11',
+  // P3's equilibrium baseline (V3-PLAN §3.3, §5.3). APPENDED, for the fourth time and the same
+  // reason: 53 stays a strict prefix of 55, so the P2 report diffs against this one as two added
+  // rows rather than as a re-ordering. It sits AFTER D10/D11 rather than beside I35 and D6 where
+  // subject would put it, because the rule keeping those two last now describes this family too —
+  // it reads artifacts (data/equilibrium.json, index-full.html) produced by a step outside the
+  // runner. Both gates are P3's: I36's anchors are asserted on the SHIPPED tiers, and D9 sets
+  // full's byte budgets from the first payload that ever existed to measure.
+  'I36', 'D9',
 ];
 
 // Import-time consistency: what the families DECLARE must equal the frozen list. This is the

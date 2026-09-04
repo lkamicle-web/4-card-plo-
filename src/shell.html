@@ -70,7 +70,6 @@ svg{display:block}
 *::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:9px;border:2px solid var(--bg-base)}
 *::-webkit-scrollbar-thumb:hover{background:var(--border-strong)}
 /* ============================================================ TYPE ROLES */
-.t-display1{font:700 40px/44px var(--font-display);letter-spacing:-.02em}
 .t-display2{font:700 30px/36px var(--font-display);letter-spacing:-.01em}
 .t-metric-xl{font:500 28px/32px var(--font-mono)}
 .t-metric-lg{font:500 20px/26px var(--font-mono)}
@@ -618,6 +617,9 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .prose h3{margin:var(--sp-7) 0 var(--sp-3);color:var(--text-primary);font:600 15px/20px var(--font-display)}
 .prose h3:first-child{margin-top:0}
 .prose p{margin-bottom:var(--sp-4)}
+/* @block:gto */
+.prose h4{margin:var(--sp-5) 0 var(--sp-2);color:var(--text-primary);font:600 12px/16px var(--font-ui)}
+/* @end:block */
 .prose ul{margin:0 0 var(--sp-4) var(--sp-6)}
 .prose li{margin-bottom:var(--sp-2)}
 .prose code{font:500 12px/18px var(--font-mono);background:var(--surface-2);padding:1px 4px;border-radius:3px;color:var(--text-primary)}
@@ -713,7 +715,7 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 .shake{animation:shake 90ms 2}
 /* ============================================================ RESPONSIVE */
-.mobilebar,.bandrail,#pickbtn{display:none}
+.mobilebar,#pickbtn{display:none}
 /* THE TOPBAR BAND, RE-MEASURED (S-E's one red, V3-PLAN §1 / §9 — "smoke reports 11/12 until §8
    fixes the 1280–1442 px topbar clipping").
    S-E measured the intrinsic row at 1443 px against a 1279 px breakpoint, so at every width in
@@ -807,7 +809,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
   .mobilebar .sl .v{font:500 16px/20px var(--font-mono);width:40px;text-align:right;font-variant-numeric:tabular-nums}
   .honesty{display:none}
   .rail,.inspector{display:none}
-  .rail.m-open,.inspector.m-open{display:flex}
   .pane{border:none;border-radius:0;background:transparent}
   /* height:auto, not 48: the band is two lines now (filter, then encoding) and a fixed height
      would clip the second one away — the mode switch — with no cue that it was there. */
@@ -840,9 +841,6 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
   .inspector.open::before{opacity:1}
   .inspector.open .itabs{padding-top:10px}
   .inspector.open{display:flex;transform:none}
-  .bandrail{display:flex;flex-direction:column;gap:var(--sp-3);position:fixed;right:var(--sp-2);top:40%;z-index:30}
-  .bandrail button{width:10px;height:10px;border-radius:50%;background:var(--surface-3);border:1px solid var(--border-default)}
-  .bandrail button[aria-current=true]{background:var(--accent)}
   #drill{inset:0;border-radius:0}
 }
 @media (prefers-reduced-motion:reduce){
@@ -1092,6 +1090,14 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 /* @end:engine */
 </script>
 
+<!-- the full-only equilibrium payload; scripts/lib/variant.mjs documents the seam -->
+<!-- @only:full -->
+<script>
+/* @inject:eq */
+/* @end:eq */
+</script>
+<!-- @end:only -->
+
 <script>
 /* Bridge: the injected blocks may declare `window.MODEL` or a top-level `const MODEL`
    (a classic script's top-level const lives in the global lexical scope, not on window).
@@ -1101,6 +1107,9 @@ try { if (typeof POLICY !== 'undefined' && POLICY) window.POLICY = POLICY; } cat
 try { if (typeof TAXONOMY !== 'undefined' && TAXONOMY) window.TAXONOMY = TAXONOMY; } catch (e) { }
 try { if (typeof SIM_KERNEL_SRC !== 'undefined') window.SIM_KERNEL_SRC = SIM_KERNEL_SRC; } catch (e) { }
 try { if (typeof SIM_ENTRY_SRC !== 'undefined') window.SIM_ENTRY_SRC = SIM_ENTRY_SRC; } catch (e) { }
+/* @only:full */
+try { if (typeof EQUILIBRIUM !== 'undefined' && EQUILIBRIUM) window.EQUILIBRIUM = EQUILIBRIUM; } catch (e) { }
+/* @end:only */
 </script>
 
 <script>
@@ -2595,14 +2604,15 @@ var MODES = (function () {
 'use strict';
 
 /* kind: 'class' paints the tier classes; 'ramp' paints a sequential ramp and a `.kN` bucket;
-   'diverging' is reserved for vs-GTO, whose signed ramp is a later phase's to draw (§8). */
+   'diverging' is vs-GTO's SIGNED ramp — five buckets, one per whole action step, agreement in the
+   middle (§8: the Delta-pin two-colour encoding cannot say how FAR, only which way). */
 var LIST = [
   { key: 'action', label: 'TIER',   name: 'Colour by action tier',                             kind: 'class', steps: 0 },
   { key: 'nu',     label: 'ν', name: 'Colour by nut potential',                           kind: 'ramp',  steps: 5 },
   { key: 'rho',    label: 'ρ', name: 'Colour by equity ratio',                            kind: 'ramp',  steps: 7 },
   { key: 'pin',    label: 'Δ PIN', name: 'Colour by change against the pinned state',     kind: 'ramp',  steps: 3 },
   { key: 'ev',     label: 'EV',     name: 'Colour by expected share of the final pot',         kind: 'ramp',  steps: 7 },
-  { key: 'gto',    label: 'vs GTO', name: 'Colour by divergence from the equilibrium baseline', kind: 'diverging', steps: 0 }
+  { key: 'gto',    label: 'vs GTO', name: 'Colour by divergence from the equilibrium baseline', kind: 'diverging', steps: 5 }
 ];
 var DEFAULT = 'action';
 
@@ -2612,8 +2622,15 @@ function byKey(k) { for (var i = 0; i < LIST.length; i++) if (LIST[i].key === k)
 /**
  * Can this build paint this mode, and if not, WHY NOT — in words that name the missing thing.
  *
- * `cap` is what the page knows about itself: { pinned, payoff, equilibrium }. Absent keys read as
- * false, so an under-specified snapshot disables rather than enables.
+ * `cap` is what the page knows about itself: { pinned, payoff, equilibrium, baseCovered, baseWhy }.
+ * Absent keys read as false, so an under-specified snapshot disables rather than enables.
+ *
+ * vs-GTO asks TWO questions and they fail differently, which is why it has two reasons. `equilibrium`
+ * is about the BUILD — is there a solved baseline in this artifact at all. `baseCovered` is about
+ * the SEAT: the baseline is heads-up (V3-PLAN §3.3 adjudication 8), so three of the twenty-four
+ * (pos, node) pairs are comparable and twenty-one are not. The second reason is not composed here —
+ * it is READ OFF THE SHIPPED BLOCK by the caller and handed in, so the words a reader sees are the
+ * payload's own (`baselineTiers.notCovered`) rather than a sentence this file invented about it.
  */
 function availability(key, cap) {
   var c = cap || {};
@@ -2624,8 +2641,13 @@ function availability(key, cap) {
   if (key === 'ev' && !c.payoff) {
     return { available: false, reason: 'no payoff accessor in this build — no expected-value surface to colour' };
   }
-  if (key === 'gto' && !c.equilibrium) {
-    return { available: false, reason: 'no equilibrium baseline in this build — the solver output (data/equilibrium.json) lands in a later phase' };
+  if (key === 'gto') {
+    if (!c.equilibrium) {
+      return { available: false, reason: 'no equilibrium baseline in this build — the solved tiers (model.baselineTiers) are not in this model' };
+    }
+    if (!c.baseCovered) {
+      return { available: false, reason: c.baseWhy || 'the equilibrium baseline does not cover this seat and node' };
+    }
   }
   return { available: true, reason: '' };
 }
@@ -2825,6 +2847,9 @@ var S = {
   pos: 'UTG', node: 'rfi', v: (MODEL.meta.vpip && MODEL.meta.vpip.default) || 55,
   L: 2, raiser: null, sel: 'AA_DANGLER|RB', pin: null, hand: null,
   cols: 'equal', density: 'comfort', colorBy: 'action', view: 'matrix',
+  /* @block:gto */
+  gtoD: null,          /* the solved stack the vs-GTO mode compares against; null = the first one */
+  /* @end:block */
   filters: {}, soloRow: null, soloCol: null, soloBand: null, compare: [],
   mix: (C.vs3bet.mix || [0.6, 0.25, 0.1, 0.05]).map(function (x) { return Math.round(x * 100); }),
   /* METHODOLOGY §5.2: `rake.preset` is the UI's default (5% — the lobby this tool is for) while the
@@ -3557,8 +3582,10 @@ var RAMP_NU = ['#1D2A2D', '#4A4530', '#8F7023', '#C79E33', '#FBCA43'];
 var RAMP_RHO = ['#1C4C63', '#2C7C93', '#59B0BE', '#3E4953', '#D9A96A', '#E8944B', '#EC794A'];
 /* Δ-pin is three states, not a ramp — unchanged, looser, tighter — and it is listed as a ramp mode
    only because it paints through the same `.cb`/`.kN` path. §8 is explicit that the two-colour
-   Δ-pin encoding is NOT a signed magnitude ramp; the page's first real diverging ramp arrives with
-   vs-GTO, and is not drawn here. */
+   Δ-pin encoding is NOT a signed magnitude ramp; the page's first real diverging ramp is vs-GTO's,
+   below, which is why that one has five buckets and a bucket-to-hatch mapping and this has three
+   colours and no magnitude at all. The HUES are shared on purpose: gold is looser and purple is
+   tighter in both, so the page has one meaning per colour rather than one per mode. */
 var RAMP_PIN = ['var(--surface-2)', '#C79E33', '#674698'];
 /* EV: sequential, seven steps, dark to bright. Presentation only — it encodes an ordering the
    payoff accessor produces and introduces no model constant. */
@@ -3630,6 +3657,15 @@ function nodePotBB() {
 function modeCtx(ev, mode) {
   var c = { mode: mode, pinE: null, nOpp: 0, fair: 0, hi: 1, pot: 0, spr: 0 };
   if (mode === 'pin' && S.pin) c.pinE = pinEval();
+  /* @block:gto */
+  /* the baseline row is resolved ONCE per repaint, like pinEval above: it is a property of the
+     (pos, node, raiser) the whole grid is being painted at, not of a cell. */
+  if (mode === 'gto' && BASE) {
+    var bc = BASE.at(S.pos, S.node, S.raiser || defaultRaiser());
+    c.node = S.node;
+    if (bc.ok) c.base = { nd: bc.nd, depth: gtoDepth() }; else c.baseWhy = bc.why;
+  }
+  /* @end:block */
   if (mode === 'ev') {
     c.pot = nodePotBB();
     c.spr = c.pot > 0 ? Math.max(0, dEff() / c.pot) : 0;
@@ -3658,6 +3694,233 @@ function evOf(rec, ctx) {
   r.badge = r.supported ? r.source : 'unsupported';
   return r;
 }
+/* @block:gto — THE vs-GTO COLOUR MODE (V3-PLAN §8 item 13; §3.3 adjudications 8 and 12; §14 item 4).
+
+   THE MARKER IS LOAD-BEARING. `scripts/lib/variant.mjs`'s `stripMarkedBlocks` deletes every
+   `@block:gto` region and `scripts/build.mjs` compiles the shell a second time from what is left,
+   so the size report carries TWO readings: `app`, which is what ships, and `core`, which is `app`
+   minus this mode. The app ceiling was raised to pay for these bytes and `core` re-asserts the
+   pre-P3 360 KB against everything else, so no other block can grow behind the raise
+   (adjudication 12). Every byte the mode adds belongs inside a marker pair, including the one-line
+   branches at the call sites — a mode that leaked bytes into the unmarked half would be a raise
+   the gate cannot see.
+
+   WHAT IT PAINTS. One SIGNED number per cell: the model's own action minus the equilibrium's, on
+   the baseline's own three-level action scale (fold 0, call 1, raise 2). Positive is LOOSER than
+   the equilibrium and negative TIGHTER — the vocabulary Δ-pin already uses, and the colours are
+   Δ-pin's too (gold looser, purple tighter) so the page has one meaning for each hue. Five buckets,
+   one per whole action step, centred on agreement.
+
+   THE COMPARAND IS THE RAW MODEL TIER, and that is a finding rather than a preference (I36,
+   §14 item 4). `preDisplay` is policy.mjs's record of the action BEFORE the two display
+   post-passes; the passes are IMPOSITIONS, and the shipped baseline violates suit monotonicity in
+   7 of its 369 readings, so scoring a post-passed tier against an equilibrium would book the
+   model's own enforcement as agreement. The GRID goes on painting the post-passed tier in TIER
+   mode — that is what it has always painted and the page already names it as enforcement — and
+   the inspector says out loud, per cell, when the two differ here.
+
+   WHERE IT IS LIVE. Three (pos, node) pairs, because the baseline is HEADS-UP: SB × RFI,
+   BB × vs-Raise with SB as the raiser, and SB × vs-3-Bet. At the other twenty-one the chip, the
+   legend and the grid disable with the reason READ OFF THE SHIPPED BLOCK, never typed here. */
+var BASE = (function () {
+  var bt = MODEL.baselineTiers;
+  if (!bt || !bt.nodes || !bt.order || !bt.quant) return null;
+  var ix = Object.create(null), i;
+  for (i = 0; i < bt.order.length; i++) ix[bt.order[i]] = i;
+  /* the block's OWN mix rule, not a threshold chosen here: `encoding` says a row reads MIX when an
+     off-argmax weight reaches half a quantization step, so that is what "the equilibrium also does
+     this" means on screen. */
+  var half = bt.quant / 2;
+
+  /** Why this seat and node are not comparable — the payload's phrase, with the payload's seats. */
+  function why(nd) {
+    return bt.notCovered + ' — the solved tree has ' + (bt.seats || []).join(' and ') + ' only'
+      + (nd && nd.raiser ? ', and its only opener is ' + nd.raiser : '');
+  }
+  /** The baseline row for a (pos, node, raiser), or the named reason there is none. */
+  function at(pos, node, raiser) {
+    var nd = bt.nodes[pos + '|' + node];
+    if (nd && (!nd.raiser || nd.raiser === raiser)) return { ok: true, nd: nd };
+    return { ok: false, why: why(nd) };
+  }
+  /* THE SOLVED DEPTHS THIS BUILD CAN COMPARE AGAINST — the one place the two artifacts differ.
+     FULL reads the injected payload: both solved stacks, strategies at full double precision.
+     LITE has the shared core's quantized table at one stack, so the second solve renders
+     disabled-with-named-REASON (§8 item 15) instead of vanishing. The 40 in that branch is not a
+     model constant and enters no arithmetic — it is the NAME of a solve that ships in
+     data/equilibrium.json (its `depths.T40.stack`), and the disablement idiom requires the reason
+     to say what is missing. */
+  function depths() {
+    var eq = window.EQUILIBRIUM, out = [], k;
+    if (eq && eq.depths) {
+      for (k in eq.depths) out.push({ bb: eq.depths[k].stack, strat: eq.depths[k].strategy, exact: true });
+    } else {
+      out.push({ bb: bt.stack, exact: false });
+      out.push({ bb: 40, off: true });
+    }
+    out.sort(function (a, b) { return b.bb - a.bb; });
+    return out;
+  }
+  /** One cell's action weights at one depth: exact in full, quantization steps × q in lite. */
+  function row(nd, key, d) {
+    var j = ix[key], n = nd.actions.length, o = [], a, arr;
+    if (j === undefined) return null;
+    if (d && d.strat) { arr = d.strat[nd.treeNode]; for (a = 0; a < n; a++) o.push(arr[j * n + a]); }
+    else for (a = 0; a < n; a++) o.push(nd.w[j * n + a] * bt.quant);
+    return o;
+  }
+  /**
+   * A tier on the baseline's three-level action scale: fold 0, call 1, raise 2.
+   *
+   * T2 IS THE ONE JUDGEMENT CALL, and it is made from the page's own node table rather than by
+   * rule. The baseline has no T2 (its `encoding` says why: T2 is the model's exploit split against
+   * its own reference table, and a solved strategy has no reference table), so T2 has to be read as
+   * the band it splits — and which band that is depends on the node, because the model's own tier
+   * LABELS say so: at RFI and vs-Raise T2 carries T1's label, which is P3's "read T1 and T2 as one
+   * aggressive level"; at vs-3-Bet T2 is labelled CALL, and calling it a 4-bet to satisfy a rule
+   * written about the other two nodes would put a wrong number on screen at one of the three seats
+   * the baseline actually covers.
+   */
+  function agg(t, node) {
+    var n = +String(t).slice(1) || 5;
+    if (n === 2) n = (node && NODEBY[node] && NODEBY[node].t2 === NODEBY[node].t1) ? 1 : 3;
+    if (n === 4) n = 3;                       /* the MIX overlay — never present in `preDisplay` */
+    return (5 - n) / 2;
+  }
+  return { block: bt, half: half, at: at, depths: depths, row: row, agg: agg,
+    label: bt.label, source: bt.source, domainLabel: bt.domainLabel, quant: bt.quant, stack: bt.stack };
+})();
+/* The diverging ramp: two purples, agreement, two golds. Δ-pin's hues, one meaning per hue. */
+var RAMP_GTO = ['#4A3474', '#7D68A8', 'var(--surface-2)', '#C79E33', '#E8944B'];
+/* THE COLORBLIND CHANNEL, and it is a MAPPING rather than the bucket index because a signed ramp
+   wants a signed pattern. Agreement is `.k0`, which is bare — "no pattern" is already this page's
+   way of saying there is nothing to see. Either side of it the hatches are MIRROR PAIRS: 45° vs
+   -45° at one step, 90° vs 0° at two, so orientation reads as direction and the pair reads as
+   magnitude. No new CSS: every class here is one the ramp modes already ship. */
+var GTO_K = [3, 1, 0, 2, 4];
+/** The depth the comparison is against: the chosen solve if this build has it, else the first. */
+function gtoDepth() {
+  var ds = BASE.depths(), i, first = null;
+  for (i = 0; i < ds.length; i++) {
+    if (ds[i].off) continue;
+    if (!first) first = ds[i];
+    if (ds[i].bb === S.gtoD) return ds[i];
+  }
+  return first;
+}
+/** The reading for one cell: the equilibrium's row, the model's RAW action, and the signed gap. */
+function gtoOf(rec, ev, ctx) {
+  if (!ctx.base) return null;
+  var nd = ctx.base.nd, w = BASE.row(nd, rec.key, ctx.base.depth);
+  if (!w) return null;
+  var a, b = 0, top = 0;
+  for (a = 0; a < w.length; a++) {
+    b += w[a] * BASE.agg(nd.tierOf[nd.actions[a]]);
+    if (w[a] > w[top]) top = a;
+  }
+  var e = ev.entry && ev.entry[rec.i], raw = (e && (e.preDisplay || e.action)) || 'T5';
+  var m = BASE.agg(raw, ctx.node);
+  return { w: w, nd: nd, base: b, model: m, d: m - b, top: top, raw: raw, moved: (e && e.promoted) || '' };
+}
+/** The paint: five buckets over ±2.5 action steps, so each whole step owns one and |d|<0.5 is the
+    middle. Arithmetic on the three-level scale, not a chosen domain. */
+function gtoPaint(rec, ev, ctx) {
+  var g = gtoOf(rec, ev, ctx), b = g ? MODES.bucket(g.d, -2.5, 2.5, 5) : 2;
+  return { col: RAMP_GTO[b], k: GTO_K[b] };
+}
+/** What the equilibrium does here, in its own action names and its own mix rule. The verb is the
+    shipped action token plus an `s` — fold/call/raise all take one, and inventing a verb table
+    would be this page paraphrasing the payload. */
+function gtoBaseText(g) {
+  var out = [], a;
+  for (a = 0; a < g.w.length; a++) if (g.w[a] >= BASE.half) out.push(g.nd.actions[a] + 's ' + f1(g.w[a] * 100) + '%');
+  return out.length ? out.join(' / ') : g.nd.actions[g.top] + 's 100%';
+}
+/** The signed phrase every surface shares, so the cell, the legend and the inspector cannot drift.
+    `of` composes it with the thing compared against: "agrees WITH the 100bb baseline", but
+    "1.0 action steps looser THAN" it. */
+function gtoGap(d, of) {
+  var a = Math.abs(d), t = of ? ' ' + of : '';
+  return a < 0.5 ? 'agrees' + (of ? ' with ' + of : '')
+    : f1(a) + ' action steps ' + (d > 0 ? 'looser' : 'tighter') + (of ? ' than ' + of : '');
+}
+/** One line for the tooltip and the accessible name. */
+function gtoReadout(rec, ev, ctx) {
+  var g = gtoOf(rec, ev, ctx);
+  if (!g) return ctx.baseWhy || 'no baseline reading for this cell';
+  return BASE.domainLabel + ' ' + gtoBaseText(g) + ' · model ' + tierLabel(+String(g.raw).slice(1))
+    + ' (raw) — ' + gtoGap(g.d);
+}
+/** The legend's scale. The label rides here because §3.3 asks it to render wherever the baseline
+    paints, and it is DERIVED — the shipped `source` datum carries it, no string is typed. */
+function gtoScale() {
+  var d = gtoDepth(), dv = Math.round(dEff());
+  /* THE ORDER OF THIS LINE IS THE ORDER IT MAY BE TRUNCATED IN. `.ramp .mid` ellipsises, and on a
+     1440 px screen with the inspector open there is room for about thirty characters — so the
+     clause that must survive goes first. That is the LABEL: a reader shown a solved baseline
+     without "a game where postflop does not exist" is being shown something the payload does not
+     claim. Then the depth-dial warning, which is live and cannot be read off anything else on the
+     row. The domain label and the source come last because they are the two facts repeated
+     elsewhere on screen — the chip says vs GTO, the inspector badges GTO, the EV mode names the
+     source — and the whole string is on the title and the accessible name regardless. Which SOLVE
+     is being compared against is not here at all: it is the pressed chip immediately to the right. */
+  return { colors: RAMP_GTO, classes: GTO_K, lo: '2 tighter', hi: '2 looser',
+    mid: (BASE.label ? BASE.label + ' · ' : '')
+      + (dv === d.bb ? '' : 'the model is at ' + dv + 'bb, the baseline is not · ')
+      + BASE.domainLabel + ' · ' + BASE.source + (d.exact ? '' : ' · quantized to ' + BASE.quant),
+    stepTitles: ['two action steps tighter than the equilibrium', 'one step tighter',
+      'agrees with the equilibrium', 'one step looser', 'two steps looser'] };
+}
+/** The divergence sentence the inspector's reason machinery renders as one more `why` row. */
+function gtoWhy(rec, ev) {
+  var ctx = modeCtx(ev, 'gto');
+  if (!ctx.base) return '';
+  var g = gtoOf(rec, ev, ctx);
+  if (!g) return '';
+  return gtoGap(g.d, 'the ' + ctx.base.depth.bb + 'bb ' + BASE.domainLabel + ' baseline') + ', which '
+    + gtoBaseText(g) + (g.moved ? ' · compared on the RAW tier ' + g.raw + ' — the grid shows this cell after the '
+      + g.moved + ' post-pass' : '');
+}
+/* THE BASELINE-DEPTH SWITCH, built once and only re-synced, because `syncRampLegend` runs inside
+   every profiled repaint. In lite the second chip is `aria-disabled` with its reason on the title
+   and the accessible name — the SIM.available idiom, the same one the mode chips use. */
+var gtoBtns = [], gtoEl = null;
+function buildGtoDepth(host) {
+  if (!BASE) return;
+  gtoBtns = [];            /* reset like `modeBtns`, so a second buildLegend cannot double the list */
+  gtoEl = el('div', 'modesw');
+  gtoEl.hidden = true;
+  gtoEl.setAttribute('role', 'group');
+  gtoEl.setAttribute('aria-label', 'Baseline depth — which solved tree the comparison is against');
+  BASE.depths().forEach(function (d) {
+    var b = el('button', null, d.bb + 'bb'), why = d.off
+      ? 'the ' + d.bb + 'bb solve ships in the full artifact only (data/equilibrium.json) — this build compares against the '
+        + BASE.stack + 'bb tree'
+      : 'compare against the ' + d.bb + 'bb solved tree';
+    b.type = 'button';
+    b.dataset.bb = d.bb;
+    b.setAttribute('aria-disabled', d.off ? 'true' : 'false');
+    b.title = why;
+    b.setAttribute('aria-label', why);
+    b.onclick = function () {
+      if (d.off) { toast(why); return; }
+      S.gtoD = d.bb; syncLegend(); render(); renderInspector(true);
+    };
+    gtoEl.appendChild(b);
+    gtoBtns.push({ bb: d.bb, node: b, off: !!d.off });
+  });
+  host.appendChild(gtoEl);
+}
+function syncGtoDepth(on) {
+  if (!gtoEl) return;
+  gtoEl.hidden = !on;
+  if (!on) return;
+  var cur = gtoDepth();
+  gtoBtns.forEach(function (g) {
+    g.node.setAttribute('aria-pressed', !g.off && cur && g.bb === cur.bb ? 'true' : 'false');
+  });
+}
+/* @end:block */
 /** The paint for one cell: its colour and its ramp bucket, which is the colorblind channel. */
 function paintOf(rec, ev, mode, ctx) {
   if (mode === 'nu') {
@@ -3674,6 +3937,9 @@ function paintOf(rec, ev, mode, ctx) {
     var kp = a === b ? 0 : b < a ? 1 : 2;
     return { col: RAMP_PIN[kp], k: kp };
   }
+  /* @block:gto */
+  if (mode === 'gto') return gtoPaint(rec, ev, ctx);
+  /* @end:block */
   if (mode === 'ev') {
     var res = evOf(rec, ctx);
     if (!res) return { col: RAMP_EV[0], k: 0 };
@@ -3692,6 +3958,9 @@ function modeReadout(rec, ev, mode, ctx) {
     return a === b ? 'unchanged against the pin'
       : (b < a ? 'looser than the pin — ' : 'tighter than the pin — ') + tierLabel(a) + ' → ' + tierLabel(b);
   }
+  /* @block:gto */
+  if (mode === 'gto') return gtoReadout(rec, ev, ctx);
+  /* @end:block */
   if (mode === 'ev') {
     var res = evOf(rec, ctx);
     if (!res) return 'no payoff accessor in this build';
@@ -3713,6 +3982,9 @@ function rampScale(key, ev) {
     return { colors: RAMP_PIN, lo: 'unchanged', hi: 'moved', mid: 'gold looser · purple tighter',
       stepTitles: ['unchanged against the pin', 'played looser than the pin', 'played tighter than the pin'] };
   }
+  /* @block:gto */
+  if (key === 'gto') return gtoScale();
+  /* @end:block */
   var c = modeCtx(ev, 'ev');
   return { colors: RAMP_EV, lo: '0%', hi: (c.hi * 100).toFixed(0) + '% of pot',
     mid: 'fair share ' + (c.fair * 100).toFixed(1) + '% · vs ' + c.nOpp + ' · checkdown, unsupported' };
@@ -3892,10 +4164,21 @@ var legendChips = [], compSegs = {}, modeBtns = [], rampEl = null;
 
 /** What this build can actually paint. Read by MODES.availability; see the disablement idiom. */
 function modeCaps() {
-  return { pinned: !!S.pin, payoff: !!PAY,
-    /* no solver output ships yet; when `data/equilibrium.json` and its injected block land, this
-       is the one line that flips and the vs-GTO chip comes alive with no other change. */
-    equilibrium: !!(window.EQUILIBRIUM && window.EQUILIBRIUM.cells) };
+  var c = { pinned: !!S.pin, payoff: !!PAY };
+  /* @block:gto */
+  /* THE BUILD CAPABILITY IS THE SHARED-CORE BLOCK, in both artifacts: §5.3 buys lite a tier-level
+     vs-GTO mode by shipping `model.baselineTiers`, and the full artifact's injected EQUILIBRIUM
+     adds precision and the second solved depth on top of that same index. So the question "can
+     this build paint vs-GTO" is answered by the block, and "how well" by the payload.
+     THE SEAT CAPABILITY IS SEPARATE and its reason comes off the block, not out of this file. */
+  c.equilibrium = !!BASE;
+  if (BASE) {
+    var a = BASE.at(S.pos, S.node, S.raiser || defaultRaiser());
+    c.baseCovered = a.ok;
+    c.baseWhy = a.why || '';
+  }
+  /* @end:block */
+  return c;
 }
 function modeInfo(key) { return MODES.byKey(key) || MODES.byKey(MODES.DEFAULT); }
 /** The mode actually painted, after capabilities. Never reads a source that is not there. */
@@ -3930,17 +4213,40 @@ function buildRampLegend(host) {
   rampEl.hidden = true;
   rampEl.innerHTML = '<span class="end lo"></span><span class="steps"></span><span class="end hi"></span><span class="mid"></span>';
   host.appendChild(rampEl);
+  /* @block:gto */
+  buildGtoDepth(host);
+  /* @end:block */
 }
 function syncRampLegend(ev) {
   if (!rampEl) return;
-  var key = activeMode(), m = modeInfo(key);
-  if (m.kind !== 'ramp') { rampEl.hidden = true; return; }
+  var caps = modeCaps(), want = S.colorBy, av = MODES.availability(want, caps);
+  var key = MODES.resolve(want, caps), m = modeInfo(key), mid = rampEl.querySelector('.mid');
+  /* @block:gto */
+  syncGtoDepth(key === 'gto');
+  /* @end:block */
+  /* A WANTED MODE THIS BUILD OR THIS SEAT CANNOT SERVE KEEPS ITS REASON ON THE ROW. `resolve` has
+     already fallen back to the tier paint so that no cell is coloured from a source that is not
+     there; without this the grid would simply look like TIER mode and the reader would be left to
+     guess why. The scale is emptied rather than left showing the last mode's endpoints. */
+  if (!av.available && want !== MODES.DEFAULT) {
+    rampEl.hidden = false;
+    if (rampEl.__key !== '!') { rampEl.querySelector('.steps').innerHTML = ''; rampEl.__key = '!'; }
+    rampEl.querySelector('.lo').textContent = '';
+    rampEl.querySelector('.hi').textContent = '';
+    var t = modeInfo(want).label + ' unavailable — ' + av.reason;
+    mid.textContent = t; mid.title = t;
+    rampEl.setAttribute('aria-label', t);
+    return;
+  }
+  if (m.kind === 'class') { rampEl.hidden = true; return; }
   rampEl.hidden = false;
   var sc = rampScale(key, ev), steps = rampEl.querySelector('.steps'), i, sw;
   if (rampEl.__key !== key) {
     steps.innerHTML = '';
     for (i = 0; i < sc.colors.length; i++) {
-      sw = el('i', 'k' + i);
+      /* the swatch carries the CELL's bucket class, which for a diverging ramp is a mapping and not
+         the index — the legend has to be hatched the way the grid is or the channel is half there */
+      sw = el('i', 'k' + (sc.classes ? sc.classes[i] : i));
       sw.style.background = sc.colors[i];
       sw.title = sc.stepTitles ? sc.stepTitles[i] : '';
       steps.appendChild(sw);
@@ -3949,7 +4255,7 @@ function syncRampLegend(ev) {
   }
   rampEl.querySelector('.lo').textContent = sc.lo;
   rampEl.querySelector('.hi').textContent = sc.hi;
-  rampEl.querySelector('.mid').textContent = sc.mid;
+  mid.textContent = sc.mid; mid.title = sc.mid;
   rampEl.setAttribute('aria-label', m.name + ' — ' + sc.lo + ' to ' + sc.hi + (sc.mid ? '; ' + sc.mid : ''));
 }
 function buildLegend() {
@@ -4459,10 +4765,24 @@ function renderVerdictTable(host, rec, ev) {
   } else {
     line('ev', 'EV', 'unavailable', 'no accessor', { off: true, warn: true, why: PAYWHY });
   }
-  /* 4. DIVERGENCE — against the equilibrium baseline, which no build ships yet. Named, not
-        hidden: the reason is the deliverable until P3 lands the solver output. */
-  line('divergence', 'DIVERGENCE', 'not in this build', 'no baseline', { off: true, warn: true,
-    why: MODES.availability('gto', modeCaps()).reason });
+  /* 4. DIVERGENCE — the model's RAW action against the equilibrium's, in action steps, badged with
+        the domain label the payload DERIVES from its seat count ('GTO' at two seats). Where the
+        baseline does not reach, the line stays and carries the reason instead of the number. */
+  /* @block:gto */
+  var gctx = modeCtx(ev, 'gto'), gres = gctx.base ? gtoOf(rec, ev, gctx) : null;
+  if (gres) {
+    line('divergence', 'DIVERGENCE',
+      (Math.abs(gres.d) < 0.5 ? '0' : signed(gres.d)) + '<span class="u"> action steps · ' + gtoGap(gres.d) + '</span>',
+      BASE.domainLabel, {
+        why: 'the model’s RAW tier ' + gres.raw + ' — before the display post-passes, per V3-PLAN §14 item 4 — '
+          + 'against the ' + gctx.base.depth.bb + 'bb baseline, which ' + gtoBaseText(gres) + '. Payoff source '
+          + BASE.source + (BASE.label ? ': ' + BASE.label : '') + '.'
+      });
+  } else {
+    line('divergence', 'DIVERGENCE', 'not comparable here', 'no baseline', { off: true, warn: true,
+      why: MODES.availability('gto', modeCaps()).reason });
+  }
+  /* @end:block */
   host.appendChild(box);
 }
 function sec(host, title, right) {
@@ -4564,6 +4884,17 @@ function renderVerdict(host, rec) {
     r.querySelector('.txt').textContent = w.txt;
     vb.appendChild(r);
   });
+  /* @block:gto */
+  /* THE DIVERGENCE SENTENCE joins the reason lines through the same machinery (§8 item 14) — a
+     context row, unsigned, because it is a comparison and not one of the score's own terms. */
+  var gw = gtoWhy(rec, ev);
+  if (gw) {
+    var rg = el('div', 'why ctx');
+    rg.innerHTML = '<span class="sign o">·</span><span class="txt"></span>';
+    rg.querySelector('.txt').textContent = BASE.domainLabel + ': ' + gw;
+    vb.appendChild(rg);
+  }
+  /* @end:block */
   if (S.node === '3bet') {
     /* a descriptive readout, not a ranked argument — neutral unless domination is actually biting */
     var r2 = el('div', 'why' + (d.dom >= 1.5 ? '' : ' ctx'));
@@ -5511,7 +5842,15 @@ function openDisplayHelp() {
     '<li><b>ν — nut potential</b> — dark → gold as a class more often makes the <i>best</i> hand rather than a good one.</li>' +
     '<li><b>EV</b> — expected share of the final pot: a pot FRACTION, not big blinds, badged <i>checkdown</i> because the game ' +
     'behind it has no postflop. Display only — no EV number can move a tier.</li>' +
-    '<li><b>vs GTO</b> — divergence from an equilibrium baseline. No build ships one yet, so the chip is disabled and says so.</li>' +
+    /* @block:gto */
+    '<li><b>vs GTO</b> — how far this seat\u2019s verdict is from a solved equilibrium, in <i>action steps</i>: ' +
+    '<span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#C79E33;vertical-align:-1px"></span> <b>gold = looser</b> than the equilibrium, ' +
+    '<span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#7D68A8;vertical-align:-1px"></span> <b>purple = tighter</b>, the deeper shade two steps rather than one, ' +
+    'and cells that agree stay neutral. The baseline is <b>heads-up</b>, so the mode is live at the three seats it solved ' +
+    '(SB opening, BB facing that open, SB facing the 3-bet) and dimmed with its reason everywhere else. The comparison is ' +
+    'against the model\u2019s <i>raw</i> verdict, before the two display passes the grid shows. ' +
+    (BASE ? 'The chip beside the ramp picks which solved stack to compare against.' : '') + '</li>' +
+    /* @end:block */
     '<li><b>ρ — equity ratio</b> — measured equity against the fair share of the pot for the current number of opponents: blue below par, orange above.</li>' +
     '<li><b>Δ pin</b> — needs a pinned state (Pin &amp; diff in the rail). Cells whose verdict differs from the pin light up: ' +
     '<span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#C79E33;vertical-align:-1px"></span> <b>gold = played looser</b> than the pinned state, ' +
@@ -7582,6 +7921,13 @@ function renderTable() {
    source of truth is the code; measurement's is the run that produced the file. The split is the
    generator's own, so the Method view can state it rather than assert it. */
 var MEASURED_CONST = { nuBarMeasured: 1, coolerBarMeasured: 1, nMax: 1, mosaicTotal: 1, cooler: 1, villainLattice: 1 };
+/* V3-PLAN §3.3 adjudication 10 / §6's third leg: `constants.solver` is the ONE block in here whose
+   source of truth is neither policy.mjs (authored opinion) nor this file's own Monte Carlo run
+   (measurement). It is scripts/lib/cfr.mjs's CONSTANTS export, anchored on spike S-A's measured
+   convergence and exploitability curves, and it ships its own `anchors` sub-block so every number
+   carries the measurement that fixed it. Tagged separately because the legend above the table makes
+   a provenance claim, and neither of the two existing tags is true of these four. */
+var SOLVER_CONST = { solver: 1 };
 /* V3-PLAN §6's THIRD LEG, and it was the missing one. §6's contract for a constant no measurement
    here can settle is "gated + flagged + badged": named in `constants`, bounded by a gate, and
    LABELLED where it renders. The first two were real; this was not. The Method view walks
@@ -7590,7 +7936,7 @@ var MEASURED_CONST = { nuBarMeasured: 1, coolerBarMeasured: 1, nMax: 1, mosaicTo
    red team said so in five separate memos (docs/refutations/P1.md). Keyed by DOTTED PATH because
    every one of them is a nested field, and asserted from the other side by I41(g)/I44(f), which
    read this map out of the source: a flagged constant missing from it fails the build. */
-var UNANCHORED = { 'rake.potScale': 1, 'sizing.min': 1, 'sizing.premiumCalibratedAt': 1, 'sizing.detents': 1 };
+var UNANCHORED = { 'rake.potScale': 1, 'sizing.min': 1, 'sizing.premiumCalibratedAt': 1, 'sizing.detents': 1, 'baselineQuant': 1 };
 /* v2 put four nested blocks into `constants`; JSON.stringify rendered them as one-line blobs */
 function constHTML(v, p) {
   if (v == null || typeof v !== 'object') return String(v);
@@ -7728,15 +8074,63 @@ function renderMethod() {
     '<span class="tag-m">measured</span> rows came out of the Monte Carlo run that produced this file and are carried ' +
     'across untouched. An <span class="tag-m tag-e">estimate</span> field is opinion no measurement here can ' +
     'settle: it ships bounded by a gate and named in its block\'s <i>flag</i> beside it, never anchored. ' +
+    'The <span class="tag-m">solver</span> block is the CFR+ constants from <code>cfr.mjs</code>, each anchored on a ' +
+    'spike measurement carried beside it in <i>anchors</i>. ' +
     'Nested blocks are printed as named fields, not as JSON.</p><div class="kv">' +
     Object.keys(C).map(function (k) {
-      return '<div class="k">' + k + (MEASURED_CONST[k] ? '<span class="tag-m">measured</span>' : '') +
+      return '<div class="k">' + k + (MEASURED_CONST[k] ? '<span class="tag-m">measured</span>' :
+        SOLVER_CONST[k] ? '<span class="tag-m">solver</span>' : '') +
         '</div><div class="v">' + constHTML(C[k], k) + '</div>';
     }).join('') + '</div>' +
     '<p class="t-sm dim">These are the whole model. Change one and every tier on the page moves; nothing else is hidden behind them.' +
     (HAS_ENV ? '' : ' <b>This build ships no environment layer</b> — no <code>depth</code>, <code>rake</code> or ' +
       '<code>straddle</code> block, so the table-and-stakes controls are hidden and every number here is the 100bb, ' +
       'rake-free, unstraddled reading.') + '</p>';
+  /* @block:gto */
+  /* THE EQUILIBRIUM BASELINE, rendered from the shipped block and from nothing else. The cap list
+     is `caps` (I35 clause (e): the on-screen omissions must be the solver's actual tree), the
+     "postflop does not exist" line is the payload's own `label`, which the generator DERIVED from
+     the `source` datum (clause (f)) rather than typing, and the coverage table is the map the
+     vs-GTO mode disables on (adjudication 8). Nothing in this section is prose about the solve;
+     every number and every phrase is read out of `model.baselineTiers`. */
+  if (BASE) {
+    var bb2 = BASE.block, ul = function (a) { return '<ul>' + (a || []).map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>'; };
+    var cov2 = (bb2.coverage || []), covd = cov2.filter(function (c) { return c.covered; });
+    html += '<h3>The equilibrium baseline &mdash; what <span class="tag-m">vs GTO</span> compares against</h3>' +
+      '<p>A CFR+ fixed point of the ' + bb2.domain + ' tree at ' + bb2.stack + 'bb, labelled <b>' + bb2.domainLabel +
+      '</b> &mdash; a label the payload <i>derives</i> from its own seat list (' + (bb2.seats || []).join(', ') +
+      '), so nothing multiway could ever acquire it by omission. Solved to an exploitability of ' +
+      (bb2.solver ? bb2.solver.exploitabilityBB.toExponential(2) + ' bb over ' + bb2.solver.iters + ' iterations' : 'n/a') +
+      ', value to the button ' + (bb2.solver ? f2(bb2.solver.valueBB) : '?') + ' bb/hand.</p>' +
+      '<p class="warn">Payoff <code>source</code> is <b>' + bb2.source + '</b>' + (bb2.label ? ': <b>' + bb2.label + '</b>' : '') +
+      '. That is why the button LOSES: strip position of its only source of value and its edge inverts. ' +
+      'The baseline is an exact equilibrium of a game in which the flop never comes, and every number ' +
+      'below is a number about that game.</p>' +
+      '<p class="t-sm dim">The comparison is against the <b>raw</b> model tier &mdash; the action before the two ' +
+      'display post-passes &mdash; because those passes are impositions an equilibrium is entitled to violate, ' +
+      'and scoring a post-passed tier would book the model&rsquo;s own enforcement as agreement. The grid goes on ' +
+      'painting the post-passed tier, which is what it has always painted.</p>' +
+      '<h4>What the tree models</h4>' + ul(bb2.caps && bb2.caps.modelled) +
+      '<h4>What it omits &mdash; and these are omissions, not approximations</h4>' + ul(bb2.caps && bb2.caps.omitted) +
+      '<h4>Where it is comparable</h4><table class="tbl"><tr><th>seat</th><th>node</th><th>what the solved node is</th></tr>' +
+      covd.map(function (c) {
+        return '<tr><td>' + c.pos + '</td><td>' + NODEBY[c.node].label + '</td><td>' + c.what + '</td></tr>';
+      }).join('') + '</table>' +
+      '<p class="t-sm dim">' + covd.length + ' of ' + cov2.length + ' (position, node) pairs. The other ' +
+      (cov2.length - covd.length) + ' carry the reason <b>&ldquo;' + bb2.notCovered + '&rdquo;</b> in the shipped ' +
+      'block, and the colour mode reads it from there rather than saying it here: the baseline is heads-up, ' +
+      'six-max is deferred on the payoff&rsquo;s domain, and the mode disables itself by name at every seat the ' +
+      'solve does not reach.</p>' +
+      /* baselineQuant renders BADGED, off the same UNANCHORED map the constants table uses: the P3
+         red team returned it 6-of-6 unanchorable, so it ships flagged (V3-PLAN §6) and the page
+         must not present it like the measured numbers around it. Anchor and flag both come off the
+         shipped block — I36(e) checks that this renderer exists and that the table is true. */
+      '<p class="t-sm dim">Tiers are quantized to <b>' + bb2.quant + '</b>' +
+      (UNANCHORED['baselineQuant'] ? '<span class="tag-m tag-e">estimate</span>' : '') +
+      ' &mdash; ' + bb2.quantAnchor + (bb2.quantFlag ? ' <b>' + bb2.quantFlag + '</b>' : '') + '</p>' +
+      '<p class="t-sm dim">' + bb2.depthCaveat + '</p>';
+  }
+  /* @end:block */
   var bm = MODEL.benchmarks || {};
   if (bm.hu) html += '<h3>Heads-up benchmarks (vs one random hand)</h3><table class="tbl"><tr><th>hand</th><th>expected</th><th>this build</th><th>Δ</th></tr>' +
     bm.hu.map(function (r) {
@@ -8283,6 +8677,16 @@ function init() {
     RAIL: RAIL, MODES: MODES,
     railState: function () { return RAILST; }, toggleSec: toggleSec, syncRail: syncRail,
     colorMode: function () { return { want: S.colorBy, active: activeMode(), caps: modeCaps() }; },
+    /* @block:gto */
+    gtoState: function () {
+      if (!BASE) return null;
+      var a = BASE.at(S.pos, S.node, S.raiser || defaultRaiser());
+      return { covered: a.ok, why: a.why || '', depths: BASE.depths(), depth: gtoDepth(),
+        source: BASE.source, label: BASE.label, domainLabel: BASE.domainLabel, quant: BASE.quant,
+        caps: BASE.block.caps, notCovered: BASE.block.notCovered };
+    },
+    setGtoDepth: function (bb) { S.gtoD = bb; syncLegend(); render(); renderInspector(true); },
+    /* @end:block */
     setMode: setMode, modeReadout: function (key) {
       var rec = CK[S.sel], ev = lastEv || evalNow(), m = key || activeMode();
       return rec && rec.live ? modeReadout(rec, ev, m, modeCtx(ev, m)) : null;
