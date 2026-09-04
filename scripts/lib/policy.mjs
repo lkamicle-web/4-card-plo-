@@ -198,6 +198,108 @@ export const CONSTANTS = {
       + '`premiumCalibratedAt` records that the 7-pt call premium is calibrated at pot-size and HELD CONSTANT across the axis — a bigger 3-bet is a lower SPR and the premium ought to shrink, and limitation 16 is why nothing here can say by how much, so I44(b) measures that consequence instead of inventing a coefficient. '
       + '`detents` are forward-declared UI stops with no consumer on the page today.',
   },
+  // ---- the POOL-SKILL axis (V3-PLAN §3.4 / item 5, brief §6 item 5; gates I37 and I38) ---------
+  // Brief §6 item 5 defines it in one sentence: "tougher pools fold more (shifting the villain
+  // lattice) AND play better postflop (cutting realization)". GRADE C BUILDS THE FIRST HALF ONLY,
+  // and that is a pre-written outcome rather than a cut made here — §3.6's S-B row fires, so there
+  // is no postflop payoff layer for the second half to cut through (`payoff-model.mjs` ships
+  // `ENABLED = false`; the shipped stub is a checkdown and is spr-blind).
+  //
+  // THE MECHANISM IS A COORDINATE CHANGE ON THE VPIP AXIS AND NOTHING ELSE, which is the whole of
+  // §6's "the measured v-lattice — no new opinion". The dial does not add a pathway: it names a
+  // point on the axis the model already has, the villain lattice is already measured along, and
+  // every gate from I6 to I32 already sweeps. `poolVpip` resolves it to a VPIP; `villainProfileOf`
+  // applies it once; `solve` never sees it, because by the time `solve` is called the dial IS the
+  // VPIP it was handed. I38(c) asserts exactly that by object identity — the shadow model built at
+  // (v = 55, skill = 1) is the SAME OBJECT as the one built at (v = 25, skill = 0).
+  //
+  // SO THE DIAL IS NOT AN `envOf` AXIS AND IS DELIBERATELY ABSENT FROM `envKey`. It is not a table
+  // condition, it is a POOL description, and the pool is what the villain profile already is. Pass
+  // it in the profile bag and read the answer back through `poolAt` — that is the one call that
+  // resolves it, and the one place a consumer can get it wrong is by resolving the shadow model and
+  // the solve's `v` separately, which is why `poolAt` returns both.
+  //
+  // DIRECTION, and it is the half worth stating: skill UP means the pool folds MORE, so `v` moves
+  // DOWN toward the lattice floor and HERO tightens with it (`widthFor` is increasing in v). Both
+  // halves of "the pool folds more" are the same number — fewer opponents (`nEff`) and stronger
+  // holdings (the lattice row) — which is why one coordinate carries it.
+  //
+  // WHAT THE DIAL CANNOT REACH, MEASURED AT P4 AND NOT PAPERED OVER. §6 names two anchored
+  // endpoints for the interior blend: "measured lattice at one end, solver baseline at the other".
+  // Only the lattice end is reachable. The P3 baseline is HEADS-UP with the SB on the button and it
+  // OPENS 88.85% of combos (`baselineTiers`), which is LOOSER than the lobby's 55 — so "pool =
+  // baseline" lies on the loosen side of the dial, the side Grade C does not build, and the model's
+  // own SB is a 6-max small blind out of position (baseR 0.90) against a baseline SB that is the
+  // button. I37 records that as a NOT-MEASURABLE clause with a readiness detector rather than a
+  // pass, on the I15/I36-nesting precedent: the day a shipped baseline's entry frequency lands at
+  // or below the lobby VPIP, the clause is owed a measurement and the gate fails until it gets one.
+  skill: {
+    // THE DOMAIN, AND WHAT THE P4 RED TEAM DID TO ITS ANCHOR (`docs/refutations/P4.md`). This block
+    // used to say the three numbers were ANCHORED BY CONSTRUCTION — by the two early returns in
+    // `poolVpip`. Three refuters of three refuted it, and the refutation is not academic: `min` =
+    // -1 ships 60/60 gates, the whole suite and both variants current, and it LOOSENS the pool
+    // (poolVpip(55, -1) = 85), which is the plays-better side §3.6's Grade C does not build — and
+    // `wireVP` copies this very number onto the page's slider, so a reader can select it. `max` = 2
+    // and `ref` = 0.05 shipped green too. Nothing asserted any of the three, and the early returns
+    // are removable with everything still green (`v + 0*(f - v)` IS `v`, and `v + 1*(f - v)` IS `f`
+    // for every double in [25, 90]), so they were never the anchor they were offered as.
+    //
+    // NO REPLACEMENT ANCHOR WAS INVENTED. What ships instead is a BOUND, because the domain is
+    // FORCED rather than chosen: the published blend `v + s*(f - v)` equals `v` only at s = 0 and
+    // equals `f` only at s = 1, so the blend and the measured floor fix `ref` and `max` between
+    // them, and `min` = `ref` because any lower setting loosens a pool the measurement never
+    // loosened. I38(g) re-derives all three from the published blend and the floor every run, and
+    // sweeps the dial at the page's own slider step to assert what the domain exists to guarantee:
+    // it starts at the lobby, it never moves a pool UP, and it reaches the floor only at `max`.
+    // A bound is not an anchor — `max` = 1 is a unit convention normalised against a blend that is
+    // itself §6's unanchorable row — so the triple is FLAGGED in `flag` below and badged in the
+    // Method view, and the early returns stay for the `sizingPrice`/`depthWidthFactor`/
+    // `interpolateDelta` discipline (the endpoint is the constant itself, never an arithmetic that
+    // happens to land on it) rather than as the reason the numbers are what they are.
+    min: 0, ref: 0, max: 1,
+    // ANCHORED, AND IT IS AN IDENTITY RATHER THAN A CHOICE: the dial's reach is the MEASUREMENT's
+    // reach. `villainLattice.v[0]` = 25 is the tightest pool the lattice was ever measured at, so a
+    // dial that went past it would be asking the accessor a question no trial ever answered. It is
+    // re-described here, in the lattice's own percent unit, so the transform needs no model —
+    // I38(b) asserts `vFloor === model.constants.villainLattice.v[0]` every run and fails if the
+    // measurement's floor ever moves without this constant moving with it.
+    vFloor: 25,
+    // THE INTERIOR BLEND, and it is §6's unanchorable row: linear in `s`. Nothing in this
+    // repository measures a pool-skill scale, so there is no measurement that says a pool "half way
+    // to the floor" folds half the difference rather than a third or two thirds. Linear is the
+    // form with no free parameter — it is the only interpolation the two endpoints determine on
+    // their own — and it ships FLAGGED, badged, and bounded by I37 rather than justified.
+    // A formula string, rendered by the Method view and asserted character-for-character by I37(b)
+    // against the spelling `poolVpip` actually runs — the I42(f)/I44(f) idiom, after the P1 red team
+    // shipped a page publishing a formula the code does not run.
+    blend: 'v + s*(vFloor - v)',
+    // THE DETENTS ARE FORCED BY THE LATTICE, not chosen — which is why they are not in the flag
+    // below. From the load default v = 55 the settings that land the pool ON a measured row are
+    // exactly s ∈ {0, 0.5, 1} (giving 55 / 40 / 25); 0.4 would give 43 and 0.6 would give 37, and
+    // neither is a row anybody measured. I37(c) asserts the landing every run, so an authored detent
+    // fails rather than quietly shipping a stop the accessor has to interpolate at. Away from the
+    // detents the pool IS off-lattice and `villainEq` labels it `interpolated` — the badge §6 asks
+    // for, emitted by the machinery that already exists rather than by a second one.
+    detents: [0, 0.5, 1],
+    // THE PLAYS-BETTER COEFFICIENT. NOT A NUMBER, ON PURPOSE — V3-PLAN §6 says it "cannot be
+    // anchored today: no measurement of postflop skill exists", and §3.4's Grade-C annotation says
+    // it is "not merely unanchored but UNEXERCISED". So no value is invented: it ships `null`, and
+    // I38(e) BOUNDS ITS REACH AT EXACTLY ZERO — the realization path is probed across the whole
+    // dial and must not move by one ulp, and a comment-stripped text scan asserts no module reads
+    // this field. The gate is armed against the failure that actually happens: somebody wires a
+    // realization cut to the dial, picks a coefficient because one was needed, and nothing notices.
+    playsBetter: null,
+    // THE ADMISSION ITSELF, and it grew a third record at P4's red-team stage. The sub-budget did
+    // NOT: `constants.skill` is D6's 1K block and the flag is nearly all of it, so the domain's
+    // record was paid for out of this string rather than out of a raised ceiling — the sentence
+    // that left is the one about the unreachable solver baseline, which is not one of the flagged
+    // records and survives in I37(a)'s own report line, `skill.mjs`'s `reachReadiness` docstring
+    // and METHODOLOGY §3.5. Bounded by I38(f), which requires all three records to be named here.
+    flag: 'THREE records here are opinion no measurement in this repository can settle, and one of them is not a number at all. '
+      + '`playsBetter` ships NULL because nothing here measures postflop skill (limitation 16) and Grade C leaves no payoff layer to cut through: I38(e) bounds its REACH at exactly zero rather than bounding a coefficient. '
+      + '`blend` is the dial\'s interior: the endpoints are measured (v as set, vFloor = the lattice floor), the path between them is linear because no measurement fixes a pool-skill scale, and I37(b) bounds it, SHAPE included. '
+      + '`min`/`ref`/`max` are the DOMAIN, and P4 refuted the claim that construction anchors them: min moved to -1, LOOSENING the pool, with every gate green. No anchor was invented — they are forced by the two records above and I38(g) re-derives each from the published blend and the floor.',
+  },
   // ---- the rake dial (V2-PLAN §3.2; every measurement in METHODOLOGY §5.2) ---------------------
   // CRUDE, and the plan says so. One fraction, applied two ways:
   //
@@ -826,23 +928,101 @@ export function eqAt(eq, N) { return rhoAt(eq, N); }
 export const VILLAIN_OFF = Object.freeze({ on: false, v: null, q: null, measured: null });
 
 /**
+ * The pool-skill dial's setting, normalised. Anything absent, non-finite or out of `[min, max]`
+ * reads as the LOBBY (`ref` = 0) or clamps to the domain, the same discipline `envOf` applies to
+ * every axis it owns.
+ */
+export function skillOf(p) {
+  const K = CONSTANTS.skill;
+  const s = p == null ? null : (typeof p === 'number' ? p : p.skill);
+  if (s == null || !isFinite(s)) return K.ref;
+  return Math.min(K.max, Math.max(K.min, s));
+}
+
+/**
+ * THE WHOLE OF THE SKILL AXIS: the VPIP a pool at skill `s` plays, in the lattice's own percent
+ * unit. Everything else in this file is untouched by the dial, and that is the design rather than
+ * a convenience — V3-PLAN §6 anchors the fold-more half on "the measured v-lattice, no new
+ * opinion", and a dial that resolves to a point on an axis the model already has is the only shape
+ * that claim can honestly take.
+ *
+ * TWO EARLY RETURNS, AND NEITHER IS AN OPTIMISATION.
+ *
+ *   `s === ref`  returns `v` ITSELF. At the lobby the dial is not in the path — not "the dial
+ *                computing an offset of zero". I38(a) asserts this with `Object.is`, and the whole
+ *                identity claim (I22, I32, I43's OFF path) rests on the axis being absent rather
+ *                than neutral. Same discipline as `sizingPrice` at s = 1, `depthWidthFactor` at
+ *                the reference depth, and `interpolateDelta` on a lattice hit.
+ *
+ *   `s === max`  returns `vFloor` ITSELF, for the reason `interpolateDelta`'s docstring gives:
+ *                `v + 1*(f - v)` is exact for many v and is NOT `f` for all of them in IEEE-754,
+ *                and the far endpoint has to land ON a measured lattice point or the accessor
+ *                labels the tightest pool this model can describe `interpolated` — which would be
+ *                the badge saying the opposite of what the endpoint is for.
+ *
+ * A pool already at or below the floor has nothing left to fold, so it is returned unchanged: the
+ * dial only ever moves a pool DOWN the measured axis, never up it, and never past its end.
+ *
+ * @param {number} v the pool's VPIP in percent, on the lattice's scale (25..90)
+ * @param {number|object} [skill] the dial, or anything `skillOf` reads one out of
+ * @returns {number} the VPIP the pipeline is to be solved at
+ */
+export function poolVpip(v, skill) {
+  const K = CONSTANTS.skill;
+  const s = skillOf(skill);
+  if (s === K.ref) return v;
+  if (v == null || !isFinite(v) || v <= K.vFloor) return v;
+  if (s === K.max) return K.vFloor;
+  return v + s * (K.vFloor - v);
+}
+
+/**
  * Normalise a villain-profile bag. Anything falsy, or `{on:false}`, is the OFF profile.
- * @param {object|null} p `{ on, v, q, measured }` — `measured` is a per-cell eq map from the
- *   Simulate engine (V2-PLAN §4), keyed by cell key, each value an eq array in N = 1..NMAX order.
+ *
+ * THIS IS WHERE THE SKILL DIAL IS APPLIED, and it is applied EXACTLY ONCE. `p.skill` resolves
+ * through `poolVpip` into `v`, so everything downstream — `villainEq`, `villainKey`,
+ * `profiledModel`, and the `v` the caller hands `solve` — is looking at a pool VPIP and not at a
+ * dial. Two consequences worth stating rather than discovering:
+ *
+ *   THE RESULT IS IDEMPOTENT, and it has to be. `villainEq`, `villainKey` and `profiledModel` all
+ *   re-normalise whatever they are given, so a normalised profile fed back in would have the dial
+ *   applied a SECOND time — a silent wrong pool, the exact shape of failure `envKey`'s docstring
+ *   describes. The `__pool` brand is `envOf`'s `__env` idiom verbatim, non-enumerable so
+ *   `JSON.stringify(profile)` still emits the axes the caller set, and I38(a) asserts the fixed
+ *   point by object identity.
+ *
+ *   `v` IS THE RESOLVED VPIP, `v0` IS WHAT THE SLIDER SAID. The dial is a coordinate change on the
+ *   VPIP axis (see `poolVpip`), so the pool at (v0 = 55, skill = 1) and the pool at (v0 = 25,
+ *   skill = 0) are THE SAME POOL and must be indistinguishable to every consumer — which is why
+ *   `villainKey` keys on `v` and not on the pair, and why I38(c) can assert the equivalence with
+ *   `assert.equal` on the shadow model rather than with a tolerance on its tiers.
+ *
+ * The clamp runs AFTER the dial as well as before it: the lattice span is the axis's domain, and
+ * the dial moves along that axis rather than off the end of it.
+ *
+ * @param {object|null} p `{ on, v, q, skill, measured }` — `measured` is a per-cell eq map from
+ *   the Simulate engine (V2-PLAN §4), keyed by cell key, each value an eq array in N = 1..NMAX
+ *   order; `skill` is the pool-skill dial (V3-PLAN §3.4), absent or 0 at the lobby.
  * @param {object} [model] read for the lattice span and the shipped discipline. The lattice lives
  *   in the DATA (the generator measures it), not in this file's CONSTANTS, so without a model the
  *   clamp falls back to the page's own VPIP dial, [25, 90].
- * @returns {{on:boolean, v:number|null, q:number|null, measured:object|null}}
+ * @returns {{on:boolean, v:number|null, v0:number|null, skill:number, q:number|null,
+ *            measured:object|null}}
  */
 export function villainProfileOf(p, model) {
   if (!p || p.on !== true) return VILLAIN_OFF;
+  if (p.__pool === true) return p;                  // already resolved — the dial is applied once
   const V = (model && model.constants && model.constants.villainLattice) || {};
   const vp = (model && model.meta && model.meta.vpip) || {};
   const pts = V.v || [];
   const lo = pts.length ? pts[0] : (vp.min || 25), hi = pts.length ? pts[pts.length - 1] : (vp.max || 90);
-  const v = (p.v == null || !isFinite(p.v)) ? null : Math.min(hi, Math.max(lo, p.v));
+  const v0 = (p.v == null || !isFinite(p.v)) ? null : Math.min(hi, Math.max(lo, p.v));
+  const skill = skillOf(p);
+  const v = v0 == null ? v0 : Math.min(hi, Math.max(lo, poolVpip(v0, skill)));
   const q = (p.q == null || !isFinite(p.q)) ? (V.discipline == null ? null : V.discipline) : p.q;
-  return { on: true, v, q, measured: p.measured || null };
+  const out = { on: true, v, v0, skill, q, measured: p.measured || null };
+  Object.defineProperty(out, '__pool', { value: true });   // non-enumerable: stringify stays clean
+  return out;
 }
 
 /**
@@ -976,6 +1156,14 @@ export function fnv1a(s) {
  * Every axis that can move a number is in here, for the same reason `envKey` exists: the solve memo
  * must not hand back another field's answer. `measured` contributes its own identity, because a
  * Simulate result replaces the lattice for the cells it covers.
+ *
+ * THE SKILL DIAL IS NOT IN THE KEY, AND THAT IS THE ONE EXCEPTION THE RULE ABOVE ALLOWS — because
+ * it is not an axis that can move a number independently of `v`. `villainProfileOf` has already
+ * resolved it INTO `p.v` by the time this runs, so `(v0 = 55, skill = 1)` and `(v0 = 25, skill = 0)`
+ * key identically, which is correct: they are the same pool, and a key that separated them would
+ * build two shadows of the same 123 cells and hand the memo a false distinction. Adding `skill`
+ * here would not be conservative, it would be wrong. I38(c) is the assertion that keeps it true —
+ * the two states must produce the SAME shadow object, not an equal one.
  */
 export function villainKey(profile, model) {
   const p = villainProfileOf(profile, model);
@@ -1106,7 +1294,17 @@ function profiledModelUncached(model, p, key) {
   for (const f in model) if (Object.prototype.hasOwnProperty.call(model, f)) m[f] = model[f];
   m.meta = {};
   for (const f in model.meta) if (Object.prototype.hasOwnProperty.call(model.meta, f)) m.meta[f] = model.meta[f];
-  m.meta.hash = fnv1a(key) + String(model.meta.hash).slice(8);
+  // THE BASE MODEL'S OWN HASH IS IN THE PREFIX, not only in the tail. `SOLVE_MEMO` and `AGGR_MEMO`
+  // key on `meta.hash.slice(0, 8)`, so a prefix built from `villainKey` ALONE is the same eight
+  // characters for every model wearing that profile — two different models profiled at the same
+  // (v, q) in one process would share a memo entry and the second would be handed the first's
+  // answer. Nothing in GREEN reaches that today (nothing profiles two models at once), and it is
+  // exactly the "memo key missing an axis" failure `envKey`'s docstring is about, one level up:
+  // the axis it was missing is WHICH MODEL. The tail keeps carrying the base hash so the shadow
+  // stays traceable to it; the prefix now does too, which is the half the memo reads. Found at P4
+  // while arming I38's records against a perturbed model, and asserted by I38(a) — it costs one
+  // string concatenation and closes a silent wrong answer.
+  m.meta.hash = fnv1a(`${key}@${model.meta.hash}`) + String(model.meta.hash).slice(8);
   m.cells = cells;
   return hydrate(m);
 }
@@ -1133,6 +1331,38 @@ export function villainLoadDefault(model) {
   const pts = V.v || [];
   if (!pts.length || V.discipline == null) return VILLAIN_OFF;
   return { on: true, v: pts[(pts.length - 1) >> 1], q: V.discipline, measured: null };
+}
+
+/**
+ * THE ONE CORRECT WAY TO USE THE SKILL DIAL, in one call — the pool a profile describes, resolved.
+ *
+ * The dial has two consumers and they must see the same pool: the SHADOW MODEL (which carries the
+ * lattice row the villain's range is read from) and the `v` handed to `solve` (which sets the
+ * target width, `nEff`, and the exploit split). Resolving them separately is the one way to get an
+ * inconsistent answer out of this axis — width at one VPIP, equities at another — and there is no
+ * reason to make a caller do it twice, so this does it once.
+ *
+ *     const pool = poolAt(MODEL, { on: true, v: 55, q: 0.85, skill: 0.5 });
+ *     const out  = solve(pool.model, { pos, node, v: pool.v, limpers, raiserPos });
+ *
+ * `v` comes back in SOLVE's unit (a fraction) and `profile.v` stays in the LATTICE's unit
+ * (percent), because that is the unit each of them has always used and converting either one would
+ * be a second place for the dial to round. `v0 / 100` is what the page computes from its own
+ * slider, so a skill-resolved solve is bit-for-bit a hand-moved slider — which is I38(c)'s claim
+ * and the mechanised form of §6's "no new opinion".
+ *
+ * With the profile OFF this returns the model itself and a null `v`, because a dial whose whole
+ * mechanism is the measured lattice has nothing to act on when the lattice is not being read. That
+ * is a property worth having rather than a gap: it is why the axis cannot leak into I22's or I32's
+ * legacy lane no matter what a caller passes.
+ *
+ * @param {object} model the shipped model
+ * @param {object|null} profile see `villainProfileOf`; `skill` is the dial
+ * @returns {{profile:object, model:object, v:number|null, skill:number}}
+ */
+export function poolAt(model, profile) {
+  const p = villainProfileOf(profile, model);
+  return { profile: p, model: profiledModel(model, p), v: p.v == null ? null : p.v / 100, skill: p.skill || 0 };
 }
 
 /**
@@ -1234,7 +1464,7 @@ export function hydrate(model) {
   return model;
 }
 
-function cellList(model) {
+export function cellList(model) {
   if (!model.__list) {
     const list = [];
     for (const key of Object.keys(model.cells)) {
@@ -1277,7 +1507,7 @@ export function rankTable(model, pos, node, v, opts) {
 }
 
 /** score at a given cumulative frequency, linearly interpolated between straddling cells */
-function scoreAtCut(rows, w) {
+export function scoreAtCut(rows, w) {
   if (w <= 0) return rows.length ? rows[0].S + 1 : 0;
   for (let i = 0; i < rows.length; i++) {
     if (rows[i].cumMid >= w) {
@@ -1318,6 +1548,306 @@ function aggressiveSetUncached(model, pos, node, v, opts) {
     set.add(r.key);
   }
   return { set, table: t, w };
+}
+
+// ---------------------------------------------------------------------------
+// 4b. THE ABSOLUTE-EV CUT — a SECOND predicate, beside the percentile one
+// ---------------------------------------------------------------------------
+/*
+ * V3-PLAN §3.4 and §5.4. The cut is the rule "play it when its EV is positive" rather than "play
+ * the best 28%", and it is METHODOLOGY limitation 17's designated structural fix: a percentile cut
+ * can change WHICH hands you play but never HOW MANY, and this is the one construction that can
+ * express *fewer hands are profitable here*.
+ *
+ * WHERE IT LIVES, AND WHY IT IS NOT INSIDE `aggressiveSet`. §3.4 says the predicate runs "beside the
+ * percentile cut in `aggressiveSet`", and §5.4's I34 quarantine says tier output must be identical
+ * across view modes BY OBJECT IDENTITY. Those two sentences are jointly satisfiable in exactly one
+ * shape: view mode is NOT an input to `solve` or `aggressiveSet`, and the EV layer is a SIBLING
+ * accessor that consumes their memoised results without ever writing into them. A mode flag threaded
+ * into `aggressiveSetUncached` without a matching change to the memo key is precisely the poisoning
+ * I34 is written to catch — the second caller at the same settings would be handed the first
+ * caller's mode's answer, silently. So `evCut` reads `solve`'s output object, hands the SAME object
+ * back as `solved`, and builds its own map beside it. Nothing below assigns to a memoised object.
+ *
+ * THE ACCESSOR IS A PER-CALL ARGUMENT. This file has no imports — the build inlines it verbatim
+ * (see the header) — so `payoff` arrives as an argument on every call: the gates pass
+ * `makePayoff(model)`, and the page will pass the `PAY` it already builds at boot on the day a
+ * control lands (none ships this phase, on the item-9 precedent). A module-level `setPayoff` global
+ * would be V3-PLAN §2's "position re-entering through global state" trap wearing a different hat,
+ * and would alias two models' EV in one process. `payoff.modelHash` and `payoff.route` are
+ * therefore IN the memo key.
+ *
+ * WHAT IT CLAIMS UNDER GRADE C (§3.6, spike S-B): nothing about accuracy. The payoff behind it is
+ * the checkdown stub, every percentile-node reading comes back `supported: false`, and the badge
+ * says so on every cell. The cut is display-only, and I34 is what makes that coherent rather than a
+ * hedge: under the quarantine no EV error of any size can move a tier.
+ */
+
+/**
+ * Is the EV surface allowed to CUT the tiers rather than merely be shown beside them?
+ *
+ * §5.4: gated on `model.calibration.verdict === 'pass'`, which only the P5 ceremony may stamp, and
+ * which S-C's phase-0 verdict means can only ever be stamped FAIL (criteria PC-0..PC-8 are parked
+ * at full strength in `scripts/gates/reserved.mjs`; PC-0 is failure-closed). No shipped model
+ * carries a `calibration` block at all, so this reads FALSE by absence as well as by value — and
+ * the path behind it still has to EXIST, or the gate would be guarding a comment. I34(d) asserts
+ * both halves: false on the shipped model, and a fabricated distinct-hash twin cutting real tiers.
+ *
+ * The comparison is `=== 'pass'` and nothing looser. A truthy check would let `verdict: 'passed'`,
+ * `verdict: 1` or `verdict: true` through, and the whole point of the flag is that only one exact
+ * ceremony can flip it.
+ */
+export function evPrimary(model) {
+  return !!model && !!model.calibration && model.calibration.verdict === 'pass';
+}
+
+/**
+ * THE ONE PLACE AN EV BADGE IS SPELLED. §5.4: "a unit test asserts the badge text derives from
+ * `source`/`se`, never hard-coded".
+ *
+ * All three inputs are load-bearing, which is what makes the derivation checkable: `supported`
+ * chooses the prefix, `source` names the route in both branches (so a route change is visible even
+ * on an unsupported reading), and `se` prints the error bar the number actually carries. Perturb any
+ * one of them and the string moves — that is the gate's clause (c) and the unit test's whole job.
+ *
+ * The vocabulary is the page's existing one: `evOf` already badges an unsupported payoff return
+ * `'unsupported'`, and this leads with the same word rather than inventing a second, quieter one.
+ */
+export function evBadge(r) {
+  const src = (r && typeof r.source === 'string' && r.source) ? r.source : 'unknown';
+  const se = r ? r.se : Infinity;
+  return (r && r.supported ? src : 'unsupported/' + src)
+    + ' ±' + (typeof se === 'number' && isFinite(se) ? se.toPrecision(3) : '∞');
+}
+
+/**
+ * The bb amount one player puts in at the decision node — the DISPLAY SCALE of `evBB`, and nothing
+ * else.
+ *
+ * DERIVED, NEVER TYPED. It is the first rung of `constants.solver.sizingLadder` — "3 / 9 / 27 / 81",
+ * the pot-limit maximum ladder from 0.5/1.0 blinds, which §6's phase-0 measured block records as an
+ * ARITHMETIC IDENTITY OF THE GAME recomputed by `potLimitLadder` and re-derived by I35. So the open
+ * size enters here as an identity the repository already ships and gates, and this function
+ * introduces no constant of its own. A straddle doubles the betting unit, so the rung is quoted in
+ * the unit the rest of the environment is quoted in.
+ *
+ * IT IS A SCALE AND NOTHING TURNS ON IT. Under the checkdown geometry the pot is `(nOpp + 1)` stakes
+ * and `evBB = stake * ((nOpp + 1) * ev * (1 - r) - 1)`, so `stake` multiplies the whole expression:
+ * `keep`, `mix`, `width` and the MIX band's `k` are all invariant under it. Gate I39 asserts exactly
+ * that by perturbing it, which is what keeps a display convenience from becoming a felt constant.
+ *
+ * THROWS rather than defaulting, on payoff.mjs's own `prepare` discipline: a model with no ladder is
+ * a wiring error, not a request, and the alternative to failing loudly would be to type a bb figure
+ * here — which §6 forbids without an anchor, a flag and a gate.
+ */
+export function evStake(model, env) {
+  const S = model && model.constants && model.constants.solver;
+  const rung = S && typeof S.sizingLadder === 'string' ? parseFloat(S.sizingLadder) : NaN;
+  if (!(isFinite(rung) && rung > 0)) {
+    throw new TypeError('evStake: constants.solver.sizingLadder is missing or unreadable — the EV '
+      + 'scale is the ladder\'s first rung (an identity of the game) and there is none to read');
+  }
+  return rung * unitBB(env);
+}
+
+/**
+ * The request shape the page's `MODES.requestFor` builds, reproduced here so the layer asks the
+ * accessor exactly what the surface asks it.
+ *
+ * Hero-only, `nOpp` copies of hero's own key: the stub payoff has no villain range to hand it, so
+ * the honest request is the one the page already makes and already badges. Every return is therefore
+ * `supported: false` at the percentile nodes under Grade C — the multiway door — and that is the
+ * reading, not a defect to be promoted away. Using a fractional-N `eqAt` instead would bypass the
+ * frozen §2 interface entirely.
+ */
+function evRequest(key, nOpp) {
+  if (!(typeof nOpp === 'number' && isFinite(nOpp)) || nOpp <= 1) return [key];
+  const a = [key];
+  for (let i = 0, n = Math.floor(nOpp); i < n; i++) a.push(key);
+  return a;
+}
+
+/** the stamped MIX-band multiplier, or null when the model carries none (fails closed: no band) */
+export function evMixKOf(model) {
+  const b = model && model.constants && model.constants.evCut;
+  return b && typeof b.mixK === 'number' && isFinite(b.mixK) ? b.mixK : null;
+}
+
+/**
+ * The standard error on `eqMix` — the vs-3-bet blend — in pot fractions.
+ *
+ * The mix is NOT A CELL, so the frozen accessor cannot answer for it: `payoff()` takes cell keys and
+ * a mix is a weighted sum over four villain ranges. The blend's own error is therefore assembled the
+ * way the blend is: each component carries `seOfTrials(meta.trials.vs3bet)` in equity points, they
+ * are independent measurements, so the weighted sum carries `se * sqrt(sum m_i^2)`. Gate I39 names
+ * this as a SECOND EV route and says why it exists rather than letting it pass unremarked.
+ */
+function evMixSE(model, mix) {
+  const t = model.meta.trials && model.meta.trials.vs3bet;
+  let w = 0;
+  for (let i = 0; i < mix.length; i++) w += mix[i] * mix[i];
+  return seOfTrials(t > 0 ? t : 0) * Math.sqrt(w) / 100;
+}
+
+/**
+ * One cell's EV layer. THE arithmetic, in one place, for both routes.
+ *
+ *     evBB = (ev * rakeRhoFactor(env) - invShare) * potMult * potSize - stake
+ *
+ * RAKE ENTERS ONLY THROUGH `rakeRhoFactor`, which is the exact I31(c) machinery — `min(pct,
+ * capBB/(rakePot*unit))` with the depth coupling and the straddle-doubled cap unit already in it.
+ * §7.2's I39 row fails on "rake re-modelled inside the payoff", and a per-hand cap read off
+ * `potMult` would be exactly that.
+ *
+ * EV(FOLD) = 0 BY CONSTRUCTION, not by arithmetic that happens to cancel: the only money in this
+ * expression is money that goes in AT OR AFTER the decision node. Blinds are sunk, so folding
+ * neither wins nor loses anything measured here, and there is no `foldEV` term to get wrong.
+ */
+function evLayerCell(ev, se, source, supported, potMult, invShare, rho, potSize, stake, k) {
+  const evBB = (ev * rho - invShare) * potMult * potSize - stake;
+  const seBB = se * rho * potMult * potSize;
+  return {
+    // the accessor's six keys, carried through UNCHANGED. `potMult` and `invShare` are the pot
+    // geometry the number was built on, and a layer that dropped them would be a layer whose
+    // arithmetic cannot be checked from its own output — which is exactly what gate I39(a) does.
+    ev, se, source, supported, potMult, invShare,
+    evBB, seBB,
+    badge: evBadge({ source, se, supported }),
+    keep: evBB >= 0,
+    mix: k != null && Math.abs(evBB) < k * seBB,
+    // §3.4's "margins gaining a third unit": the page already carries score points and equity
+    // points, and this is bb. `marginOf` names what the margin is measured FROM, and under the
+    // EV cut that reference is the fold — which is at exactly zero, which is the whole point.
+    margin: evBB, marginUnit: 'bb', marginOf: 'the fold',
+  };
+}
+
+/**
+ * THE EV CUT at one state — the second predicate, computed beside the percentile one.
+ *
+ * `set ∩ {EV >= 0}` is the EV-mode aggressive set. It is stored HERE, separately; the tier path is
+ * byte-identical whether or not anybody calls this, which is why I22, I32 and the v3 default fixture
+ * need no ceremony for this phase.
+ *
+ * THE MEMO KEY carries `payoff.modelHash`, the route tag, `ip`, this model's own hash prefix, the
+ * whole state and `envKey`. `scripts/lib/policy.mjs` is OUTSIDE gate I33(g)'s `MEMO_SCOPE` by
+ * filename, so that clause's text detector will never look at this key — which is exactly why it is
+ * written as though the detector were watching, and why I39 asserts the ip-separation dynamically
+ * (the `ipMemoAliases` idiom) instead of trusting a scan that does not run here.
+ *
+ * @param {object} model  the model to solve (a shadow, under a villain profile)
+ * @param {object} state  the same state `solve` reads, plus optional `ip` and `payoff`
+ * @param {function} payoff  the frozen §2 accessor, bound by the CALLER to its own model
+ */
+const EV_MEMO = new Map();
+export function evCut(model, state, payoff) {
+  const solved = solve(model, state);
+  const ip = !!(state && state.ip);
+  const hash = model.meta.hash ? model.meta.hash.slice(0, 8) : '';
+  const key = `${payoff && payoff.modelHash ? payoff.modelHash : ''}|${(payoff && payoff.route) || 'projection'}`
+    + `|ip${ip ? 1 : 0}|${hash}|${state.pos}|${state.node}|${state.v}`
+    + `|${state.limpers == null ? 2 : state.limpers}|${state.raiserPos || 'CO'}`
+    + `|${envKey(state)}|${state.mix ? state.mix.join(',') : ''}`;
+  const hit = EV_MEMO.get(key);
+  if (hit) return hit;
+  if (EV_MEMO.size >= MEMO_CAP) EV_MEMO.clear();
+  const out = evCutUncached(model, state, payoff, solved, ip);
+  EV_MEMO.set(key, out);
+  return out;
+}
+
+/**
+ * THE PER-CELL ARITHMETIC, once, for both callers.
+ *
+ * `evCut` (the sibling accessor, which reads `solve`'s memoised output) and the EV-PRIMARY branch
+ * inside `solveUncached` (which cannot call `solve` — that is the recursion) both come through here,
+ * so there is exactly one EV expression in this file and no way for the displayed number to drift
+ * from the number a tier was cut on the day the primary path is ever reachable.
+ *
+ * `N` and `env` are passed in rather than read off a solve, precisely so the primary path can hand
+ * over its own `table.N` before a solve object exists.
+ */
+function evCells(model, state, payoff, env, N, ip, k) {
+  const rho = rakeRhoFactor(env);
+  const stake = evStake(model, env);
+  const cells = {};
+  let nOpp = 0, potSize = 0;
+
+  if (state.node === '3bet') {
+    /* THE POT IS WRITTEN FROM THE PRICE, exactly as the page's own `nodePotBB` writes it: the
+       vs-3-bet node commits to one pot quantity and that quantity is the price, so `pot/call =
+       (1 - p)/p` and hero's call brings the final pot to `stake/p`. Reading `sizingPrice(env.sizing)`
+       rather than the bare constant is the same formula with the sizing axis read — at the shipped
+       default the function returns the constant BY REFERENCE, so this is the page's number bit for
+       bit. The consequence is an IDENTITY rather than a tolerance:
+
+           evBB >= 0  <=>  eqMix * (1 - r) / p >= 1  <=>  eqMix >= p / (1 - r) = breakevenPrice(env)
+
+       which is what gate I39's sign clause asserts, with "within tolerance" left to mean only the
+       ±se neighbourhood of zero where the measurement itself cannot resolve the side. */
+    const p = sizingPrice(env.sizing);
+    const nodePot = (1 - p) / p;
+    potSize = stake * (nodePot + 1);
+    const mix = (state.mix && state.mix.length === 4) ? state.mix : CONSTANTS.vs3bet.mix;
+    const se = evMixSE(model, mix);
+    for (const it of cellList(model)) {
+      cells[it.key] = evLayerCell(eqMixOf(it.cell, mix), se, 'checkdown', false, 1, 0, rho, potSize, stake, k);
+    }
+  } else {
+    /* THE CHECKDOWN GEOMETRY, stated: everyone at the node puts in one stake and it checks down, so
+       the pot IS `(nOpp + 1)` stakes and the final pot is the pot at the node (the stub's own
+       `potMult = 1`). Hero profits exactly when his raked share beats his contribution — the model's
+       own fair-share reading, `(nOpp + 1) * ev * (1 - r) >= 1`, which is `breakeven(N)` rearranged. */
+    nOpp = Math.min(Math.max(Math.round(N), 1), model.meta.nMax || 5);
+    potSize = stake * (nOpp + 1);
+    const spr = Math.max(0, effectiveDepth(env) / potSize);
+    for (const it of cellList(model)) {
+      const r = payoff(evRequest(it.key, nOpp), potSize, spr, { ip });
+      cells[it.key] = evLayerCell(r.ev, r.se, r.source, r.supported, r.potMult, r.invShare, rho, potSize, stake, k);
+    }
+  }
+  return { cells, stake, potSize, nOpp, rho };
+}
+
+function evCutUncached(model, state, payoff, solved, ip) {
+  const env = solved.env;
+  const total = model.meta.comboTotal;
+  const k = evMixKOf(model);
+  const base = evCells(model, state, payoff, env, solved.N, ip, k);
+  const cells = base.cells;
+
+  /* WIDTH — the combo mass of `set ∩ keep`, the quantity I40 watches move.
+     At the percentile nodes `set` is `aggressiveSet`'s own set, read back from the same memo the
+     tier path read it from: the EV predicate runs BESIDE it, on the same cells, and the difference
+     between the two widths is what the cut buys. The vs-3-bet node has no percentile cut to run
+     beside — its thresholds are already absolute — so its comparand is the node's own aggressive
+     tiers, read (never written) off the memoised solve. */
+  let inSet;
+  if (state.node === '3bet') {
+    inSet = (key) => { const e = solved.cells[key]; return !!e && (e.wouldBe === 'T1' || e.wouldBe === 'T2'); };
+  } else {
+    const set = aggressiveSet(model, state.pos, state.node, state.v,
+      { limpers: state.limpers, raiserPos: state.raiserPos, env }).set;
+    inSet = (key) => set.has(key);
+  }
+  let evCombos = 0, setCombos = 0, keepCombos = 0, mixCombos = 0;
+  for (const it of cellList(model)) {
+    const L = cells[it.key];
+    const inS = inSet(it.key);
+    if (inS) setCombos += it.combos;
+    if (L.keep) keepCombos += it.combos;
+    if (L.mix) mixCombos += it.combos;
+    if (inS && L.keep) evCombos += it.combos;
+  }
+
+  return {
+    cells, solved, env, mixK: k,
+    stake: base.stake, potSize: base.potSize, nOpp: base.nOpp, rho: base.rho,
+    width: evCombos / total,
+    setWidth: setCombos / total,
+    keepWidth: keepCombos / total,
+    mixWidth: mixCombos / total,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1479,6 +2009,11 @@ function solve3bet(model, state) {
 // 6. solve — the whole pipeline for one (pos, node, v)
 // ---------------------------------------------------------------------------
 /**
+ * THE POOL-SKILL DIAL IS NOT A FIELD OF `state`, and passing one here does nothing. It is a POOL
+ * description, it lives on the villain profile, and it has already been resolved into `state.v` by
+ * the time this runs — see `poolAt`, which is the one call that resolves it and hands back both
+ * the shadow model and the `v` to solve at. Gate I38(c) asserts the equivalence.
+ *
  * @param {object} model the MODEL literal
  * @param {object} state { pos, node, v (fraction 0.25..0.90), limpers, raiserPos, mix }
  * @returns {{ cells:Object, order:string[], N:number, rawN:number, extrapolated:boolean,
@@ -1491,22 +2026,28 @@ function solve3bet(model, state) {
 const SOLVE_MEMO = new Map();
 const MEMO_CAP = 800;
 
-export function clearSolveMemo() { SOLVE_MEMO.clear(); AGGR_MEMO.clear(); }
+export function clearSolveMemo() { SOLVE_MEMO.clear(); AGGR_MEMO.clear(); EV_MEMO.clear(); }
 
 export function solve(model, state) {
   hydrate(model);
+  /* THE EV-PRIMARY FLAG IS READ ABOVE THE CACHE AND GOES INTO THE KEY. §7.2's I34 row fails on
+     "a flag check below the cache key", and this is the line that makes that impossible: two
+     models differing only in `calibration.verdict` produce different keys, so neither can be
+     handed the other's tiers. It is FALSE on every shipped model — see `evPrimary` — so the
+     component is the constant `0` in every real run and costs nothing. */
+  const evP = evPrimary(model);
   const key = `${model.meta.hash ? model.meta.hash.slice(0, 8) : ''}|${state.pos}|${state.node}|${state.v}|`
     + `${state.limpers == null ? 2 : state.limpers}|${state.raiserPos || 'CO'}|${state.mix ? state.mix.join(',') : ''}`
-    + `|${envKey(state)}`;
+    + `|${envKey(state)}|${evP ? `ev:${(state.payoff && state.payoff.modelHash) || ''}` : 0}`;
   const hit = SOLVE_MEMO.get(key);
   if (hit) return hit;
-  const out = solveUncached(model, state);
+  const out = solveUncached(model, state, evP);
   if (SOLVE_MEMO.size >= MEMO_CAP) SOLVE_MEMO.clear();
   SOLVE_MEMO.set(key, out);
   return out;
 }
 
-function solveUncached(model, state) {
+function solveUncached(model, state, evP) {
   const total = model.meta.comboTotal;
   const node = state.node, pos = state.pos, v = state.v;
   const env = envOf(state);
@@ -1525,6 +2066,30 @@ function solveUncached(model, state) {
     // 8a. positional nesting — union-cascade over the earlier seats of this node's chain.
     // Copied first: the per-position sets are memoised and must never be mutated in place.
     const active = new Set(cur.set);
+    /* ---- THE EV-PRIMARY PATH (V3-PLAN §5.4). REAL, AND UNREACHABLE. ---------------------------
+       `evPrimary(model)` is gated on `model.calibration.verdict === 'pass'`, which only the P5
+       ceremony may stamp and which S-C's phase-0 verdict means can only ever be stamped FAIL. So
+       this branch does not execute in any shipped run — and it has to EXIST anyway, because a
+       branch nobody has written is not a gated feature, it is a comment, and gate I34(d) fabricates
+       a distinct-hash twin precisely to prove this code cuts real, different tiers.
+
+       IT REQUIRES A PAYOFF AND THROWS WITHOUT ONE. Falling back to the score here would be the worst
+       available failure: the page would claim EV primacy and silently ship percentile tiers. The
+       accessor arrives on the state because this file cannot import it (see `evCut`), and the flag
+       plus that accessor's model hash are both in the solve memo key, above the cache.
+
+       WHAT IT CUTS: `set ∩ {EV >= 0}` — §3.4's second predicate, applied to the aggressive set the
+       percentile cut produced. The set is COPIED above before anything touches it; the memoised
+       `cur.set` is never written to. */
+    if (evP) {
+      if (!state.payoff) {
+        throw new TypeError('solve: model.calibration.verdict is \'pass\' so the EV cut is primary, '
+          + 'but state.payoff is missing — a tier cut on EV needs an EV, and scoring instead would '
+          + 'ship percentile tiers under an EV-primary label');
+      }
+      const ev = evCells(model, state, state.payoff, env, table.N, !!state.ip, evMixKOf(model));
+      for (const k of [...active]) if (!ev.cells[k] || !ev.cells[k].keep) active.delete(k);
+    }
     const chain = NEST_CHAIN[node];
     const ci = chain.indexOf(pos);
     if (ci > 0) {

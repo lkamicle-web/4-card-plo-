@@ -136,7 +136,7 @@ export const CATALOG = [
       + 'failure. No upper bound is asserted; the band is reported.',
   },
   {
-    id: 'I34', status: 'reserved', runner: 'verify', phase: 'P4', plan: '§5.4, §7.2',
+    id: 'I34', status: 'live', runner: 'verify', phase: 'P4', plan: '§5.4, §7.2',
     claim: 'EV quarantine: tier output bit-identical across view modes at every setting, verified '
       + 'in one process with modes toggled interleaved (the settings-hash-walk idiom), with an '
       + 'object-identity clause (assert.equal, not tolerance); badge text derives from source/se; '
@@ -194,23 +194,53 @@ export const CATALOG = [
       + 'is §3.3\'s sentence coming true rather than a defensive clause.',
   },
   {
-    id: 'I37', status: 'reserved', runner: 'verify', phase: 'P4', plan: '§6, §7.2',
+    id: 'I37', status: 'live', runner: 'verify', phase: 'P4', plan: '§6, §7.2',
     claim: 'divergence accounting: signed vs-GTO divergence combo-weighted ~ 0 at pool = baseline; '
       + 'per-cell convergence toward equilibrium as the skill dial rises; the interior blend '
       + 'interpolates monotonically between two anchored endpoints, each reproduced exactly.',
     fails: 'an interior blend that is not bounded by its endpoints — the unanchored constant\'s teeth.',
     prediction: 'expected falsified: the rank-overlap rows (BROADWAY_RUN, RUN0_HIGH) violate '
       + 'monotone convergence and move most as the pool tightens, not the junk rows.',
+    measured: 'P4. THE PREDICTION IS CORROBORATED, and it is the sharpest reading this gate has: 29 '
+      + 'of 369 (node, cell) readings violate monotone convergence, and the two rank-overlap rows §7.2 '
+      + 'names LEAD BY RATE — BROADWAY_RUN 8 of 15, RUN0_HIGH 3 of 12 — while TRASH, the junk row the '
+      + 'prediction says will not be the culprit, is 1 of 12 and eighth. The set is a frozen record in '
+      + 'scripts/lib/skill.mjs, compared in both directions every run. THE OTHER CLAUSE IS NOT '
+      + 'MEASURABLE and is recorded rather than passed (the I15 / I36-nesting precedent): "pool = '
+      + 'baseline" is a setting of the pool dial, and the shipped HU baseline OPENS 88.85% of combos '
+      + 'at SB|rfi — 33.85 points LOOSER than the lobby 55 — so it lies on the plays-better side of '
+      + 'the axis, which Grade C does not build. The detector is armed on the shipped entry frequency '
+      + 'and fails the day it lands at or below the lobby. Measured beside it, because unmeasurable is '
+      + 'not a reason to publish nothing: the signed combo-weighted divergence is NEGATIVE at all three '
+      + 'covered nodes (the model is tighter than the HU equilibrium everywhere) and GROWS as the pool '
+      + 'tightens at two of them — SB|rfi -1.095 to -1.200, BB|raise -0.708 to -0.852, SB|3bet flat at '
+      + '-0.917. So monotone exploit-to-equilibrium convergence, which §3.4 offered for falsification, '
+      + 'is falsified in the aggregate as well as per cell.',
   },
   {
-    id: 'I38', status: 'reserved', runner: 'verify', phase: 'P4', plan: '§6, §7.2',
+    id: 'I38', status: 'live', runner: 'verify', phase: 'P4', plan: '§6, §7.2',
     claim: 'skill axis: the lobby endpoint reproduces the current model exactly (object identity); '
       + 'combo-weighted width tightens with skill; per-cell exceptions enumerated, never tolerated '
       + 'away; the plays-better coefficient\'s reach bounded.',
     fails: 'an unanchored coefficient reaching further than its flag admits.',
+    measured: 'P4. The axis ships as a COORDINATE CHANGE on the VPIP axis and nothing else, which is '
+      + 'what makes §6\'s "the measured v-lattice — no new opinion" an identity rather than a slogan: '
+      + 'the pool at (v0, s) and the pool at (poolVpip(v0,s), 0) are the SAME shadow object and hand '
+      + 'back the SAME solve object, asserted over 336 solves. The lobby endpoint is therefore the '
+      + 'model itself by construction, and the dial cannot reach the legacy lane at all — its whole '
+      + 'mechanism is the lattice, so with the villain profile OFF it is inert whatever a caller '
+      + 'passes. Combo-weighted width tightens 16.12% to 13.76% over the 21 legal pairs, monotone at '
+      + 'every step, with 6 endpoint and 11 interior exceptions ENUMERATED in scripts/lib/skill.mjs '
+      + 'rather than allowed for: the six vs-3-Bet pairs, all through BROADWAY_RUN|DS and '
+      + 'BROADWAY_RUN|SSA going T3 to T2, which is CALL to AMBUSH CALL — a tier label moving, not a '
+      + 'hand — plus five nut-gate releases. THE PLAYS-BETTER COEFFICIENT IS BOUNDED AT REACH ZERO '
+      + 'rather than at a size: it ships null (no number was invented), eight files are scanned '
+      + 'comment- and literal-stripped so only policy.mjs\'s declaration may name it, and over 9,225 '
+      + 'per-cell readings along the dial the realization the pipeline uses is bit-identical to the '
+      + 'dial-blind realization(pos, N, nu, d).',
   },
   {
-    id: 'I39', status: 'reserved', runner: 'verify', phase: 'P4', plan: '§7.2',
+    id: 'I39', status: 'live', runner: 'verify', phase: 'P4', plan: '§7.2',
     claim: 'EV arithmetic: EV(fold) = 0; sign agrees with breakeven at vs-3-bet within tolerance; '
       + 'rake enters exactly (the I31(c) extension); badges derive from data.',
     fails: 'rake re-modelled inside the payoff instead of entering through the exact machinery.',
@@ -218,7 +248,7 @@ export const CATALOG = [
       + 'hero\'s share of E[F] 0.199 to 0.730 across the measured grid.',
   },
   {
-    id: 'I40', status: 'reserved', runner: 'verify', phase: 'P4', plan: '§3.4, §7.2',
+    id: 'I40', status: 'live', runner: 'verify', phase: 'P4', plan: '§3.4, §7.2',
     claim: 'EV-cut behavior: in EV mode rake narrows width at percentile nodes (the deliberate '
       + 'anti-I31(a)) and depth moves width with §5.4\'s seat signs; bounds the EV MIX band width.',
     fails: 'the coupling inverting somewhere — in which case ship the finding.',

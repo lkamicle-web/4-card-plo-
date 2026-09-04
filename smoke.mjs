@@ -568,6 +568,136 @@ if (VARIANT_NAME === 'lite') {
 console.log(`  ..    baseline ${gto.block.domainLabel} · ${gto.block.source} · quant ${gto.block.quant} · `
   + `depths ${dep.map((d) => d.t).join('/') || 'none'}`);
 
+/* 8b — THE EV COLOUR MODE, THE THREE PRESENTATIONS, AND THE SKILL DIAL (V3-PLAN §8 items 13/14/15,
+   §5.4). Three claims a grep cannot make, in the shape section 8 above already uses for vs-GTO.
+
+   THE FIRST IS I13 IN THE EV MODE. §8: "I13 (combos partition) asserted in every mode". Statically
+   the partition is gate I13's own business; here it is the RUNTIME half — every live cell must come
+   out of `paintOf` carrying a bucket class, so no cell is left unpainted (and so unreadable in the
+   colorblind channel) by a mode whose domain is computed rather than enumerated.
+
+   THE SECOND IS THE QUARANTINE, SEEN FROM OUTSIDE. Gate I34 proves in Node that tiers are identical
+   by object across view modes. This asserts the consequence a user could actually notice: paint the
+   grid in EV, in every presentation, and back, and the 123 tier classes are the same string they
+   were — with a memo that has been walked between. If the page had threaded the mode into the
+   solve, this is where it would show.
+
+   THE THIRD IS THE DIAL, and what is checked is that it is a COORDINATE CHANGE and says so: the
+   pool VPIP it resolves to, the lattice badge at a detent versus between two, and the fact that at
+   skill 0 the page is the page without it. */
+const evs = await page.evaluate(() => {
+  const R = window.__rundown, out = {};
+  const classesOf = () => [...document.querySelectorAll('.cell:not(.void)')].map((c) => c.className);
+  const tiersOf = () => classesOf().map((c) => (c.match(/\bt\d\b/) || [''])[0]).join(',');
+  R.setPos('CO'); R.setNode('rfi'); R.setV(55); R.setMode('action');
+  out.tiersBefore = tiersOf();
+  R.setMode('ev');
+  out.chip = (() => { const b = document.querySelector('.modesw button[data-mode=ev]');
+    return { dis: b.getAttribute('aria-disabled'), pressed: b.getAttribute('aria-pressed'), title: b.title }; })();
+  out.active = R.colorMode().active;
+  out.painted = classesOf().filter((c) => /\bk\d\b/.test(c)).length;
+  out.live = classesOf().length;
+  const ramp = document.querySelector('.ramp');
+  out.legend = { hidden: ramp.hidden, lo: ramp.querySelector('.lo').textContent,
+    hi: ramp.querySelector('.hi').textContent, mid: ramp.querySelector('.mid').textContent,
+    aria: ramp.getAttribute('aria-label'),
+    steps: [...ramp.querySelectorAll('.steps i')].map((i) => i.className),
+    titles: [...ramp.querySelectorAll('.steps i')].map((i) => i.title) };
+  out.readout = R.modeReadout('ev');
+  out.ev = R.evState();
+  out.quar = R.evQuarantine();
+  /* THE PRESENTATIONS ARE READ IN TIER MODE, which is the only mode whose cells carry a `tN` class
+     at all — a ramp mode paints a bucket instead, so reading tiers under one would compare two
+     empty strings and pass for the wrong reason. Each presentation is visited with the grid painted
+     in EV and then back in TIER, so the memo is walked between readings the way I34's own settings
+     walk does rather than being asked the same question three times in a row. */
+  R.setMode('action');
+  out.pres = [];
+  for (const k of ['ev', 'delta', 'score']) {
+    R.setPres(k);
+    R.setMode('ev'); R.setMode('action');
+    out.pres.push({ k, applied: R.S.pres, tiers: tiersOf(), readout: R.modeReadout('action') });
+  }
+  out.tiersAfter = tiersOf();
+  /* the dial */
+  out.skill0 = R.skillState();
+  if (out.skill0) {
+    const keyAt = () => R.vpKey();
+    out.keyLobby = keyAt();
+    R.setSkill(0.5); out.skillHalf = R.skillState(); out.keyHalf = keyAt();
+    R.setSkill(0.37); out.skillOdd = R.skillState();
+    R.setSkill(0); out.keyBack = keyAt();
+  }
+  R.setPos('UTG'); R.setV(55);
+  return out;
+});
+check(evs.chip.dis === 'false' && evs.chip.pressed === 'true' && evs.active === 'ev',
+  'the EV colour mode is live in this build and paints when selected',
+  `${evs.chip.dis} / ${evs.chip.pressed} / active ${evs.active}`);
+check(evs.painted === evs.live && evs.live === 123,
+  'I13 in EV: every live cell carries a bucket class', `${evs.painted} of ${evs.live}`);
+check(evs.legend.steps.join(',') === 'k0,k1,k2,k3,k4,k5,k6',
+  'the sequential ramp carries the cells\' own hatch classes, one per step',
+  evs.legend.steps.join(','));
+check(!evs.legend.hidden && /bb$/.test(evs.legend.lo) && /bb$/.test(evs.legend.hi)
+  && evs.legend.lo !== evs.legend.hi,
+  'the ramp legend prints a bb domain with two different endpoints — a scale, not a picture',
+  `${evs.legend.lo} .. ${evs.legend.hi}`);
+check(/break-even 0 bb in step \d+ of 7/.test(evs.legend.mid)
+  && evs.legend.titles.filter((t) => /the fold sits in this step/.test(t)).length === 1,
+  'the legend names which step the fold is in, and exactly one step claims it', evs.legend.mid);
+check(/checkdown/.test(evs.legend.mid) && /unsupported/.test(evs.legend.mid),
+  'the mode badges its source and its support on the legend, off the layer\'s own cells (§2 clause f)',
+  evs.legend.mid);
+check(/^(play|fold|MIX) [+−]\d/.test(evs.readout) && / bb ±/.test(evs.readout) && /checkdown/.test(evs.readout),
+  'the cell readout leads with the decision, quotes bb with an error bar, and carries the badge',
+  evs.readout);
+check(evs.ev.on && evs.ev.cell && evs.ev.cell.unit === 'bb' && evs.ev.cell.of === 'the fold'
+  && Number.isFinite(evs.ev.cell.evBB),
+  'the number is policy.mjs\'s evBB, in the unit and against the reference the LAYER names',
+  `${evs.ev.cell.evBB.toFixed(3)} ${evs.ev.cell.unit} clear of ${evs.ev.cell.of}`);
+check(evs.quar && evs.quar.same === true && evs.quar.cells === evs.live,
+  'from a COLD memo the EV layer hands back the very solve object it consumed — I34\'s quarantine, '
+  + 'in the browser rather than only in Node',
+  `evCut(...).solved === solve(...) is ${evs.quar && evs.quar.same} over ${evs.quar && evs.quar.cells} cells`);
+check(evs.ev.lo < 0 && evs.ev.hi > 0 && evs.ev.stake > 0
+  && Math.abs(evs.ev.lo + evs.ev.stake) < 1e-9,
+  'the ramp\'s low end is exactly minus the stake — a hand that never wins loses that and no more',
+  `lo ${evs.ev.lo.toFixed(4)} · stake ${evs.ev.stake.toFixed(4)} · hi ${evs.ev.hi.toFixed(4)}`);
+check(evs.pres.map((p) => p.applied).join(',') === 'ev,delta,score',
+  'all three presentations are selectable', evs.pres.map((p) => `${p.k}->${p.applied}`).join(' '));
+check(evs.tiersBefore.length > 200 && evs.pres.every((p) => p.tiers === evs.tiersBefore)
+  && evs.tiersAfter === evs.tiersBefore,
+  'THE SCORE CUTS TIERS AND NOTHING ELSE DOES: 123 tier classes identical across all three '
+  + 'presentations, each read after a round trip through the EV paint (§5.4)',
+  `${evs.pres.filter((p) => p.tiers === evs.tiersBefore).length} of 3 presentations agree`
+  + `; round trip ${evs.tiersAfter === evs.tiersBefore ? 'agrees' : 'DIFFERS'}`);
+check(evs.pres[0].readout.includes(' bb ') && evs.pres[1].readout.includes(' bb ')
+  && !evs.pres[2].readout.includes(' bb '),
+  'the presentation reaches the tier mode\'s own readout, and score is the one that does not quote bb',
+  evs.pres.map((p) => p.readout.slice(0, 62)).join(' || '));
+if (!evs.skill0) {
+  check(false, 'the pool-skill dial is present in this build', 'R.skillState() returned null');
+} else {
+  check(evs.skill0.s === 0 && evs.skill0.pool === evs.skill0.tableV && evs.skill0.badge === 'lattice',
+    'at skill 0 the pool IS the table — the lobby endpoint is the model this page ships',
+    `s ${evs.skill0.s} · table ${evs.skill0.tableV} · pool ${evs.skill0.pool} · ${evs.skill0.badge}`);
+  check(evs.skillHalf.pool === (evs.skill0.tableV + 0.5 * (evs.skill0.vFloor - evs.skill0.tableV))
+    && evs.skillHalf.pool < evs.skill0.tableV,
+    'the dial is a COORDINATE CHANGE ON VPIP: the pool moves to v + s(vFloor − v) and nowhere else',
+    `${evs.skill0.tableV} -> ${evs.skillHalf.pool} at s 0.5, floor ${evs.skill0.vFloor}`);
+  check(evs.skillHalf.badge === 'lattice' && evs.skillOdd.badge === 'interpolated',
+    'the badge is the lattice\'s answer, not the dial\'s: a detent reads measured, an interior reads interpolated',
+    `s 0.5 -> ${evs.skillHalf.badge} (pool ${evs.skillHalf.pool}) · s 0.37 -> ${evs.skillOdd.badge} (pool ${evs.skillOdd.pool})`);
+  check(evs.keyLobby !== evs.keyHalf && evs.keyBack === evs.keyLobby,
+    'the dial is IN the page\'s own evaluation key, and returning to the lobby returns the key',
+    `${evs.keyLobby} -> ${evs.keyHalf} -> ${evs.keyBack}`);
+  check(/POOL/.test(evs.skillHalf.stat) && /LOBBY/.test(evs.skill0.stat)
+    && /folds more, plays no better/.test(evs.skillHalf.stat),
+    'the dial states what it moved and what it did NOT — the plays-better half is not built (I38(e))',
+    evs.skillHalf.stat);
+}
+
 /* screenshots ------------------------------------------------------------ */
 if (SHOTS) {
   for (const [w, h] of [[1440, 900], [1024, 768], [390, 844]]) {

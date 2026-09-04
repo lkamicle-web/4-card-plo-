@@ -38,6 +38,8 @@ import * as couplings from './couplings.mjs';
 import * as solver from './solver.mjs';
 import * as variants from './variants.mjs';
 import * as baseline from './baseline.mjs';
+import * as skill from './skill.mjs';
+import * as ev from './ev.mjs';
 import { CATALOG } from './reserved.mjs';
 
 export const REGISTRY = [
@@ -54,6 +56,8 @@ export const REGISTRY = [
   solver,        // I35                        the CFR+ engine (P2 lane cfr)
   variants,      // D10 D11                    the dual build, read off the artifacts on disk
   baseline,      // I36 D9                     the P3 equilibrium baseline, off its own artifacts
+  skill,         // I38 I37                    the P4 pool-skill axis and the divergence along it
+  ev,            // I34 I39 I40                the P4 absolute-EV cut and its quarantine
 ];
 
 /**
@@ -108,6 +112,19 @@ export const EXPECTED_IDS = [
   // runner. Both gates are P3's: I36's anchors are asserted on the SHIPPED tiers, and D9 sets
   // full's byte budgets from the first payload that ever existed to measure.
   'I36', 'D9',
+  // P4's pool-skill axis (V3-PLAN §3.4, §6, §7.2's I37/I38 rows). APPENDED, for the fifth time and
+  // the same reason: 55 stays a strict prefix of 57, so the P3 report diffs against this one as two
+  // added rows rather than as a re-ordering. It sits after the baseline family because it MEASURES
+  // AGAINST it — I37's divergence is read off `model.baselineTiers`, which I36 is the gate on, so
+  // running second means the accounting is never the first thing to report a broken baseline.
+  // I38 before I37 inside the family: see the note above `ids` in ./skill.mjs.
+  'I38', 'I37',
+  // P4's absolute-EV cut (V3-PLAN §3.4, §5.4, §6, §7.2's I34/I39/I40 rows). APPENDED, for the sixth
+  // time and the same reason: 57 stays a strict prefix of 60, so the skill lane's report diffs
+  // against this one as three added rows rather than as a re-ordering. It sits after the skill
+  // family because it is the other half of the same phase and the later of the two to land; within
+  // the family the order is the catalog's own — quarantine, arithmetic, behaviour.
+  'I34', 'I39', 'I40',
 ];
 
 // Import-time consistency: what the families DECLARE must equal the frozen list. This is the

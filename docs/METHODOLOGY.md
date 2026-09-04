@@ -541,6 +541,219 @@ observed p95 10.80 + ~48 % = 15.98, the byte budgets' rule). Neither row is the 
 
 ---
 
+### 3.5 The pool-skill axis — the fold-more half, and the half that is not built
+
+*(v3 P4. V3-PLAN §3.4 and §6; gates I38 and I37. `constants.skill`, `poolVpip`, `poolAt`.)*
+
+The brief's item 5 asks for one dial with two halves: **a tougher pool folds more preflop (shifting
+the villain lattice) and plays better postflop (cutting realization).** RUNDOWN ships the first half
+and **does not ship the second**, and the reason is not an oversight — it is the pre-written
+consequence of a Phase-0 measurement, so it is stated here rather than discovered later.
+
+**What the dial is.** `skill ∈ [0, 1]`, a field on the villain profile, `0` at the lobby. It
+resolves through `poolVpip(v, s)` to a single number: the VPIP the pool plays.
+
+```
+poolVpip(v, s) = v                                 at s = 0   (v itself, by early return)
+               = v + s * (vFloor - v)              in between
+               = vFloor                            at s = 1   (the constant itself)
+```
+
+`vFloor` is **25 — `constants.villainLattice.v[0]`, re-described.** That is the anchor and it is an
+identity rather than a choice: 25 is the tightest pool the lattice was ever *measured* at, so a dial
+reaching past it would be asking the equity accessor a question no trial ever answered. Gate I38(b)
+asserts `skill.vFloor === villainLattice.v[0]` on every run.
+
+**It is a coordinate change on the VPIP axis and it adds no pathway — which is what "no new opinion"
+means here.** The pool at `(v = 55, skill = 1)` and the pool at `(v = 25, skill = 0)` are the same
+pool, and the code makes them literally the same object: `villainProfileOf` resolves the dial once,
+`villainKey` therefore keys on the resolved VPIP, `profiledModel` hands back the identical shadow,
+and `solve` hands back the identical result. Gate I38(c) asserts that over 336 solves, with a
+half-applied dial armed as the case that must separate. Three consequences follow for free:
+
+* **The lobby endpoint is the current model by construction**, not by a zero that happens to cancel.
+* **The axis cannot reach the legacy lane.** Its whole mechanism is the lattice, so with the villain
+  profile OFF it is inert whatever a caller passes — I22 and I32 cannot see it.
+* **It cannot alias in a memo**, because there is no second key to forget.
+
+**Direction, and what it does to the grid.** Skill up ⇒ the pool folds more ⇒ `v` falls ⇒ hero
+tightens with it, because `widthFor` is increasing in `v` and `N_eff` falls with it. Measured over
+the 21 legal (position, node) pairs, combo-weighted painted width runs **16.12 % → 15.79 % → 15.30 %
+→ 14.76 % → 13.76 %** as the dial rises from the lobby, monotone at every step.
+
+**The exceptions are enumerated, not allowed for** (gate I38(d), records in
+`scripts/lib/skill.mjs`, compared in both directions every run). Six of the twenty-one pairs get
+*wider* end to end, and they are exactly the six **vs-3-Bet** pairs, every one of them through the
+same two cells — `BROADWAY_RUN|DS` and `BROADWAY_RUN|SSA` moving `T3 → T2`. At that node T2 is
+**AMBUSH CALL**, so those cells move from CALL to CALL: what moved is a tier *label*, not a hand, and
+`solve`'s `width` counts T1+T2 as aggressive mass and therefore measures the label. Eleven
+(pair, step) interior rises are recorded beside them — the same six relabels, plus five nut-gate
+releases where `N_eff` falls below `nutGate[2]` and a block of cells stops being demoted.
+
+#### The plays-better half is not built, and its coefficient reaches exactly nothing
+
+`constants.skill.playsBetter` **ships `null`.** Not a small number, not a default: no number.
+
+The reason is a measurement. Phase 0's spike S-B graded **C** (best held-out p95 7.21 against a 5.0
+band edge), so v3 ships no fitted postflop payoff — the shipped stub is a checkdown and is blind to
+SPR. The plays-better half is defined as a cut through that layer, and there is no layer to cut
+through. Underneath that, the standing hole is **limitation 16**: the measurement layer is all-in
+equity at showdown, so nothing in this repository measures postflop play at all, and a coefficient
+for "how much more equity a better pool realizes" could not be anchored even if the layer existed.
+
+So the honest shipping shape is the one V3-PLAN §6 specifies — flagged, and **bounded by a gate on
+its REACH rather than on its size**, since a size bound on a number that does not exist is
+decoration. Gate I38(e) asserts three things every run:
+
+1. `playsBetter` is `null` — no number was invented;
+2. eight shipped files, comment- **and string-literal**-stripped, name it exactly where the
+   declaration is and nowhere else (the flag names it, and that admission is a string, which is why
+   the literals come out before the count);
+3. over **9,225** per-cell readings taken along the whole dial, the realization the pipeline uses is
+   bit-identical to the dial-blind `realization(pos, N, ν, d)`.
+
+The day somebody wires a realization cut to this dial and picks a coefficient because one was
+needed, (2) and (3) fire. That is the whole of what "unexercised" is worth as a claim.
+
+#### The interior is `interpolated`, and the badge is the accessor's own
+
+The endpoints are anchored — the pool as set at one end, the lattice's measured floor at the other.
+**The path between them is not.** Nothing here measures a pool-skill scale, so no measurement says a
+pool "half way to the floor" folds half the difference rather than a third or two thirds. Linear is
+the form the two endpoints determine on their own; it ships **flagged** in `constants.skill.flag`,
+**badged** `estimate` in the Method view, and **bounded** by gate I37's monotone-interpolation
+clause, which recomputes it from the sentence `constants.skill.blend` publishes.
+
+The per-cell label needs no new machinery, and that is the neatest part of the axis: at the load
+default the three detents land on VPIP **55 / 40 / 25**, all three shipped lattice rows, so
+`villainEq` reports `lattice`; the two midpoints land on **47.5** and **32.5**, off-lattice, so the
+same accessor reports `interpolated` — the badge §6 asks for, emitted by the code that has always
+emitted it.
+
+#### What the dial cannot reach, and why that is recorded rather than passed
+
+V3-PLAN §6 names two anchored endpoints for this axis: *"measured lattice at one end, solver baseline
+at the other."* **Only the lattice end is reachable, and the measurement is worth stating plainly.**
+
+The P3 baseline is **heads-up with the SB on the button**, and that SB **opens 88.85 % of combos**.
+That is 33.85 points **looser** than the lobby's 55, so the setting "pool = baseline" lies on the
+*loosen* side of the axis — the plays-better side, which Grade C does not build. Underneath the
+arithmetic is a seat mismatch rather than a dial-range accident: the baseline's SB is the button and
+plays in position, while the model's SB is a six-max small blind out of position (`baseR.SB` = 0.90,
+the worst realization in the table). No setting of a pool dial brings a 33.6 % opening range onto an
+88.9 % one.
+
+So §7.2's *"signed vs-GTO divergence combo-weighted ≈ 0 at pool = baseline"* is **NOT MEASURABLE on
+this payload, and gate I37(a) records it rather than passing it** — the I15 / I36-nesting precedent,
+a clause scoped to what was measured and never toleranced into a pass. The detector is armed on the
+shipped entry frequency and **fails** the day a baseline lands at or below the lobby, at which point
+the clause is owed a measurement instead of this paragraph.
+
+**Measured beside it, because unmeasurable is not a reason to publish nothing.** The signed
+combo-weighted divergence along the dial, at the three (position, node) pairs the HU baseline covers:
+
+| node | s = 0 (v 55) | 0.25 (47.5) | 0.5 (40) | 0.75 (32.5) | 1 (v 25) |
+|---|---|---|---|---|---|
+| `SB` × RFI | −1.095 | −1.099 | −1.116 | −1.167 | **−1.199** |
+| `BB` × vs-Raise | −0.708 | −0.753 | −0.780 | −0.813 | **−0.852** |
+| `SB` × vs-3-Bet | −0.917 | −0.917 | −0.917 | −0.917 | −0.917 |
+
+Negative throughout — **the model is tighter than the HU equilibrium at every covered cell and every
+setting** — and *growing* at two of the three nodes. **So "monotone exploit → equilibrium convergence
+per cell", which V3-PLAN §3.4 offered for falsification, is falsified in the aggregate as well as per
+cell.** The vs-3-Bet row is flat to the last digit because that node's only movement is the
+T3 → T2 relabel above, and CALL and AMBUSH CALL are the same action on the baseline's scale.
+
+**Per cell, §7.2's prediction lands.** Its wording is that *the rank-overlap rows — `BROADWAY_RUN`,
+`RUN0_HIGH` — violate monotone convergence and move most as the pool tightens, not the junk rows.*
+Measured: **29 of 369 readings violate**, and by rate the leaders are **`BROADWAY_RUN` 8 of 15** and
+**`RUN0_HIGH` 3 of 12**, with the junk row **`TRASH` 1 of 12**, eighth. The set is a frozen record in
+`scripts/lib/skill.mjs` and the *ordering* is asserted, not quoted — gate I37(d) fails if the two
+named rows stop leading. This is I25's lesson transposed one more time: what a tightening pool moves
+is the hands whose value is rank overlap, not the hands with no value at all.
+
+**The control landed after the mechanism, which is the point of having shipped it without one.** At
+P4 the axis shipped as a library axis with its constants rendered and gated, exactly as the 3-bet
+sizing axis did at P1, on the reasoning that the first control to land should not also be the place
+the model gets designed. The P4 UI step is that control, and because the mechanism was already
+frozen and gated it is a *slider over an existing axis* rather than a new decision:
+
+- **It is in the Villain profile section of the rail, under the toggle and above discipline `q`** —
+  the coarser question first: `q` is how often a villain is drawn from the filtered range, the dial
+  is how tight that range is at all. It is hidden with the rest of the profile's controls when the
+  profile is off, which is the honest disablement rather than an invented one: with no filtered
+  field there is no pool to re-describe.
+- **It is live in BOTH artifacts.** Its whole mechanism is the shipped v-lattice, which is in
+  `model.json`, which both builds inject verbatim. There is nothing full-only about it, so it is not
+  given a variant split it does not have.
+- **The page distinguishes the TABLE VPIP from the POOL VPIP, and every villain-side reading is
+  quoted in the pool's.** `S.v` is the table — what sets `N_eff`, what the big slider is about.
+  `poolV()` is `POLICY.poolVpip(S.v, S.skill)`, the VPIP the pool plays, and it is what the lattice
+  bracket, the sim book key, the trial request and every provenance sentence now read. Quoting the
+  table VPIP on a provenance line while scoring against the pool VPIP would be a silent wrong
+  number of exactly the shape this repository keeps finding in memo keys, so it is one function and
+  not ten in-place expressions. At skill 0 it returns `S.v` and every one of those readings is the
+  string it was.
+- **The status line prints the accessor's own badge, not the dial's.** `POLICY.latticeBracket` at
+  the resolved pool VPIP decides `lattice` versus `interpolated`, which is what gate I37(c) reads:
+  at a detent every cell is cut from a measured row, at an interior setting none is. The line also
+  states what the dial did **not** do — *folds more, plays no better* — because I38(e) bounds the
+  plays-better half's reach at exactly zero and a control that let a reader infer otherwise would be
+  the page acquiring a claim the measurement does not support. The harness hook deliberately does
+  not surface `playsBetter` at all; I38(e)'s file scan refused the line that did.
+
+#### What the P4 red team refuted here, and what replaced it
+
+*(`docs/refutations/P4.md`. Three refuters, sixty memos over the phase; three of this section's
+claims came back majority-unanchored and one of them came back refuted outright.)*
+
+**The dial's DOMAIN was the refuted one.** `min: 0, ref: 0, max: 1` shipped as *anchored by
+construction* — the story being that `poolVpip`'s two early returns are what make the endpoints
+exact. Three refuters of three took that apart with the whole GREEN triple intact:
+
+* `min = -1` ships **60/60 gates, the full suite and both variants current**, and it resolves the
+  load default to **VPIP 85** — the dial running *backwards*, up the lattice, onto the plays-better
+  side V3-PLAN §3.6's Grade C does not build. `wireVP` copies `SKILL.min` onto the page's own
+  slider, so it is a setting a reader can select rather than an argument about the library.
+* `max = 2` and `ref = 0.05` ship green too — the first leaving half the dial past the measured
+  floor, the second putting a *loosening step* between two adjacent stops of the 0.01 slider.
+* the construction story is vacuous: **both early returns are removable with everything green.**
+  `v + 0·(f − v)` is `v` for every finite `v`, and `v + 1·(25 − v)` is exactly 25 for every double
+  in [25, 90] — checked over three million draws. They remain, for the
+  `sizingPrice`/`depthWidthFactor`/`interpolateDelta` discipline, but they are no longer offered as
+  the reason the numbers are what they are.
+
+**No replacement anchor was invented — §6's flagged idiom was applied instead, and a bound was
+written.** The domain is now a third record in `constants.skill.flag`, badged `estimate` in the
+Method view beside `blend` and `playsBetter`, and bounded by **I38(g)**, which asserts that the
+triple is *forced* rather than chosen: the published blend returns the pool itself only at `ref` and
+the floor only at `max`, so those two are pinned between the blend and the measured floor, `min` is
+pinned by the dial's own direction, and a sweep at the page's own slider step confirms over 909
+settings that the dial never moves a pool up, never reaches the floor before `max`, and is monotone
+throughout. **A bound is not an anchor**, which is why the badge stays: `max = 1` is a unit
+convention normalised against a blend that is itself unanchorable.
+
+**The flag paid for that record itself.** `constants.skill` is D6's 1 KB block and the admission is
+nearly all of it, so the domain's sentence was bought by trimming the flag rather than by raising a
+ceiling. What left is the sentence about the unreachable solver baseline — not one of the flagged
+records, and still carried by I37(a)'s report line, `reachReadiness`'s docstring and this section.
+
+**The blend's LINEARITY was bounded as a sample and is now bounded as a shape.** Three refuters
+independently shipped a curved dial — `v + (s + 0.05·sin(4πs))·(vFloor − v)`, published truthfully
+in all three places the gate compares — that is monotone, exact at every setting I37(b) sampled, and
+**60/60 green**, while moving the resolved pool by up to **2.3 VPIP points** at settings the slider
+can select. The flag's own sentence, *"the path between them is linear"*, was true of the code and
+invisible to the gate. I37(b) now asserts the **second difference is zero** at the page's own step,
+which is what "linear" means when it is checked rather than said.
+
+**Two findings were recorded rather than repaired**, because both are the standing limitation of an
+idiom rather than a defect in this axis: the flag's *content* is bounded by a length and two
+substrings, so a flag that denied everything it admits would ship; and `detents` is asserted in one
+direction only, so a shipped stop must land on a measured row but a missing stop is not noticed. The
+second is now partly protected from the side, since I38(g) pins the domain the enumeration runs over.
+
+---
+
 ## 4. VPIP → expected opponents (`N_eff`)
 
 `v` = table VPIP as a fraction. Slider domain **0.25 – 0.90**, default 0.55, reference 0.25.
@@ -1072,6 +1285,150 @@ detail line rather than as a moved tier somewhere else.
 - The **2 bb the straddler posts** is dead money the `derived()` pot readout does not add. That
   readout multiplies by the unit so it is quoted in big blinds correctly; the dead money is a
   copy-level omission.
+
+### 5.4 The absolute-EV cut — the second predicate, and the wall around it
+
+*(v3 P4; V3-PLAN §3.4 and §5.4. Gates I34, I39, I40.)*
+
+Everything above this line ranks. The score orders the cells, `widthFor` says how far down the
+ordering to go, and the tier is whatever falls above that line. **That construction cannot answer
+"is this hand profitable here"** — it can only answer "is this hand in the best 28 %" — which is
+limitation 17, and the absolute-EV cut is its designated structural fix: a second predicate, `EV ≥
+0`, computed **beside** the percentile cut on the same cells.
+
+**Where it lives, and why that is the whole design.** V3-PLAN §3.4 says the predicate runs "beside
+the percentile cut in `aggressiveSet`"; §5.4 says tier output must be identical across view modes
+**by object identity**. Those two sentences are jointly satisfiable in exactly one shape, and it is
+the shape that shipped: **view mode is not an input to `solve` or to `aggressiveSet` at all.**
+`evCut(model, state, payoff)` is a *sibling* accessor with its own memo. It calls `solve`, hands the
+**same object** back as `solved`, reads `aggressiveSet`'s memoised set, and writes its answer into a
+map of its own. Nothing in it assigns to a memoised object. A mode flag threaded into the tier path
+without a matching memo-key change is precisely the poisoning gate I34 exists to catch — the second
+caller at those settings would be handed the first caller's *mode's* answer, silently — so the
+architecture is not a stylistic preference, it is what makes the identity clause true rather than
+toleranced. **The tier path is byte-identical whether or not anybody calls this**, which is why I22,
+I32 and the v3 default fixture needed no ceremony for the phase that added it.
+
+**The accessor is a per-call argument.** `policy.mjs` has no imports — the build inlines it verbatim
+— so the payoff arrives as an argument on every call: the gates pass `makePayoff(model)`, and the
+page will pass the `PAY` it already builds at boot on the day a control lands. **No page control
+ships in the phase that added this**, on the item-9 precedent: the mechanism, its constants and its
+gates land first, so the first control that lands is not also the place the model gets designed.
+The Method view renders `constants.evCut` by construction, since it walks `Object.keys(constants)`. A module-level `setPayoff` would be V3-PLAN §2's "position re-entering through
+global state" trap wearing a different hat, and would alias two models' EV in one process.
+`payoff.modelHash` and its route tag are therefore *in* the memo key, along with `ip` and this
+model's own hash — `policy.mjs` is outside gate I33(g)'s filename scope, so the key is written as
+though that detector were watching and **I39(f) runs the detector here voluntarily** rather than
+letting the blind spot stand.
+
+**The arithmetic, and where the rake is allowed in.**
+
+```
+evBB = (ev · rakeRhoFactor(env) − invShare) · potMult · potSize − stake
+```
+
+Rake enters **only** through `rakeRhoFactor` — the exact §5.2 machinery, cap, straddle-doubled unit
+and depth coupling included. **EV(fold) = 0 by construction**, not by cancellation: the only money in
+that expression is money that goes in at or after the decision node, blinds are sunk, and there is
+no fold term to get wrong. I39 reads the sharp form off the layer at the two equities where the
+arithmetic is exact — a hand that never wins loses **exactly its stake and not a chip more**, which
+is what says no sunk money leaked in.
+
+**Two pot geometries, and the second one is a second EV route.** At the three percentile nodes the
+request is the page's own hero-only shape, everyone at the node puts in one stake and it checks
+down, so `potSize = (nOpp+1)` stakes and `keep ⟺ (nOpp+1)·ev·(1−r) ≥ 1` — the model's own fair-share
+reading. At the vs-3-bet node **the frozen accessor cannot answer**: `payoff()` takes cell keys and
+a *mix is not a cell*. The share is `eqMixOf` and the error is the blend's own
+`seOfTrials(meta.trials.vs3bet)` by mix weight. That is a second route, it is said out loud here and
+in I39's own detail rather than left to be noticed, and it is the only construction under which the
+sign clause has content: with the pot written from the price the way the page's `nodePotBB` writes
+it, `sign(evBB) = sign(eqMix − breakevenPrice(env))` is an **identity**, not an agreement.
+
+**`stake` is a display scale and nothing turns on it.** It is the first rung of
+`constants.solver.sizingLadder` — the pot-limit maximum from 0.5/1.0 blinds, an arithmetic identity
+of the game (§6 of the plan), so no bb figure is typed anywhere. Because the pot is `(nOpp+1)`
+stakes, `evBB = stake · (a dimensionless edge)`: `keep`, `mix`, `width` and the band's `k` are all
+invariant under it, and I39(e) asserts that by doubling it on a fabricated twin.
+
+**What it claims under Grade C: nothing about accuracy.** The payoff behind it is the checkdown
+stub, every percentile-node reading comes back `supported:false` through the hero-only request
+shape, and the badge — one function, `evBadge(source, se, supported)`, whose every input is proven
+load-bearing by perturbation — says so on every cell. The cut is display-only. **I34 is what makes
+that coherent rather than a hedge**: under the quarantine, no EV error of any size can reach a tier.
+
+**And primacy is unreachable.** `evPrimary(model)` is `model.calibration?.verdict === 'pass'`, which
+only the P5 ceremony may stamp and which limitation 18's parked criteria mean can only ever be
+stamped FAIL. The branch behind it **exists** — it requires `state.payoff` and throws without one,
+never silently scoring — because a gate guarding a branch nobody wrote is a gate guarding a comment.
+I34(d) fabricates a distinct-hash twin to prove the branch cuts real, different tiers, and the flag
+is read **above the cache and is in the memo key**, which is the "flag check below the cache key"
+failure §7.2 names.
+
+**What it buys, measured.** At 225 identical settings a 5 % rake moves the score-path width **0
+times** and the EV-mode width **177 times**; pooled across 900 settings the EV-mode width goes 22.83
+% → 19.66 %. That is limitation 17's fix biting, in the one direction a percentile cut cannot go.
+
+### 5.4.1 What the page shows — the EV surface and the three presentations
+
+*(P4 UI step.)* The cut landed at P4 with **no page control**, on the item-9 precedent §3.5 also
+invokes. This is the surface built on it, and the one thing to understand about all of it is that
+**it is a re-quotation and never a re-computation**: `policy.mjs` owns the expression, the page owns
+the picture.
+
+**The EV colour mode paints `evBB`, and the page's own pot arithmetic is deleted rather than left
+beside it.** Before P4 the mode painted the accessor's raw pot *fraction* and said so, because the
+bb conversion needed `potMult` and `invShare` and the frozen interface did not yet return them. It
+does now, and `policy.mjs` does the conversion for both the display path and the (unreachable)
+EV-primary path, so the number painted is by construction the number a tier would be cut on the day
+primacy is ever stamped. The page had a second pot arithmetic of its own — `nodePotBB()`, which
+wrote the pot from the posted blinds while the layer writes it from the checkdown geometry
+`(nOpp+1)` stakes — and it is **deleted**, not reconciled. Two pot arithmetics with one accessor
+between them is the drift `policy.mjs` is inlined to prevent.
+
+**The ramp's domain is the mode's own pre-existing anchor, re-expressed in bb.** It runs from `evBB`
+at `ev = 0` to `evBB` at `ev = 2 × fair share` — the same "zero to twice the fair share, which puts
+fair share on the middle step" the fraction ramp used, so no constant enters and two settings stay
+comparable. **The first implementation used `ev = 1` for the top and that is recorded rather than
+quietly fixed**: "a hand that always wins takes the raked pot" is an exact endpoint and a useless
+one, because no cell on this grid is near it — 123 cells landed in three of seven steps and the ramp
+stopped resolving the thing it exists for. Exactness at an unreachable end is not a virtue. Fair
+share is exact *and reached*. Break-even then falls just above the middle step, at `ev = fair/ρ`,
+because the rake is the only reason beating your share is not enough — and the legend prints which
+step it is in, since a sequential ramp over a signed quantity must say where its zero is.
+
+**Every mode-level honesty clause is derived, not typed.** The legend's source line is a *census*
+over the layer's own cells (`checkdown, unsupported` today, and the sentence changes on its own the
+day some of the grid becomes supported); the cell readout leads with the predicate's own decision
+word and carries `evBadge`'s string verbatim; the colorblind channel is the bucket class `k0`–`k6`,
+one per step, the same classes the cells carry, so the legend reads in the same channel the grid
+does. The harness asserts **I13 in the mode at runtime** — 123 of 123 live cells carry a bucket —
+beside the identical check the vs-GTO mode already had.
+
+**The three presentations are §5.4's, and one of them is degenerate — which is recorded rather than
+dressed up.** The rail's Display section carries a `Numbers` switch: **Score** (points clear of the
+percentile cut), **EV** (big blinds clear of the fold), **Δ cut** (big blinds clear of the last hand
+the score tells you to play). "Decision-delta" normally means EV(play) − EV(fold); here EV(fold) is
+**exactly zero by construction**, so that reading *is* the absolute presentation, to the last bit,
+and shipping one number twice under two names would be the page inventing a distinction the model
+does not have. So the delta that ships is measured against the decision this page actually makes —
+which is limitation 17's subject rendered per cell, and is two readings of the shipped layer
+subtracted, introducing nothing.
+
+**Score is the load default and the switch cannot reach a tier.** The tier path never reads the
+presentation; the harness paints the grid in EV and back for each of the three and compares all 123
+tier classes as strings, and it also asserts from the browser, from a **cold memo**, that
+`evCut(...).solved` is the very object `solve` just returned. That is I34's quarantine seen from
+outside Node.
+
+**The inspector's four verdict lines keep four distinct meanings.** TIER, MARGIN, EV, DIVERGENCE.
+MARGIN is the page's decision quantity and follows the presentation through the layer's own
+`marginUnit`/`marginOf` seam; **EV stays the accessor's measured share with its own `se`**, because
+that is the input the layer converts and because labelling the margin row "EV" would put the word on
+two rows showing two different quantities. The bb figure is on the EV row's tooltip in every
+presentation, and the full conversion — the six returned keys, then `ev → ×ρ_rake → −invShare →
+×potMult → ×potSize → −stake → EV`, then the predicate, the MIX band and the two widths — is the
+**Numbers** tab's waterfall, on the score waterfall's own chip idiom. Its last chip is the layer's
+`evBB` rather than the row's own product, so an arithmetic that stopped closing would show on screen.
 
 ---
 
@@ -1950,6 +2307,43 @@ place:
   same tripwire it always was — a little further from firing than it was before P3, not closer:
   the ceiling did not move for anything but the mode.
 
+**AND THE RAISE-VS-SHRINK PARAGRAPH P4's UI STEP IS OWED, WHICH IS A SHRINK ON THE CEILING THAT
+MATTERS AND A RAISE ON ONE THAT DID NOT EXIST YET.** The P4 UI is two marked features: the EV
+surface with its three presentations (`@block:ev`, **11,403 B = 11.1 KB**) and the pool-skill dial
+(`@block:skill`, **3,532 B = 3.4 KB**). What happened to each ceiling is worth stating separately,
+because they did not all move the same way.
+
+- **`app` was not raised, and did not need to be.** Lite's app block went 369.1 → **382.5 KB**
+  against the **388 KB** P3 had already paid for. Two features totalling 14.6 KB fit inside a
+  ceiling set eight months of work earlier only because that ceiling was measured+5 % on a payload
+  that then shrank; the headroom is spent now, and whoever lands the next app-side feature is
+  starting from 5.5 KB.
+- **`appCore` was not raised and the reading under it FELL, 359.4 → 357.9 KB.** This is the first
+  time a UI phase has *returned* bytes to the unmarked block, and the reason is the deletion above:
+  `nodePotBB()` and the old per-cell payoff call site came out, the EV surface went in behind
+  markers, and the shared edits that remain — the pool-VPIP repointing, the presentation-aware
+  readout, the shrinkable badge rule — cost less than what left. The shrink-first duty was
+  discharged by deleting a duplicate rather than by hunting dead CSS, which is the better version of
+  the same discipline.
+- **`total` (full) was raised 634 → 646 KB, and the number is not a new one.** The full page grew
+  623.2 → **636.3 KB (651,528 B)**. 646 KB is *exactly* what the P3 repair computed as a fresh
+  measured+5 % for the pre-P4 page and **declined to take**, on the reading that a ceiling tighter
+  than its own rule is the conservative direction. The page has now grown into that declined
+  headroom, so the raise is a figure this repository had already priced rather than one invented to
+  fit, and it stays below the *current* measured+5 %, which would be 669 KB. Lite's `total` is
+  untouched at 600 KB against 566.5.
+- **The per-block ceilings are new, and they are the P3 red team's one structural finding turned
+  into a gate.** That review recorded that `@block:gto` had **no cap of its own**: the app raise
+  named a feature and then bounded nothing inside that name, so 12.4 KB of filler could be added to
+  the marked region and every gate stayed green — a raise that bounds a *name* rather than a
+  *feature*. `budgets.blocks` fixes it, at measured+5 % rounded up to the whole KB in the same idiom
+  as everything else here: **gto 11 KB** (10,198 B), **ev 12 KB** (11,403 B), **skill 4 KB**
+  (3,532 B). `build.mjs` now compiles the shell once per marked block rather than once in total,
+  `core` is `app` minus *all* of them, and `test/variant.test.mjs` asserts the caps sum to no more
+  than the raise they explain — so the accounting cannot become decoration over a ceiling that was
+  already passed. The gto cap is retro-fitted to a feature that shipped a phase earlier, which is
+  the point: the finding was about the mechanism, not about that one block.
+
 **One dependency, scoped as a property rather than a promise.** *(From spike S-E §7.)* This
 repository is no longer "zero-dependency" flatly, and pretending otherwise would have been the
 easier sentence. Playwright is a **dev-time** dependency with two named consumers, `smoke.mjs` and
@@ -2332,6 +2726,46 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
     than smuggled in as a tier. What is *not* done, deliberately, is turning closeness into a
     mixing frequency — a 0→1 call-frequency ramp across the band would be an invented solve output.
     Closeness is expressed by the margin, in equity points, on the cell.
+
+    **THE LESSON TRANSPOSED, AT v3 P4 — the EV MIX band is banded in frequency too.** §5.4's
+    absolute-EV cut gives margins a **third unit**, bb, and a band in a third unit is exactly where
+    this mistake gets made a second time. So it was not made: the EV band's half-width is `k ·
+    payoff-se`, and **`k` is not free**. It is solved so that the band's combo-weighted mass at the
+    default state equals `t4Band`'s own measured frequency mass — the `se` sets the unit, `t4Band`'s
+    mass sets the multiplier, and no bb figure is chosen anywhere. The crossing is read by
+    `scoreAtCut`, *the same function and the same `cumMid` convention the percentile cut itself is
+    solved with*, so "equals" means here what it means everywhere else in the model. Measured: **k =
+    2.453**, against a pooled t4 mass of **4.95 %** of combos.
+
+    One thing this transposition surfaced that the frequency case did not. The EV distribution is a
+    **step function with fat tie plateaus** — a checkdown payoff hands many cells identical equity,
+    and one cell is read at several seats — so *no achievable band hits the target exactly*. The
+    crossing is therefore the definition, and both sides of it ship: `evMassAtK` **4.05 %** strictly
+    below k and `evMassNextStep` **5.33 %** at the next distinct z, with the 4.95 % target between
+    them. That bracket is a **measurement of the shipped distribution**, not a tolerance somebody
+    allowed, and gate I40 re-derives the whole block from scratch every run and `Object.is`-compares
+    it against what shipped — because the failure that actually happens to a derived constant is
+    that the data is regenerated and the constant is not.
+
+    **AND P4's RED TEAM MEASURED WHAT THAT LAST SENTENCE IS WORTH** (`docs/refutations/P4.md`).
+    Three refuters independently re-derived every figure above without the repository's own code —
+    `k` 2.453, the target 4.9486 %, both bracket readings, `sePt` = 50/√100,000 — and all three
+    reproduced bit for bit, so the arithmetic is what it says it is. All three then reported the
+    same structural hole: under the house GREEN command `verify.mjs` calls `stampConstants`
+    **before** the gates, so the block I40 compares was written moments earlier by the very function
+    it re-runs, and the field-by-field comparison is a **self-comparison**. What actually holds the
+    block is the **bracket** — every wrong derivation the refuters built (a doubled target, a halved
+    one, the seat scope narrowed to RFI, T1 counted instead of t4) failed on it *after* a full
+    restamp and rebuild — and `test/ev-cut.test.mjs`, which reads the model off disk unstamped. One
+    row had neither: **`seUnit`**, whose `sePt`, `seBBMean` and `trials` could each be *typed* in
+    place of their derivations and ship 60/60 green. Its anchor was true and enforced by nothing, so
+    it is now asserted as the identity it claims to be — against `meta.trials.cell`, against
+    `seOfTrials`, and against a second independent walk of the same 21 seats — in the gate and in
+    the unit test. The tie plateau is also more literal than the paragraph above implies: the
+    crossing is straddled by two rows carrying the *identical* z, so `scoreAtCut`'s interpolation
+    multiplies a zero gap and `k` is that plateau's own z rounded **down** by 1.2e-5, which is
+    exactly what drops the whole plateau out of the band and produces the 0.9-point undershoot the
+    bracket publishes.
 12. **The thesis is real, and one earlier version of it was measuring an artifact.** At UTG RFI the
     painted aggressive range moves **14.1% → 16.6%** across the whole slider while its mean nut
     potential moves **0.409 → 0.425**, +1.6 points — the direction the product claims, at a modest
@@ -2453,8 +2887,30 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
     express *fewer hands are profitable here*. It is the strongest argument for that work being a
     structural repair rather than a feature, and its gate is written to prove the fix bites: in EV
     mode rake must **narrow** width at the percentile nodes, which is the deliberate opposite of
-    what I31 asserts today. Until then this limitation stands, and the width numbers on this page
-    are answers to "which hands", never to "how many".
+    what I31 asserts today.
+
+    **THE FIX LANDED AT v3 P4, AND IT BITES — but this limitation does not come off the list, and
+    the paragraph above is left standing verbatim because it is still true of the tier surface.**
+    §5.4's absolute-EV cut ships as a second predicate computed beside the percentile cut, and gate
+    I40 measured the consequence the paragraph above predicted: at **225 identical settings** a 5 %
+    rake moves the score-path width **0 times** and the EV-mode width **177 times**, and over 900
+    settings the EV-mode width narrows **22.83 % → 19.66 %** and widens at none of them. So "a rule
+    of the form *play it when its EV is positive*" is no longer a designated fix; it is a shipped
+    surface, and it does express *fewer hands are profitable here*. I31(a) is correspondingly
+    **re-scoped to the score path** — its "must be a deliberate model change" clause was *invoked*
+    rather than violated, and the re-scope is asserted rather than announced: I31 now measures the
+    EV-mode set moving at the same preset that leaves every percentile tier alone.
+
+    **Three things keep this on the limitations list anyway.** The EV surface is
+    **display-only** — gate I34's quarantine means no EV number of any size can move a tier, and
+    that is deliberate, not provisional, while limitation 18 stands. The payoff behind it is the
+    checkdown stub, so every percentile-node reading is `supported:false` and badged. And the
+    **grid still paints the percentile tiers**, so the width numbers on this page remain answers to
+    "which hands". What has changed is that the model can now *also* answer "how many", in its own
+    mode, with its own badge on it.
+
+    Until the EV surface is a tier surface, this limitation stands, and the width numbers on this
+    page are answers to "which hands", never to "how many".
     *Shipped verbatim as `constants.limitations[1].note` and rendered in the Method view — this
     sentence and the shipped one are byte-compared by gate I42, so the page and this document
     cannot drift:* A percentile cut can change which hands you play but never how many, so every
@@ -2540,16 +2996,18 @@ I32 sweeps that same VPIP axis across all twelve depth × rake × straddle lanes
 I24/I25 assert the shape of the v2 build-time measurements over the emitted data itself,
 I23/I27/I28 sweep the depth axis on top of the same grid, I26/I29/I30/I31 sweep the straddle
 toggle and the rake slider, I41–I44 sweep the four v3 axes, and D10/D11 read the built artifacts
-off disk, I35 solves the heads-up tree on BOTH payoff routes, and I36/D9 read P3's equilibrium
-baseline off `data/equilibrium.json` and the block it cuts into the shared core — **55 gates in
-total** with the rest of the D and V families and the benchmark gate. The counts are derived from `EXPECTED_IDS` in
+off disk, I35 solves the heads-up tree on BOTH payoff routes, I36/D9 read P3's equilibrium
+baseline off `data/equilibrium.json` and the block it cuts into the shared core, I38/I37 walk
+P4's pool-skill dial from the lobby to the lattice floor and account for the divergence along it,
+and I34/I39/I40 quarantine P4's absolute-EV cut, check its arithmetic and measure what it moves —
+**60 gates in total** with the rest of the D and V families and the benchmark gate. The counts are derived from `EXPECTED_IDS` in
 `scripts/gates/index.mjs`, which is the frozen report order and is written out rather than
 generated, precisely so that a family quietly disappearing produces a mismatch instead of a smaller
 report that agrees with itself.
 
-The numbering has one deliberate gap and no accidental ones. I1–I33, I35, I36, I41–I44 and
-D9/D10/D11 are live with **I17 retired**
-(it went with the sub-bucket layer it asserted, §2.4); **I34, I37–I40 and I45–I47 are reserved,
+The numbering has one deliberate gap and no accidental ones. I1–I16, I18–I33, I34, I35–I40 and
+I41–I44 plus D9/D10/D11 are live with **I17 retired**
+(it went with the sub-bucket layer it asserted, §2.4); **I45–I47 are reserved,
 not missing** — their ids and their claims are written down in `scripts/gates/reserved.mjs` ahead of
 the features, so a later phase finds its gate id already spoken for with the claim already stated
 instead of inventing one to fit the code it just wrote. A gate id chosen after the feature is a gate
@@ -2596,7 +3054,7 @@ as, now, are the scoring constants themselves (§5.1).
 | I26 | **The straddle moves the grid the way §3.3 says, and the composition case it flagged is decided by measurement** (§5.3), over 5 RFI seats × 5 VPIP × 6 depths. Asserted: **(a)** the painted **opening** range tightens at every seat and every setting — 150/150 at RFI and 150/150 at the iso node — which is where **V2-PLAN §7.2's "BTN keeps its 0.45 base" is falsified**: pinned, the button paints *wider* at 7 of 30 settings (up to +2.49 points) and its mean ν falls at 8, so `straddle.seatPinned` ships empty; **(b)** the painted range gets nuttier (148/150 at RFI, 150/150 iso, worst fall 0.13 points); **(c)** the composition, isolated at matched width — field-only +0.286 pts with 0 of 150 going the other way, depth-only −0.144 with 76 down, both +0.183 with 20 down: **the field wins**, keeping 64% of its own effect, even though λ(d/2) − λ(d) = −0.189 is 2–6× larger than Δκ = 0.13·cBlind(v) on the ν coefficient. What completes the field's margin is the *measurement* — the multiway realization slope and ρ read further up its N curve; **(e)** I6/I7/I8/I9/I10/I13/I19 all hold straddled at 40/100/250 bb; **(f)** the transform is exactly the transform (N_eff gains `cBlind(v)`, `dEff = clamp(d/2)`, `widthFor` scales by `seatWidthFactor`, and the price does not move at rake 0). **What it does not assert, deliberately:** the vs-Raise node. `w3bet` has no seat base, so measured it goes both ways (47 tighter / 77 looser / 26 unchanged) and the gate reports that instead of pretending otherwise. |
 | I29 | **I16's continuity, re-run with the straddle ON** at 40 / 100 / 250 bb (effective 40 / 50 / 125). Every VPIP step changes at most 3% of combos or at most 5 of 145 cells; worst non-cliff step is 0 cells at all three depths, so no widening was needed. The interesting half is the mirror of I27: depth leaves the `N_eff = 3.0` discontinuities exactly where they are, and the **straddle drags every one of them forward** — raise/HJ 45 → 34, raise/CO 54 → 39, raise/BTN 70 → 47 — and adds a fifth at raise/SB 70 that the unstraddled table never reaches. Asserted structurally rather than as a pinned list: `N_eff` is strictly larger straddled at all 990 (node, seat, VPIP) settings, so a crossing of 3.0 can only come earlier. Between them I27 and I29 make the κ(N) / λ(d) separation testable from both sides. |
 | I30 | **I21's painted widening, re-run with the straddle ON** at 40 / 100 / 250 bb. Wider at VPIP 90 than at 25 at all 15 (node, position) pairs. **No widening of I21's own 4.0-point dip allowance was needed** — unlike I28's — because a narrower target width has fewer cells straddling the cut: the straddled worst dip is 2.86 points against the 3.16 the unstraddled model runs at. The painted **floor** is its own, at 8% rather than I12's 10%: a straddled UTG opens 8.96% of hands at VPIP 25, which is the seat transform doing its job (the target itself fell 23%) and not the nut-gate collapse I12 guards against. |
-| I31 | **The rake does what §3.2's model can do, and is asserted not to do what it cannot** (§5.2). **(a)** The flat haircut on ρ is **tier-inert at the three percentile nodes by construction**: 0 of 27,675 tiers move at the 5% preset, all 27,675 scores do, and every score ratio equals (1 − rakeFrac) to within 2 ulp. Asserted so that turning rake into a non-uniform haircut has to be a deliberate model change. **(b)** Where the threshold is absolute it bites: the vs-3-bet continue range narrows monotonically in `rakePct` on the **action** tier, 45 → 41 cells at UTG and 49 → 44 at CO across 0–6%. **(c)** The arithmetic is exact — `price = breakeven / (1 − r)`, the 7-point premium over it is invariant, `rakeFrac = min(pct, cap / (potBB·unit))`, and a straddle doubles the unit the cap is measured against so the same 3bb cap takes 2.5% instead of 5%. |
+| I31 | **The rake does what §3.2's model can do, and is asserted not to do what it cannot** (§5.2). **(a)** The flat haircut on ρ is **tier-inert *on the score path* at the three percentile nodes, by construction**: 0 of 27,675 tiers move at the 5% preset, all 27,675 scores do, and every score ratio equals (1 − rakeFrac) to within 2 ulp. Asserted so that turning rake into a non-uniform haircut has to be a deliberate model change. **RE-SCOPED TO THE SCORE PATH AT v3 P4** (V3-PLAN §7.1): the clause's own "must be a deliberate model change" is being *invoked*, not violated — §3.4's absolute-EV cut is that change, and the qualifier is **measured rather than asserted**. At 75 of the same settings the EV-mode aggressive set moves under the same 5% preset **59 times** and narrows or holds at all 75, so "score path" names a real boundary between two cuts rather than softening this one. I40 carries the EV side's claims. **(b)** Where the threshold is absolute it bites: the vs-3-bet continue range narrows monotonically in `rakePct` on the **action** tier, 45 → 41 cells at UTG and 49 → 44 at CO across 0–6%. **(c)** The arithmetic is exact — `price = breakeven / (1 − r)`, the 7-point premium over it is invariant, `rakeFrac = min(pct, cap / (potBB·unit))`, and a straddle doubles the unit the cap is measured against so the same 3bb cap takes 2.5% instead of 5%. |
 | I32 | **v2 reproduction, over the whole environment surface** (V3-PLAN §0.4, §5.1). I22 pins one point; I32 pins the surface that point sits in, and it was frozen **before any v3 code existed**. The sweep is 21 legal (position, node) pairs × every integer VPIP ∈ [25, 90] × depth {40, 100, 250} bb × rake {0, 5%} × straddle {off, on} × villain profile OFF — 12 environment lanes, 16,632 settings, 123 cells, **2,045,736 tiers** — compared character for character against `data/tiers-v2.fixture.txt` (469 KB, delta-encoded down the VPIP axis inside each (lane, node, position) block, exactly as I22's fixture is). The claim is the *legacy lane*: with every v3 axis at its legacy setting — EV mode off, vs-GTO off, skill dial neutral, 3-bet sizing at pot, profile OFF — the pipeline paints these tiers. **Why the surface and not the point:** every v3 mechanism will be read by code already carrying a depth, a rake and a straddle, so the leak I22 cannot see is a memo key that forgot a new axis and hands back another environment's answer on the raked/shallow/straddled path — which is the path the page actually opens on. Demonstrated rather than asserted, in `test/tier-fixture-v2.test.mjs`: a 10% move in `depth.lambda` and a 3% move in `straddle.seat` each leave the v1 operating point *exactly* where it was (I22 stays green through both) and each move the v2 surface. **Three failure kinds, reported separately:** tier drift, named per lane; structural drift of the cell set or the (lane, node, position, VPIP) domain; and **lane drift** — the recompute deliberately runs on the *frozen* lanes, so a moved `rake.preset` or `rake.capBB` produces zero tier diffs and has to be its own red or it would be no red at all. **Succession, proven rather than assumed:** lane `d100/r0/s0` *is* the v1 operating point (checked by `envOf` object identity), and the gate's third clause diffs `data/tiers-v1.fixture.txt` against that lane artefact-to-artefact, with no pipeline in the middle, so it holds even on a day the pipeline is broken. I22 and I32 therefore run side by side and **retire together, never separately** — only at a calibration-forced re-freeze (§5.1 of the v3 plan). ~3.5 s of pure policy math, no Monte Carlo. **Scoped to full-precision data** on the same terms as I22: on a `--fast` dataset the tier half is not asserted and says so; the structural half and the v1 containment, neither of which depends on trial count, still are. |
 | I33 | **The payoff interface freeze, as amended** (V3-PLAN §2 and its `Amended (P2 pre-stage)` block). `payoff(cells, potSize, spr, opts)` is frozen at **four arguments and six return keys** — `{ev, se, source, supported, potMult, invShare}` — and the freeze is a *test*, not a doc: every clause below is armed against a fabricated violator and shown to fire. The stub is the **zero-sum projection of the shipped checkdown measurement**, `0.5 + (eq_A[0] − eq_B[0])/200` — §2's literal "return shipped `eq[N]`" cannot pass §2's own conservation clause, and the projection is the only form built from shipped numbers alone that still conserves (exactly, to the last bit, over all **15,006 ordered heads-up pairs**). **(a)** arity, key names, key ORDER, types, the `source` enum, `ev ∈ [0,1]` and determinism over 30 named request shapes and ~90,000 returns, plus one anchor recomputed straight from `model.cells` — and, since the P2 red team (`docs/refutations/P2.md`), the pot's **physical ceiling**: `potMult ≤ 1 + 2·spr`, because the pot at the node plus both stacks is all the money there is. Only the floor was asserted before, and three refuters shipped a final pot **fifty times both stacks** past every gate and every test while three docstrings described the bound they had just broken. It is not a tolerance — the 1 and the 2 are the game's — and it is skipped where `spr` is not a depth, since those requests are (a)'s out-of-domain business. **(b)** conservation as an identity where §2 asked for 1 ± 2·se. **(c)** the spr→0 identity, plus the amended **pot geometry** half: an empty effective stack cannot move the pot, so `potMult === 1` and `invShare === 0` at spr 0 for *any* source. **(d)** `se > 0` always, derived from the trial count that actually ran (`seOfTrials(100,000)/100` at p = 0.5), `Infinity` where no trial backs the number, never typed. **(e)** a filename-scoped grep gate: CFR, the EV cut and the UI consume payoffs only through this accessor. **(f)** page-side, no caller renders a `supported:false` ev without the badge. **THE THREE AMENDMENTS, each measured by spike S-B and each carrying its numbers.** **(i)** `potMult` = E[final pot]/potSize and `invShare` = E[hero's *post-node* investment]/E[final pot] exist because `EVbb = ev·finalPot − invested` cannot be computed from `ev` alone: S-B measured E[F]/potSize at **1.603–11.865** and hero's share of E[F] at **0.199–0.730** over 300 points, so the pot term is otherwise wrong by up to an order of magnitude. Under checkdown both are **identities, asserted by `Object.is`**: no betting after the decision node means the final pot *is* the pot at the node, so `potMult === 1` and `invShare === 0` — **zero new constants**. The caller owes `finalPot = potMult·potSize`, `invested = heroPre + invShare·finalPot`, where `heroPre` (hero's own contribution to `potSize`) is caller-known because the caller built the node; S-B's published `invShare` bundles that pre-node term via REF3's `c0 = c1 = 0.5` **normalisation** rather than a measurement, and `total = heroPre/finalPot + invShare` converts back exactly. The arity stays four; `opts` is the door. **(ii)** `opts.ip` is in **every** payoff memo key, beside `cells`, `potSize`, `spr`, `opts.seed` and the model hash. S-B measured `ev(A,B,ip) ≠ ev(A,B,¬ip)` **by up to 43 pt** while `ev(A,B,ip) + ev(B,A,¬ip) = 1` holds exactly, so a keyless memo is wrong by more than the entire error budget (the Grade A edge is 2.5 pt) and wrong *silently* — the `envKey` docstring's trap in a new place. `payoff.mjs` has no memo by design, so clause **(g)** is a contract clause with a detector: a comment-stripped text scan (the header is a thousand words *about* memo keys and would otherwise clear the clause by discussing it) over `scripts/` and `src/` on its own memo scope, plus the page's `@payoff-page` block by name, armed against a keyless memoizing wrapper and cleared by a keyed one, with a dynamic aliasing probe beside it whose own blind spot (a memo that clones its value) is stated in the detail line. **(iii)** `supported:false`'s real domain is **card-removal degeneracy**, not multiway: `AA_DANGLER|RB` × `AA_BIGPAIR|DS` is degenerate on **12.56%** of street evaluations (mean 0.73% over 50 pairs, 4/50 over 1%), and S-A independently found **43 structurally undealable pairs**, `AA_*` × `A_BLOCKED`, combo mass 3.6e-5. The failure mode is **silent** — S-B's first implementation collapsed every AA-vs-AA pair to a checkdown with no error raised — so clause **(h)** requires any source evaluating against *dealt boards* to return `supported:false` on such a request (with no mass field in the six keys, that is what "flagged" means), never a silent collapse. The stub deals nothing and is **exempt by construction** — and since P3's B2 pre-stage that exemption is keyed on the accessor's `route` tag rather than on the shipped `source` datum, because the measured pairwise matrix *is* `source:'checkdown'` and would otherwise have inherited an exemption written for a source that deals no cards. Checked rather than assumed over all **506** ordered degenerate pairs (504 before B2: the matrix measured `A_BLOCKED|RB` × `A_BLOCKED|SSA` as structurally undealable, `A_BLOCKED` being the taxonomy's "Trip/quad aces", so the predicate is now an **ace-floor sum ≥ 4** rather than a family list). **The monotonicity clause was written to be falsified, and it was — so it is rewritten to the measurement, never deleted and never widened.** S-B: inversions on **1.7% of pairs at spr 1, 8.1% at spr 4, 15.9% IP / 20.5% OOP at spr 10**, worst case **9.1 pt less** checkdown equity for **20.0 pt more** ev. **Three** assertions, split by **route** since B2 rather than by `source`: the `projection` route must show **zero** inversions (the stub is strictly increasing in hero's `eq[0]` by construction — this is what catches the stub quietly ceasing to be the stub); the `matrix` route must show **more than zero**, because a measured pairwise checkdown is *not* separable and zero would mean it had become so — measured **472 of 976 steps** (123 cells × spr {0,1,4,13} × ip {off,on}) against `AA_BIGPAIR|RB`, worst 0.2805, with the count reported and bounded by no tolerance; and **any non-checkdown source at spr ≥ 4 must show inversions > 0**, because realization is precisely what checkdown equity does not measure. **Zero inversions from a source claiming to model realization is the new failure.** No upper bound is asserted and spr 1's 1.7% is not a floor — the band is *reported*, never used as a tolerance. **AND SINCE P3'S B2 PRE-STAGE EVERY CLAUSE RUNS ON A SECOND ROUTE — the measured pairwise checkdown matrix, which is the source the solver now consumes** (V3-PLAN §2's `Measured (P3 B2)` block, §3.3's `Adjudicated (P3 launch)` block). `makeMatrixPayoff(model, matrices)` serves `scripts/lib/checkdown-matrix.mjs` — S-A's construction, **400,000 shared boards** under two NAMED seeds, one draw per cell per board with a sit-out on collision, diagonals exactly 0.5, off-diagonals stored once and mirrored — inside the same six keys, the same arity of four and the same `source:'checkdown'`, because it *is* a checkdown. **That last identity is the trap:** three clauses keyed their exemptions on that string, so without a `route` tag the matrix would have cleared **(c)**, **(h)** and the monotonicity clause *vacuously* instead of firing them. The tag is a function property beside `modelHash` (never a seventh return key, never a fifth argument), an absent tag reads as `projection` so forgetting it fails closed, and the tag itself is **armed** — the matrix relabelled `projection` is caught on its 472 inversions and silently re-exempted from (h), the projection relabelled `matrix` is caught for reproducing the equity order exactly. **(c) is rewritten to the measurement:** a pairwise checkdown source is compared to the shipped column by its **q-weighted marginal**, not by equality, because the shipped number conditions villain on hero's cards being dead and the marginal does not — the residual **is** the card-removal residual. Reported rather than asserted: mean **−0.094** pt / p95 **0.542** / max **0.892** (seed A), **−0.073 / 0.541 / 0.784** (seed B), against S-A's **−0.112 / 0.577 / 0.827** at the same 400,000 boards. What *is* asserted is the **sign pattern** — the four ace-holding families read **−0.417** pt against **−0.032** for the other 103 — and **conservation** at 50 within the `n²·EPSILON` accumulation bound; armed deterministically against a source that reproduces the column exactly and against one whose residual carries the same band with no family structure. **(h) gets its first live case:** **43 unordered / 86 ordered** pairs come back `supported:false` carrying the stored 0.5 (which conserves bit-exactly) and `se = Infinity` at n = 0, the expected set taken from the measurement's own record rather than typed, every member asking the deck for five or six aces — while the **420 ordered** `AA_*` × `AA_*` pairs are **dealable** and stay supported with a **2.21×** larger `se` from their own smaller sample (25,145 samples against 117,363). *That* is degeneracy surfaced when the pair is dealable: the cost lands in the error bar, not in a false flag. The projection half is pure arithmetic over the shipped equity ladders and costs ~50 ms; **the matrix pair is a generated, committed ARTIFACT** — `data/checkdown-matrix.json`, 307 KB of integer trial counts from which `E = (wins2/2)/cnt` reconstructs bit-identically — written once by `scripts/generate-checkdown-matrix.mjs` (~21 s wall, both seeds in parallel) and **read** here in **3 ms**, timed under the family's own setup label. Building it inside verify would put ~40 s on a 41.9 s soft wall, which is why V3-PLAN §0.4's identity leg (b) applies: a new mechanism entering as a new artifact, in the open. One extra clause guards it every run — **(artifact)**: the seeds and board count match the code, the keys match the model's live set, the recorded `generatorHash` (sha256 over `checkdown-matrix.mjs` + the generator) equals the live hash so a **stale** artifact is caught on the run that made it stale, the `contentHash` recomputes, and every triangle entry satisfies `0 ≤ wins2 ≤ 2·cnt`; armed against a tampered copy three ways (a flipped trial count, a flipped hash byte, a moved board count). The stronger claim — that the file **rebuilds byte-for-byte** from its own recorded inputs — is `node scripts/generate-checkdown-matrix.mjs --check`, deliberately **outside** verify because it costs the ~40 s the artifact exists to avoid, and part of the milestone's green definition at its close-out. |
 | D7 | **The payload ceiling** (a data gate, listed here with its siblings). `model.json` as emitted — the exact minified byte string written to disk — against V2-PLAN §2.5's 220 KB budget: measured **118,006 B = 115.2 KB, 48% headroom** after the sub-bucket cut (§2.4) and v3 P1's constants, against 187,859 B = 183.5 KB before the cut. The ceiling is read on the minified basis because the plan states it in the same sentence as "`model.json` is 105 KB today", which is the minified v1 file, and because the literal pretty-printed reading is unsatisfiable by the plan's own escape hatch (§9.10). The pretty-printed figure, 173.7 KB, is printed in the gate's detail line and recorded, not asserted. D6 carries the tighter per-block budgets that actually catch a creeping payload; D7 is the published contract and is deliberately slack against it. |
@@ -2608,6 +3066,11 @@ as, now, are the scoring constants themselves (§5.1).
 | I35 | **The CFR+ solver, and what it is a solver *of*** (V3-PLAN §3.2 / §3.3, per spike S-A). CFR+ — alternating updates, regret matching+, linear averaging — on the 123-cell abstraction over the capped heads-up preflop tree, with **exact best-response** exploitability. Two depths are solved and differ in exactly one terminal pot: **T100** (the cap is the pot 5-bet to 81) and **T40** (the cap is a genuine all-in). **The sizing set introduces zero new constants**: every raise is the pot-limit maximum, which from blinds 0.5/1.0 is exactly the ladder **3 / 9 / 27 / 81** — an arithmetic identity, and the gate *re-derives* it from the pot-limit rule rather than reading it back — three independent times, in `potLimitLadder`, in I35's own `EXPECT` literal and in a second loop written out in `test/cfr.test.mjs` — **so a sizing that is not the pot-limit maximum fails**: misstate the rule and four assertions go at once, move the big blind and six do. This row used to say "so a typed sizing fails", and the P2 red team refuted it (`docs/refutations/P2.md`): a typed `[3, 9, 27, 81]` behind the same stack cap passes everything, because a derivation and a table that agree are indistinguishable by any check of values. That is the correct outcome for an identity — the claim is about the values, not about the code — and the sentence is now the claim the checks make. (S-A found the brief's "open / 3-bet / 4-bet / jam at 100bb" tree is **illegal** in pot limit: facing a 27bb 4-bet the maximum legal raise is 81, so a 100bb jam is not an available action. A NLHE-shaped preflop tree does not port to PLO.) Five decision nodes, nine terminals, 615 infosets, 1,599 action slots (SB 861 / BB 738) — all of which fall out of the tree rather than being asserted into it. **(a)** Exploitability ≤ **ε = 5e-5 bb** at the **2,000**-iteration cap; measured worst **7.8e-6** on the projection and **1.2e-5** on the measured pairwise matrix over three init seeds × two depths, and a 13-iteration solve breaches it at 2.3e-2, so the bar can fail. §6's rule that ε must not be tighter than the payoff's own `se` is *asserted*, not recited: the accessor's own `se` is read back and converted at the tightest pot (1.5 bb), and ε must sit under **the minimum over both routes** — the matrix's `se` comes from its own per-pair sample counts and the stub's from `meta.trials.cell`, so they are two different numbers rather than two readings of one. A quieter payoff forces ε **down**. **(b)** Every infoset is a probability distribution, against the **accumulation bound** `N·EPSILON` (an arithmetic fact about IEEE addition, not a tolerance); measured 2.2e-16, one ulp. Any probability outside [0,1] reports Infinity, which a bare sum check would miss. **(c)** Two independent seeds, on **two axes named separately, and since B2 both are live**: the *init* axis (the simplex point used while regrets are all-zero) spreads **0.0004 % / 0.0006 %** of pot on the projection and 0.0004 % / 0.0002 % on the matrix, against the **0.15 %** gate. The *payoff* axis (S-A's own reading — `opts.seed` threaded into every accessor call) remains **inert under the projection**, so those two samples are bit-identical and the spread is exactly 0 *for a stated reason, checked rather than assumed*, and it stays armed with a fabricated seed-sensitive source that moves the value 7.6e-2 bb. **Against the matrix it is live and it passes with margin:** `opts.seed` selects which of two independently sampled matrices answers, and the two give values **0.0659 % of pot apart at T100 and 0.0615 % at T40** — **2.3× / 2.4×** under the gate. That margin is a measurement rather than a claim only because the matrices are built at **400,000 boards**, which is the board count S-A read the 0.035 % anchor at. **This is the one place a v3 gate has been red and been made green without being touched, so the mechanism is worth stating.** At the B2 pre-stage the shipped matrices were at **25,000** — the top of S-A's *out-of-sample exploitability* band, a different S-A table — and the axis read **0.1508 % / 0.1568 %**, i.e. at ~1× a gate anchored at ~4× on a 400,000-board measurement. Spread falls as boards^−½, so the tolerance and the board budget were **jointly unsatisfiable**; the full six-pair table is in V3-PLAN §3.3's `Adjudicated (P3 launch)` block and the resolution in its `Adjudicated (P3 relaunch)` block. Of the three available moves — more boards, a re-anchoring ceremony on `solver.twoSeedTolPot`, or reporting the axis instead of asserting it — the last two are weakenings, so the **measurement** moved into the anchor's regime and the constant's value **0.0015 did not change by a digit**. The seed names were fixed before either matrix was solved on and were not reconsidered. **(d) Six-max is deferred, and the deferral is gated by its own evidence rather than by prose.** Budget is *not* the reason — S-A cleared §3.3's half-budget criterion by **5,400×**. The reason is the payoff's domain, re-measured every run: every multiway request returns `supported:false`, the six shares miss 1 by up to **0.445** (so there is no constant-sum game to solve), and hero's share is **bit-identical across disjoint opponent sets** — the multiway door reads equity against *random* opponents, so no opponent's cards enter any payoff. MCCFR on that would converge, correctly and quickly, to the equilibrium of a game in which the other five players' hands do not exist. If any of the three facts flips, this clause **fails** and the decision is re-made — and it is re-measured on the matrix route too, since a new payoff source is exactly what could re-open it: 0 of 144 supported, shares miss 1 by 0.445, hero's share still opponent-invariant, because the matrix is **pairwise** and multiway still falls to the accessor's flagged exit. **The re-opening rule** V3-PLAN §3.3 sets is therefore evaluated once, by measurement, and frozen in `cfr.mjs`'s `SIXMAX.reopenRule`: leg (i) holds, **leg (ii) fails** (no measured k-way sampler exists and the pairwise matrix is not one), legs (iii) and (iv) hold for the pairwise matrix and are not evaluable for a sampler that does not exist. So the deferral **stands**, and **I36's positional-nesting clause is NOT MEASURABLE in the HU domain** — the solved tree has exactly two seats, so there is no UTG/HJ/CO/BTN nesting for an equilibrium to exhibit or violate; scoped to the measurement (the I15 precedent), never toleranced. **(e)/(f) Two disclosure clauses with teeth, armed a phase before their subject exists** — the I33(g) idiom: the cap list must match the tree in *both* directions (a dropped omission understates the abstraction, an invented one overstates it), and whenever the payoff `source` is `'checkdown'` the **"a game where postflop does not exist"** label must render, derived from that datum and **never** from `supported`. That trap is the real one here: all 15,129 heads-up returns on the projection *are* `supported:true`, so a `supported`-keyed label shows no caveat at all. The label renders on **both** routes, which is the point of keying it off `source` — a measured pairwise checkdown is still a game where postflop does not exist. On the matrix route the clause's companion assertion is rewritten to the measurement: **86 unsupported returns per showdown terminal**, exactly the undealable pairs, twice over for the two orderings, derived from the matrix's own record rather than typed, with the fallback flagged rather than collapsed (I33 clause (h)'s first live case). P2 ships no equilibrium surface, so both clauses run over **zero units and report the count** instead of passing quietly. **THE FINDING THE LABEL EXISTS FOR:** the checkdown equilibrium is **BB-positive**, on both payoff sources. **On the measured pairwise matrix — the source P3's baseline is solved on — the button loses 0.14164 bb/hand at 100 bb (0.13832 at 40 bb), opening 88.86 % while BB folds 0.155 % against a 3 bb open.** That is the reproduction check against S-A's own solve of the same construction (−0.1418 bb / 89.3 % / 0.16 % at 400,000 boards): value to **1.6e-4 bb**, SB open to **0.44 pt**, BB fold to **0.005 pt**, now at **the same board budget S-A used**, so what remains is the payoff-axis spread itself rather than the budget. The deltas in the gate's own detail line are **derived from the run** against a quoted reference, never typed: the B2 pre-stage typed its deltas as prose and they became false the moment the board count moved. The **projection stub**, which remains the page's own accessor source (D10), gives −0.0816 bb at 100 bb (−0.0798 at 40 bb), opening 99.4 % while BB folds 0.0001 % — a different payoff and therefore different numbers, with the same *direction*, which is what the label is about. The stub is **exactly separable** (`ev(A,B) − 0.5 = (a_A − a_B)/2` to 1.1e-16), so its equilibrium is a pure threshold in the equity ladder and cannot express a blocker; the matrix can, and 472 of 976 steps of the equity ladder invert under it. Strip position of its only source of value and the button's edge inverts; that is what "postflop does not exist" looks like, and it also predicts the direction of any future Grade-A correction. **Validated four ways** beyond its own clauses: the analytic ground truth (with every showdown a coin flip the value is 0 and SB opens 100 %), the bracket `BR_SB ≥ v ≥ −BR_BB`, monotone convergence over five decades, and a mirror residual of 1.4e-14 bb on both routes — one ulp of the half-pot, since the solver mirrors the matrix and *measures* what that costs rather than assuming it is free. ~2.3 s for the eight solves; the two checkdown matrices are **read** once per process by the payoff family from `data/checkdown-matrix.json` and cost this gate nothing. |
 | I36 | **The equilibrium anchors, SCOPED TO THE MEASUREMENT** (V3-PLAN §3.3, §7.2, §14 item 4). Asserted on the SHIPPED tiers — `model.baselineTiers`, the block lite renders — rather than on a solve nobody sees, and on the artifact's recorded findings beside them. §7.2 wrote three clauses for a six-seat game and the solved tree has **two seats**, so each is scoped to what exists and the scoping is stated rather than absorbed. **(a) "AA_BIGPAIR × DS opens everywhere"** is read over the three (pos, node) pairs that exist: it **opens purely at SB** (`raise` 100/100), **continues purely at BB** facing the 3 bb open, and **4-bets purely at SB** facing the 9 bb 3-bet. **"TRASH × RB never opens UTG" has no UTG**, so it is scoped to **SB — the button, and the loosest opening seat in the game**, which makes the scoped clause *stronger* than the original rather than weaker: not opening even here implies not opening at UTG under any monotone reading of position. **THE P3 LAUNCH BLOCK EXPECTED IT TO OPEN, AND THE MEASUREMENT SAYS OTHERWISE: it folds, purely.** 88.86 % is a *combo-weighted* frequency over 123 cells and the ~11 % the equilibrium does not open is the bottom of the range rather than a thin spread — so the model's own clause is **corroborated** in the one seat where it can be read. Facing the open, the same cell **calls**, on price, which is a different claim and is why the clause is scoped to the open. **(b) Emergent positional nesting is NOT MEASURABLE in the HU domain** — recorded, never passed, never toleranced (the I15 precedent). The reason is not this gate's to invent: it is quoted from `cfr.mjs`'s `SIXMAX.reopenVerdict`, frozen after the 6-max re-opening rule was evaluated once by measurement and leg (ii) failed, and I35(d) re-checks it every run. **§7.2's prediction — "nesting fails at some seat pair" — is therefore NOT TESTABLE this milestone**: it is not reported as holding and it is not reported as failing. The clause **fails** the day a payload covers two seats of the UTG/HJ/CO/BTN chain, at which point the prediction is owed a measurement instead of this note; the detector is armed against exactly that. **(c) The comparand is RAW model tiers** (`policy.mjs`'s `preDisplay`, the action before the two display post-passes), and the post-passes are **measured on the equilibrium rather than enforced on it** — enforcing them on a solved strategy is the laundering §3.3 forbids. **SUIT MONOTONICITY IS VIOLATED: 7 of 369 shipped tier readings**, worst `SB rfi RUN1_TOPMID SS→SSA`, which demotes **RAISE to FOLD** on adding suitedness — a card-removal effect a percentile cut cannot express. The **AA-band** pass is not violated at all (0), so the two impositions do not stand or fall together. The finding is **recorded in `data/equilibrium.json` and re-derived here from the tiers in `data/model.json`**: two artifacts, one derived from the other, cross-checked — because the failure that actually happens is that the tiers are regenerated and the record is not. Armed against a record claiming zero violations over tiers that have some. **Model side, same three settings at the reference VPIP: the model's own post-passes move 1 of 369 cells**, so choosing the raw comparand changes almost nothing about the model and everything about what may be said about the baseline. **(d) Coverage is HU, and the reason is a shipped datum**: 3 of 24 (pos, node) pairs are solved and the other 21 carry the named reason **"baseline is HU"** in the block, so the page renders it rather than supplying it. **(e) `baselineQuant` is FLAGGED, not anchored, and this clause is the bound that makes the flag worth having** (the P3 red team's one majority-unanchored constant — six memos of six, `docs/refutations/P3.md`). § 6's row claimed the byte table as the anchor; the table was true and **nothing ever ran it**, so 0.02, 0.05 and 0.5 all regenerated with every gate, test and build green, and the anchor's own prose — which ships into both artifacts and renders beside the value — could be replaced with fabricated figures and ship green too. **No replacement anchor was invented.** The table is made **binding** instead: every run it is re-derived from the **shipped** full-precision strategies at the block's own depth (`strategyOf` emits the shortest decimal that round-trips a double, so the re-derivation is exact rather than tolerant) — 0.05 → 4,589 B / 15 MIX, **0.01 → 4,964 B / 20 MIX (shipped)**, 0.001 → 5,357 B / 23 MIX — each figure checked against what the shipped anchor quotes for it, the shipped step required to be one the anchor **prices**, and the shared-core block required to **be** that quantization of those strategies, so the block and the payload cannot be two different solves. Armed four ways: a fabricated byte figure, a fabricated MIX count, an unpriced step, a deleted flag. **What it deliberately does not do:** 0.05 and 0.001 are priced rows and would still pass — *which* priced step to take is a judgment about what a tier-level surface can paint, nothing measures that, and that residue is exactly what the flag admits. The other two legs of §6's idiom are asserted here too: the flag must ship in the block (naming the constant and this gate) and `baselineQuant` must carry the Method view's **estimate** badge. |
 | D9 | **The full-only payload's byte budget, and the full page's own tripwire** (V3-PLAN §5.3, §7.2). Five clauses, and the first is not about size. **(a)** A payload carrying `meta.synthetic: true` is **refused outright** — S-D's prototype payload carries that flag precisely so that shipping it is loud rather than a plausible-looking 66 KB of numbers nobody solved, and no size clause can rescue it. **(b)** `data/equilibrium.json` **69.6 KB against 73**. **(c)** `index-full.html` **614.6 KB against 634**; both ceilings are now stated as *held below* measured+5 % rather than derived from it — §9.11 has the repair the P3 red team forced, and neither number was raised. The 600 KB page budget stays **lite's**, and this is a second number for a second artifact rather than a raise of the first. Both budgets live in `scripts/lib/variant.mjs` beside the variant they belong to, so the build and the gate cannot hold different numbers. **(d)** The payload must actually be **in** the page: the injected copy is parsed back out of `index-full.html` and matched on `contentHash`, because a budget on a payload the artifact does not carry measures nothing. **(e) The shipping decision is re-applied to its own measurement.** V3-PLAN §3.3 deferred "embed the 7,626-pair matrix or reference it by content hash" to this gate; it came out **REFERENCE**, and the measurement is the reason. A **faithful** embedding — the artifact's own integer counters, the only encoding from which `E = (wins2/2)/cnt` reconstructs bit-identically — costs **102,001 B** against a **67,509 B** payload, a **2.51×** ratio, so embedding would more than double the artifact. Recorded beside it, because it is the number that would have made embedding look affordable: `E` rounded to six decimals costs **66,985 B**, *under* the threshold — and is **not the same matrix**, so it does not get to decide. Choosing a precision to fit a rule is choosing the answer. `data/checkdown-matrix.json` stays the Node-side source of truth and I33's `(artifact)` clause is what keeps it honest. The gate re-applies the rule every run, so a payload that grew until embedding no longer doubled it would fail rather than go on saying "reference". |
+| I38 | **The pool-skill axis: what it is, and what it is not** (V3-PLAN §3.4 / §6; §3.5 above). Five clauses on an axis whose entire mechanism is one function, and that is the claim rather than a summary of it. **(a) The lobby endpoint is the current model BY OBJECT IDENTITY.** `poolVpip(v, ref)` returns `v` *itself* over the whole [25, 90] domain (`Object.is`, by early return, not by an offset that cancels); a `skill: 0` profile builds the **same shadow object** as a profile with no skill field at all; `villainProfileOf` is a **fixed point** on its own output, so the dial cannot be applied twice by a consumer that re-normalises; and with the villain profile **OFF** a full-skill dial leaves the model untouched — the axis cannot reach I22's or I32's legacy lane, because its whole mechanism is the lattice and there is no lattice being read. Added at P4 and armed by the test that found it: the **shadow's memo prefix now carries the base model**, because before this it came from `villainKey` alone and two models profiled at the same (v, q) in one process shared a `SOLVE_MEMO` entry — the `envKey` failure one level up, where the missing axis is *which model*. **(b) The floor is the MEASUREMENT's floor.** `skill.vFloor` = 25 = `villainLattice.v[0]`, asserted as an identity every run: the dial's reach is the reach of the trials, and a dial that went past the tightest pool ever measured would be asking the accessor a question no trial answered. At `s = max` the constant is returned *itself* — `v + 1·(f − v)` is not `f` for every `v` in IEEE-754, and a far endpoint that misses the lattice by one ulp gets labelled `interpolated`. **(c) THE DIAL IS A COORDINATE CHANGE ON VPIP AND ADDS NO SECOND PATHWAY**, which is §6's "no new opinion" mechanised rather than asserted: over 16 (v0, s) pairs × 21 legal (position, node) pairs — **336 solves** — the pool at (v0, s) and the pool at (`poolVpip(v0,s)`, 0) are the **same shadow object** and hand back the **same solve object**. That is what makes it *correct* for `villainKey` to leave `skill` out of the memo key rather than merely convenient. A half-applied dial is armed as the case that must separate. **(d) Combo-weighted width tightens: 16.12 % → 13.76 %** over the 21 pairs, monotone at every step of the five-point grid — **and every exception is enumerated, never allowed for**, in both directions, against frozen records. Six pairs widen end to end and they are exactly the six **vs-3-Bet** pairs, all through `BROADWAY_RUN|DS` and `BROADWAY_RUN|SSA` going T3 → T2, which at that node is **CALL → AMBUSH CALL**: a tier label moving, not a hand, and `width` counts T1+T2 so it measures the label. Eleven interior (pair, step) rises: those six relabels plus five nut-gate releases as `N_eff` falls. I21 answers the same granularity problem on the VPIP axis with a bounded dip allowance; §7.2 asks this row for enumeration instead, and an allowance is what you write when you have not enumerated. **(e) The plays-better coefficient is bounded at REACH ZERO, not at a size.** It ships `null` — Grade C leaves no payoff layer to cut through and limitation 16 means nothing here measures postflop play, so no number is invented. Eight shipped files are scanned comment- **and string-literal**-stripped (the flag *names* the coefficient, which is the admission §6 requires, and an admission is not a read), and only `policy.mjs`'s declaration may name it; and over **9,225** per-cell readings along the whole dial the realization the pipeline uses is **bit-identical** to the dial-blind `realization(pos, N, ν, d)`. The failure this is armed against is somebody wiring a realization cut to the dial and picking a coefficient because one was needed. **(f)** §6's three legs: `constants.skill.flag` names **all three** unanchored records — `playsBetter`, `blend` and the domain — each carries the Method view's **estimate** badge, and since P4's red team the **badge map's reader** is asserted too, not just the map: a refuter left `UNANCHORED` intact, deleted the branch in `constHTML` that consumes it, and shipped with the family and 47 tests green, which is the P1 failure (a flag deleted with everything green) displaced one level. **(g) THE DOMAIN IS FORCED, AND BOUNDED — added at P4's red-team stage, because its anchor was refuted.** `min`/`ref`/`max` shipped claiming to be *anchored by construction*, by the two early returns; three refuters of three showed otherwise with the whole triple green — `min = -1` resolves the load default to **VPIP 85**, LOOSENING the pool onto the plays-better side Grade C does not build (and `wireVP` copies that number onto the page's slider, so a reader can select it), `max = 2` and `ref = 0.05` shipped green too, and **both early returns are removable with everything green** (`v + 0·(f − v)` *is* `v`, and `v + 1·(25 − v)` is exactly 25 for every double in [25, 90] over 3,000,000 draws). No replacement anchor was invented. What is asserted now is the **forcing**: the published blend returns the pool itself only at `ref` and the floor only at `max`, so those two are pinned by the blend and the measured floor between them, and `poolVpip(v, min)` must be the lobby itself. Then the dial is **swept at the page's own slider step** (0.01, read back out of `src/shell.html` along with its `SKILL.min`/`SKILL.max` wiring, so the domain bounded is the domain a reader is given): over **909 settings** it never moves a pool up, never reaches the floor before `max`, and is monotone throughout. A bound is not an anchor — `max = 1` is a unit convention normalised against a blend that is itself unanchorable — so the triple ships flagged and badged beside the other two. |
+| I37 | **Divergence accounting along the dial — and the clause that is recorded rather than passed** (V3-PLAN §3.4 / §6 / §7.2; §3.5 above). **(a) "Signed vs-GTO divergence combo-weighted ≈ 0 at pool = baseline" is NOT MEASURABLE on this payload.** "Pool = baseline" is a *setting of the pool dial*, and the P3 baseline is heads-up with the SB on the button **opening 88.85 % of combos** — **33.85 points looser than the lobby's 55**, so the setting lies on the *loosen* side of the axis, which is the plays-better half Grade C does not build. Underneath the arithmetic is a seat mismatch rather than a range accident: the baseline's SB is the button and in position, the model's SB is a six-max small blind out of position (`baseR` 0.90). Recorded, never toleranced into a pass (the I15 / I36-nesting precedent), with the detector armed on the **shipped** entry frequency so it **fails** the day a baseline lands at or below the lobby and the clause is owed a measurement instead of a note. **Measured beside it, because unmeasurable is not a reason to publish nothing:** the signed combo-weighted divergence is **negative at all three covered nodes and every setting** — the model is *tighter* than the HU equilibrium everywhere — and **grows** as the pool tightens at two of them (`SB` × RFI −1.095 → −1.199, `BB` × vs-Raise −0.708 → −0.852; `SB` × vs-3-Bet flat at −0.917, because that node's only movement is the AMBUSH-CALL relabel and CALL and AMBUSH CALL are the same action on the baseline's scale). **So "monotone exploit → equilibrium convergence", which §3.4 offered for falsification, is falsified in the aggregate as well as per cell.** **(b) The interior blend is the sentence the page publishes — and, since P4's red team, the SHAPE that sentence describes.** `constants.skill.blend` is recomputed against `poolVpip` at 5 interior settings × 4 lobby VPIPs — the I42(f)/I44(f) idiom, after the P1 red team shipped a Method view publishing a formula the code does not run — with **both anchored endpoints reproduced exactly**, read at **literal** `s = 0` and `s = 1` rather than through the constants they pin, because a constant cannot be asked to certify itself. That much bounds the *spelling*; it does not bound the *curve*, and three refuters proved it by shipping `v + (s + 0.05·sin(4πs))·(vFloor − v)` — published self-consistently in the constant, in `blendSpelling()` and in `blendValue()` — monotone, exact at every setting the clause sampled, **60/60 green**, and up to **2.3 VPIP points** away from linear at settings the 0.01 slider can select, while the shipped flag went on saying "the path between them is linear". So the clause now walks the blend at the page's own slider step and asserts its **second difference is zero** (a 1e-9-point IEEE guard, seven orders below the 0.15-point move one notch makes at the tightest probe): linear in `s` *is* a second difference of zero, and `test/skill.test.mjs` carries the refuters' ripple as an armed control so the check cannot go blind. This is §7.2's monotone-interpolation clause, and it is what bounds the one constant here that cannot be anchored: nothing measures a pool-skill scale, so linear is the form the two endpoints determine on their own and it ships flagged rather than justified. **(c) The `interpolated` badge is the accessor's own, not a second one.** At the load default the three detents land on VPIP 55 / 40 / 25, all measured lattice rows, and `villainEq` reports `lattice`; the two midpoints land on 47.5 and 32.5 and the same accessor reports `interpolated`. **(d) Per-cell convergence toward the equilibrium: 29 of 369 readings VIOLATE it**, enumerated in a frozen record compared in both directions. **§7.2's prediction is CORROBORATED, and the *ordering* is asserted rather than quoted**: the two rank-overlap rows it names lead by violation rate — `BROADWAY_RUN` **8 of 15**, `RUN0_HIGH` **3 of 12** — while the junk row `TRASH` is **1 of 12** and eighth, so "not the junk rows" is a measurement here and not a turn of phrase. I25's lesson transposed: what a tightening pool moves is the hands whose value is rank overlap. **(e)** The T2 reading — whether a model T2 is the aggressive or the passive level, which the baseline has no T2 to answer — is read back out of `src/shell.html`'s own node table every run, so the divergence measured here is the divergence the surface paints and not a second copy of the page's judgement. |
+| I34 | **The EV quarantine: no EV error of any size can move a tier** (V3-PLAN §5.4, §3.4). The load-bearing call is architectural — **view mode is not an input to `solve` or `aggressiveSet`**. The EV cut is a *sibling* accessor, `evCut(model, state, payoff)`, which consumes the memoised solve object and hands the same object back; a mode flag threaded into the tier path without a matching memo-key change is exactly the poisoning this gate exists to catch. **(a)** 420 settings — 21 legal seats × the 5-VPIP grid × the 12 environment lanes, sampled 1-in-3 of 1,260 and **ordered by `fnv1a` of each setting's own key**, which is measured to mix them (40.6% of consecutive visits differ on seat, node, VPIP *and* lane at once, against 45.6% expected of a random ordering of this surface and 1.2% in construction order — the mixing bar is computed from the surface rather than chosen). Each gets a **memo-cold reference serialisation** of all 123 cells' tier, action, pre-display action, MIX overlay, gate flag, promotion, score, margin, rank and frequency, plus eight aggregates. **(b)** The walk then visits all 420 with score/EV/score **interleaved** and 55 hash-chosen memo clears, and the tiers are identical **by object**: 51,660 `Object.is` comparisons on the cell objects themselves, the solve object unmoved across every EV read, `evCut(...).solved === solve(...)` throughout, and one more pass EV-first from a cold memo. Armed against a wrapper that mutates a memoised cell. **(c)** Every badge is `evBadge(source, se, supported)`'s answer and moves when any one of the three moves. **(d)** `evPrimary` is **false on the shipped model** — no `calibration` block exists, only the P5 ceremony may stamp one, and S-C's verdict means it can only ever be stamped FAIL — it rejects every near-miss verdict (`'pass '`, `'Pass'`, `1`, `true`), and the path behind it is **real**: a fabricated distinct-hash twin with `verdict: 'pass'` throws without a payoff, cuts different tiers with one, and never aliases the shipped model's memo. The flag is read **above the cache and is in the key**. |
+| I39 | **EV arithmetic: fold is zero, rake enters exactly, and the vs-3-bet sign is an identity** (V3-PLAN §7.2). `evBB = (ev·rakeRhoFactor(env) − invShare)·potMult·potSize − stake`. **(a)** **EV(fold) = 0 by construction** — the only money in the expression is money that enters at or after the node, so there is no fold term to get wrong. Over 900 settings × 123 cells every `evBB` reproduces the expression by `Object.is`, every `keep` compares against **zero**, and the geometry is the checkdown one (`potSize = (nOpp+1)` stakes). The sharp form is read off the layer through a fabricated payoff at the two equities where the arithmetic is exact: over 1,845 endpoint readings a hand that **never wins loses exactly its stake and not a chip more** — which is what says no blind and no sunk money is in there — and a hand that always wins collects exactly the raked pot. **(b)** Rake enters **only** through `rakeRhoFactor`, the exact I31(c) machinery: `1 − ρ` reproduces `min(pct, capBB/(rakePot·unit))` to 1e-15 over 6 rake settings × straddle × depth {40,100,250} × both couplings, and — the clause with teeth — **the accessor's own six keys are `Object.is`-identical across every rake setting** over 8,856 readings, so a per-hand cap cannot be hiding inside `potMult` or `invShare`; both hold their checkdown identities (1 and 0) everywhere. **(c)** `sign(evBB) = sign(eqMix − breakevenPrice(env))` on 19,926 of 19,926 vs-3-bet readings, with nothing left inside the ±se band — an **identity**, because the pot is written from the price exactly as the page's `nodePotBB` writes it, generalised to read `sizingPrice` so it survives the sizing axis. **This route bypasses the frozen accessor and says so**: `payoff()` takes cell keys and a *mix is not a cell*, so the share is `eqMixOf`'s and the error is the blend's own `seOfTrials(40,000)` by mix weight. **(d)** All 2,583 badges are `evBadge`'s answer, all lead with the page's own word `unsupported`, and all carry source `checkdown` — under Grade C every percentile reading is `supported:false` through the hero-only request shape, and the multiway door is **not** quietly promoted. **(e)** `stake` is a **pure display scale**, derived from `constants.solver.sizingLadder` rather than typed: doubling it on a distinct-hash twin moves not one `keep`, `mix`, `width` or `k` over 7,749 readings. **(f)** `policy.mjs` is outside I33(g)'s filename scope, so that detector is run here **voluntarily** over the `evCut` memo region rather than the blind spot being exploited, and the separation is probed dynamically as well — `ip` on/off, two models and two payoff bindings all hand back different objects, and a keyless memo is *seen* to alias. |
+| I40 | **What the EV cut moves — including the prediction it falsifies** (V3-PLAN §3.4, §7.2). **(a) Rake NARROWS EV-mode width, which is the deliberate anti-I31(a)**: over 900 settings (15 percentile seats × 5 VPIP × depth {40,100,250} × both couplings) the 5% rake widened the EV-mode set **0 times**, and pooled width goes **22.83% → 19.66%**. The contrast is the point, measured on I31(a)'s own legacy surface: at 225 identical settings the **score-path width moves 0 times and the EV-mode width moves 177**. That is limitation 17's designated structural fix biting. **(b)** Depth moves EV-mode width with I42's seat signs, on I42 clause (c)'s **differenced control** (axis on minus axis off, so the reading is the axis and not the re-sort): deep deltas UTG +0.000, HJ +0.000, CO +0.021, BTN +0.308, SB −0.678, BB −0.863 pts. **Asserted on CO/BTN/SB/BB and reported for UTG/HJ** — I42's own scope, for I42's own reason. **(c) §7.2's offered prediction is FALSIFIED and the finding ships**: "shallow+raked folds more than deep+raked at every seat" holds at 57 of 75 seat–VPIP readings and **inverts at 18**, and the inversions are not scattered — 13 of them are at the vs-Raise node, with `SB|raise` and `BB|raise` inverting at 4 of 5 VPIPs each. The two couplings pull against each other: `rakeDepth` grows the reference pot with the stack so the 3bb cap binds *harder* when shallow, putting the higher effective rake **deep**, while `depthWidth` tightens every seat whose `baseR` is under 1 as the stack grows. All 18 are enumerated in `scripts/lib/ev-band.mjs` and compared in **both** directions. **(d)** The MIX band's `k` is **re-derived from scratch every run** and `Object.is`-compared against the stamped `constants.evCut`, with `derivedAt` checked to still describe the default state — **and P4's red team measured what that comparison is worth, so the clause now says it.** Under the house GREEN command the field-by-field comparison is a **self-comparison**: `verify.mjs`'s CLI calls `stampConstants` before `verifyModel`, so the block was written from the very function the gate re-runs, and a hand-edited `k` is silently restamped. What actually bounds the block is **the bracket** — `0 < evMassAtK ≤ t4Mass ≤ evMassNextStep`, which caught every wrong derivation three refuters built (a doubled target, a halved one, a narrowed seat scope, T1 counted instead of t4) *after* a full restamp and rebuild — and `test/ev-cut.test.mjs`, which reads the model off disk **unstamped**. The one row that had neither was **`seUnit`**: `sePt: 0.9`, `seBBMean: 0.5` and `trials: 12345`, typed in place of their derivations, shipped 60/60 green, and no refuter could falsify it. Its anchor was true and enforced by nothing (the P2 precedent), so it is now asserted as the **identity it claims to be** — `seUnit.trials === meta.trials.cell`, `seUnit.sePt === seOfTrials(that count)`, both against the model and the accessor rather than against the fresh derivation, and `seBBMean` against a **second walk of the same 21 seats written in the gate** — in I40(d) *and* in the unit test that reads the file unstamped. |
 
 
 I22 is the gate that lets v2 be built at all. The depth axis, the rake slider, the straddle

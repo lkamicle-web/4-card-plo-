@@ -304,21 +304,34 @@ catch (e) {
   throw e;
 }
 
-/* THE SECOND COMPILE, and it is a MEASUREMENT (V3-PLAN §3.3 adjudication 12).
-   The vs-GTO colour mode is marked `@block:gto` in the shell. Compiling the shell again with those
-   regions removed — through the same stripper and the same minifier, so the two numbers are
-   comparable — gives the mode's cost in the artifact's own bytes rather than in source lines. The
-   build then reports TWO app readings: `app`, which is what ships and which the raised ceiling
-   binds, and `core`, which is `app` minus this mode and which the PRE-RAISE ceiling still binds.
-   That is what makes the raise paid rather than granted: no other block can grow into it.
-   Skipped under --no-minify, where neither number means what the budgets were calibrated against. */
+/* THE EXTRA COMPILES, and they are MEASUREMENTS (V3-PLAN §3.3 adjudication 12).
+   Each named feature below is marked `@block:<name>` in the shell. Compiling the shell again with
+   one feature's regions removed — through the same stripper and the same minifier, so the two
+   numbers are comparable — gives that feature's cost in the artifact's own bytes rather than in
+   source lines. The build then reports the app payload TWO ways: `app`, which is what ships and
+   which the raised ceiling binds, and `core`, which is `app` minus EVERY marked feature and which
+   the pre-raise ceiling still binds. That is what makes each raise paid rather than granted: no
+   unmarked code can grow into it.
+
+   EACH BLOCK ALSO GETS ITS OWN CEILING (`BUDGETS.blocks`), which P3's red team asked for in as many
+   words: it found that `@block:gto` had no cap of its own, so 12.4 KB of filler could be added
+   inside the marked region and the build would stay green — the raise bounded nothing. A per-block
+   cap is what turns "the raise pays for this feature" into a statement the gate can refuse.
+
+   Skipped under --no-minify, where none of these numbers means what the budgets were calibrated
+   against. */
+const BLOCKS = ['gto', 'ev', 'skill'];
+const blockBytesBy = {};
 let blockBytes = 0;
 if (!NO_MINIFY) {
   try {
-    const cut = stripMarkedBlocks(only.text, 'gto', { label: rel(SOURCE_PATH) });
-    if (cut.blocks) {
+    for (const name of BLOCKS) {
+      const cut = stripMarkedBlocks(only.text, name, { label: rel(SOURCE_PATH) });
+      if (!cut.blocks) { blockBytesBy[name] = 0; continue; }
       const core = compileShellScripts(cut.text, { label: rel(SOURCE_PATH), noMinify: false });
-      blockBytes = Buffer.byteLength(shell.html) - Buffer.byteLength(core.html);
+      const b = Buffer.byteLength(shell.html) - Buffer.byteLength(core.html);
+      blockBytesBy[name] = b;
+      blockBytes += b;
     }
   } catch (e) {
     if (e instanceof VariantError || e instanceof ShellCompileError) die(e.message);
@@ -426,14 +439,16 @@ const eqBytes = blocks.eq === null ? 0 : Buffer.byteLength(blocks.eq);
    silently blow a budget calibrated against markup+CSS+JS. It is reported on its own line and
    gated on its own (D9). At lite this term is 0 and every number below is what it was. */
 const app = total - dataBytes - modelCode - eqBytes;
-/* `core` is the app block minus the marked vs-GTO mode — the quantity the 360 KB ceiling was
-   calibrated against, still facing it after the raise. */
+/* `core` is the app block minus EVERY marked feature — the quantity the 360 KB ceiling was
+   calibrated against, still facing it after the raises. */
 const appCore = app - blockBytes;
+const blockReport = BLOCKS.filter((n) => blockBytesBy[n])
+  .map((n) => `${n} ${(blockBytesBy[n] / 1024).toFixed(1)}`).join(', ');
 const report = `${rel(OUT_PATH)} [${VARIANT_NAME}] ${(total / 1024).toFixed(1)} KB `
   + `(data ${(dataBytes / 1024).toFixed(1)} + model code ${(modelCode / 1024).toFixed(1)} `
   + (eqBytes ? `+ equilibrium ${(eqBytes / 1024).toFixed(1)} ` : '')
   + `+ app ${(app / 1024).toFixed(1)} KB, of which sim engine ${(engineBytes / 1024).toFixed(1)}`
-  + (blockBytes ? `, vs-GTO ${(blockBytes / 1024).toFixed(1)} -> core ${(appCore / 1024).toFixed(1)}` : '')
+  + (blockBytes ? `, blocks ${blockReport} -> core ${(appCore / 1024).toFixed(1)}` : '')
   + `)`;
 
 // Budgets. Three numbers, set 2026-08-30 against the finished v2 page — the phase-4 end retune,
@@ -511,8 +526,19 @@ if (BUDGETS) {
      buys exactly one feature and nothing else can drift into it. It binds whether or not the block
      is present: with the mode removed entirely, core === app and this is the old gate verbatim. */
   if (BUDGETS.appCore != null && appCore > BUDGETS.appCore) {
-    sizeProblems.push(`app minus the vs-GTO block is ${kb(appCore)} KB, budget ${BUDGETS.appCore / 1024} KB `
-      + `(the pre-raise app ceiling — the raise pays for the marked block, not for the rest)`);
+    sizeProblems.push(`app minus the marked blocks is ${kb(appCore)} KB, budget ${BUDGETS.appCore / 1024} KB `
+      + `(the pre-raise app ceiling — a raise pays for the block it named, not for the rest)`);
+  }
+  /* The per-block ceilings. Without these the app raise buys a feature a name and then lets that
+     name hold an unbounded amount of code (the P3 red team's finding, docs/refutations/P3.md). */
+  if (BUDGETS.blocks && !NO_MINIFY) {
+    for (const name of BLOCKS) {
+      const cap = BUDGETS.blocks[name];
+      if (cap != null && blockBytesBy[name] > cap) {
+        sizeProblems.push(`the @block:${name} region is ${kb(blockBytesBy[name])} KB, budget ${cap / 1024} KB `
+          + `(the app raise this feature was granted is the only thing that pays for it)`);
+      }
+    }
   }
   if (modelCode > BUDGETS.modelCode) {
     sizeProblems.push(`inlined model code is ${kb(modelCode)} KB, budget ${BUDGETS.modelCode / 1024} KB`

@@ -60,7 +60,17 @@ test('everything the catalog calls live IS enforced, and only the promoted thirt
   // one new family (scripts/gates/baseline.mjs) appended after D10/D11. I35's two disclosure
   // clauses stop running over zero units on the same step: the surfaces they read —
   // data/equilibrium.json, model.baselineTiers, model.constants.solver — are what P3 emits.
-  assert.deepEqual(LIVE_IDS, ['I32', 'I33', 'I35', 'I36', 'I41', 'I42', 'I43', 'I44', 'D9', 'D10', 'D11', 'SF', 'SS']);
+  //
+  // P4 promoted I37 and I38 (§3.4, §6), the two the catalog reserved for exactly this phase, in one
+  // new family (scripts/gates/skill.mjs) appended after I36/D9. The family emits I38 before I37 —
+  // the axis before the accounting taken along it — and EXPECTED_IDS carries that same order, which
+  // is why the two ids read out of order against the catalog here and only here.
+  //
+  // P4's second deliverable promoted I34, I39 and I40 (§3.4, §5.4, §6), in one new family
+  // (scripts/gates/ev.mjs) appended after the skill family. Those three read in CATALOG order
+  // inside their family, unlike I38/I37 above, because the quarantine has to report before the two
+  // gates whose subject it protects.
+  assert.deepEqual(LIVE_IDS, ['I32', 'I33', 'I34', 'I35', 'I36', 'I37', 'I38', 'I39', 'I40', 'I41', 'I42', 'I43', 'I44', 'D9', 'D10', 'D11', 'SF', 'SS']);
   // Harness gates run OUTSIDE this runner (browsers.mjs), so they are live without being in
   // EXPECTED_IDS — the `runner` field is what makes that legal rather than an inconsistency, and
   // index.mjs's guard reads it. Every VERIFY-runner live id must be enforced.
@@ -74,18 +84,21 @@ test('everything the catalog calls live IS enforced, and only the promoted thirt
   }
 });
 
-test('the enforced report is the 55 gates, and EXPECTED_IDS is still a literal', () => {
+test('the enforced report is the 60 gates, and EXPECTED_IDS is still a literal', () => {
   // 46 at P0; +I41..I44 (lane M) +D10 +D11 (lane I) at P1; +I35 (lane cfr) at P2; +I36 +D9 at P3
-  // (the equilibrium baseline, §3.3 and §5.3, in their own family after D10/D11). The count is
-  // asserted rather than derived for the same reason EXPECTED_IDS is a literal: a number that
-  // follows the list cannot contradict it.
-  assert.equal(EXPECTED_IDS.length, 55);
+  // (the equilibrium baseline, §3.3 and §5.3, in their own family after D10/D11); +I38 +I37 at P4
+  // (the pool-skill axis and the divergence along it, §3.4 and §6, in their own family after that);
+  // +I34 +I39 +I40 at P4 as well (the absolute-EV cut and its quarantine, §3.4/§5.4/§6, in their own
+  // family after the skill one).
+  // The count is asserted rather than derived for the same reason EXPECTED_IDS is a literal: a
+  // number that follows the list cannot contradict it.
+  assert.equal(EXPECTED_IDS.length, 60);
   // Written out, not derived — the reason is in index.mjs: a list flat-mapped from REGISTRY cannot
   // detect a deleted family, because it shrinks with it. Adding a reserved-id manifest must not
   // become the excuse to generate this list.
   const decl = INDEX_SRC.slice(INDEX_SRC.indexOf('export const EXPECTED_IDS'));
   const literal = decl.slice(0, decl.indexOf('];') + 2);
-  assert.equal((literal.match(/'[A-Z]+\d*'/g) || []).length, 55);
+  assert.equal((literal.match(/'[A-Z]+\d*'/g) || []).length, 60);
   assert.match(literal, /^export const EXPECTED_IDS = \[/, 'EXPECTED_IDS is no longer a literal');
   assert.ok(!literal.includes('flatMap') && !literal.includes('CATALOG'),
     'EXPECTED_IDS is being derived — the independent copy is the point');

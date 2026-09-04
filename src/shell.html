@@ -517,7 +517,15 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 .vline .val{flex:1 1 auto;min-width:0;color:var(--text-primary);font:500 13px/18px var(--font-mono);font-variant-numeric:tabular-nums}
 .vline .val .u{color:var(--text-tertiary);font-size:11px;margin-left:3px}
 .vline.off .val{color:var(--text-disabled)}
-.vbadge{flex:0 0 auto;padding:1px 6px;border-radius:var(--r-sm);border:1px solid var(--border-default);
+/* SHRINKABLE SINCE THE P4 UI, AND THE ORDER OF THE WORDS INSIDE IT IS WHY. A badge is one nowrap
+   token in a flex row whose value has `min-width:0`, so a LONG badge does not overflow — it takes
+   the row and squeezes the number into a four-character column that wraps down five lines. The EV
+   badge is the layer's own `evBadge(source, se, supported)` and it is long ("unsupported/checkdown
+   ±0.00146"), so the badge shrinks and ellipsises instead, with the full string on `title`. What
+   survives the ellipsis is the front of the string, which is where `unsupported` is — §2 clause (f)
+   asks that the reader be told, and the word that tells them is the one that cannot be trimmed. */
+.vbadge{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  padding:1px 6px;border-radius:var(--r-sm);border:1px solid var(--border-default);
   color:var(--text-tertiary);font:600 9px/13px var(--font-ui);letter-spacing:.04em;white-space:nowrap}
 .vbadge.warn{border-color:rgba(247,184,61,.5);color:var(--pos-warn)}
 .classhead{display:flex;align-items:baseline;gap:var(--sp-3);flex-wrap:wrap}
@@ -975,6 +983,19 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
           <div class="ctlrow2" style="margin-top:0">
             <button class="tglchip" id="vptoggle" type="button" aria-pressed="false" aria-describedby="vpstat"><span class="dot"></span>Filtered villains</button>
           </div>
+          <!-- @block:skill — THE POOL-SKILL DIAL (V3-PLAN §3.4 / §8). It sits under the toggle and
+               above discipline q because it is the coarser question: q is how often a villain is
+               drawn from the filtered range, this is how tight that range is in the first place.
+               Hidden with the rest of the profile controls when the profile is off, which is the
+               honest disablement — with no filtered field there is no pool to re-describe. -->
+          <div class="vprow" id="vpskillrow" hidden>
+            <label for="vpskill" class="t-sm" style="color:var(--text-tertiary)">pool skill</label>
+            <input id="vpskill" type="range" min="0" max="1" step="0.01" value="0" aria-label="Pool skill — how much tighter than the table the pool actually plays, as a move along the measured villain-VPIP lattice">
+            <output class="v" id="vpskillval" for="vpskill">0.00</output>
+            <button class="btn btn-sm" id="vpskillreset" type="button" title="back to the lobby: the pool plays the table’s own VPIP, which is the model this page ships">lobby</button>
+          </div>
+          <div class="vpstat" id="vpskillstat" hidden>&mdash;</div>
+          <!-- @end:block -->
           <div class="vprow" id="vpqrow" hidden>
             <label for="vpq" class="t-sm" style="color:var(--text-tertiary)">discipline q</label>
             <input id="vpq" type="range" min="0" max="1" step="0.01" value="0.85" aria-label="Villain discipline q — the chance a villain is actually drawn from the filtered range">
@@ -2611,7 +2632,7 @@ var LIST = [
   { key: 'nu',     label: 'ν', name: 'Colour by nut potential',                           kind: 'ramp',  steps: 5 },
   { key: 'rho',    label: 'ρ', name: 'Colour by equity ratio',                            kind: 'ramp',  steps: 7 },
   { key: 'pin',    label: 'Δ PIN', name: 'Colour by change against the pinned state',     kind: 'ramp',  steps: 3 },
-  { key: 'ev',     label: 'EV',     name: 'Colour by expected share of the final pot',         kind: 'ramp',  steps: 7 },
+  { key: 'ev',     label: 'EV',     name: 'Colour by expected value in big blinds',            kind: 'ramp',  steps: 7 },
   { key: 'gto',    label: 'vs GTO', name: 'Colour by divergence from the equilibrium baseline', kind: 'diverging', steps: 5 }
 ];
 var DEFAULT = 'action';
@@ -2639,7 +2660,8 @@ function availability(key, cap) {
     return { available: false, reason: 'no pinned state — pin one in the rail’s Pin & diff section' };
   }
   if (key === 'ev' && !c.payoff) {
-    return { available: false, reason: 'no payoff accessor in this build — no expected-value surface to colour' };
+    return { available: false, reason: 'no payoff layer in this build — without the frozen accessor and the '
+      + 'policy module that does its bb arithmetic there is no expected-value surface to colour' };
   }
   if (key === 'gto') {
     if (!c.equilibrium) {
@@ -2856,6 +2878,18 @@ var S = {
      SCORING function's default stays 0, which is what keeps gate I22's v1 identity checkable. */
   d: DEPTH.ref, rake: HAS_ENV ? RAKE.preset : 0, rakeCap: RAKE.capBB, straddle: false,
   cbPatterns: false, monoSuits: false, rain: 8, reduce: false, itab: 'verdict', preview: null,
+  /* @block:ev */
+  /* WHICH OF §5.4's THREE PRESENTATIONS the page quotes its numbers in. 'score' is the DEFAULT and
+     the only one that cuts tiers; the other two are display re-quotations of the same verdict. It
+     is deliberately not in the permalink, on the `colorBy` precedent: a presentation changes what
+     UNIT a number is read in, not which model produced it. */
+  pres: 'score',
+  /* @end:block */
+  /* @block:skill */
+  /* THE POOL-SKILL DIAL (V3-PLAN §3.4). 0 is the lobby and the identity: `poolVpip` early-returns
+     there, so a page that never touches this control is byte-for-byte the page without it. */
+  skill: 0,
+  /* @end:block */
   /* V2-PLAN §4. `vp` false is the IDENTITY POINT: with it off the page reads `cell.eq` by
      reference and reproduces v1 across the whole slider. It is no longer the load default —
      V3-PLAN item 8's flip landed at barrier B1 and `VP_DEFAULT` below is what the page opens on.
@@ -3251,6 +3285,16 @@ function eqMixOf(d, mix) {
 var POL = (window.POLICY && typeof window.POLICY.solve === 'function') ? window.POLICY : null;
 var POLICY_SOURCE = 'builtin (reference implementation)';
 HAS_VP = !!(POL && POL.villainEq && POL.profiledModel && POL.seOfTrials && VLAT && VPTS.length);
+/* @block:skill — THE SKILL DIAL'S FEATURE DETECT, on the HAS_ENV / HAS_VP posture.
+   Its whole mechanism is the shipped v-lattice, so it needs NOTHING the full artifact has and the
+   lite artifact does not: `constants.skill` is in `model.json`, which both builds inject verbatim.
+   The dial is therefore LIVE IN BOTH VARIANTS, and the disablement it does carry is the honest one
+   — the profile being off, where there is no pool to re-describe (V3-PLAN §8 item 15's idiom used
+   for the reason that is true, rather than for a variant split that is not). */
+var SKILL = (C && C.skill) || null;
+var HAS_SKILL = !!(HAS_VP && POL && typeof POL.poolVpip === 'function' && SKILL
+  && typeof SKILL.vFloor === 'number' && typeof SKILL.min === 'number' && typeof SKILL.max === 'number');
+/* @end:block */
 
 /* ============================ V3-PLAN item 8 / §5.1 — THE B1 DEFAULT FLIP ============================
    The page now OPENS with the villain profile on. This changes the page's INITIAL STATE and nothing
@@ -3314,10 +3358,31 @@ function validBookEntry(r) {
 var SIMBOOK = SIMUI.makeBook({ maxBytes: 1500 * 1024, maxEntries: 24, validate: validBookEntry });
 var VPM = { key: '', model: null, applied: null };
 function bookKey(v, q) { return v + '|' + q; }
-function simResult() { return (HAS_VP && S.vp) ? SIMBOOK.get(bookKey(S.v, S.q)) : null; }
+/* @block:skill — THE POOL VPIP (V3-PLAN §3.4, gates I38 and I37).
+   THE DIAL IS A COORDINATE CHANGE ON THE VPIP AXIS AND NOTHING ELSE. `S.v` is the TABLE's VPIP —
+   how many hands are dealt into the pot, which is what sets N_eff and what the slider under the
+   grid is about. `poolV()` is the VPIP the pool actually PLAYS once the dial is applied, and it is
+   the quantity every villain-side reading has to be quoted in: the lattice row the equities are
+   interpolated from, the sim book key, the trial request, and the provenance sentences. Quoting
+   the TABLE VPIP there while scoring against the POOL VPIP is the exact shape of a silent wrong
+   number, which is why this is one function and not ten in-place expressions.
+
+   `POLICY.poolVpip` is the ONE spelling — I38(c) proves the pool at (v0, s) and the pool at
+   (poolVpip(v0, s), 0) are the same shadow object — and this page never re-implements it. At skill
+   0 it returns `v` itself, so with the dial untouched every reading below is `S.v` again. */
+function poolV() {
+  if (!HAS_SKILL || !S.vp || !S.skill) return S.v;
+  return POL.poolVpip(S.v, S.skill);
+}
+/** The pool VPIP as the prose quotes it — an integer stays an integer, so skill 0 reads as it did. */
+function poolVTxt() { var p = poolV(); return p === Math.round(p) ? String(p) : p.toFixed(1); }
+/* @end:block */
+function simResult() { return (HAS_VP && S.vp) ? SIMBOOK.get(bookKey(poolV(), S.q)) : null; }
 function profileNow() {
   var r = simResult();
-  return { on: !!(HAS_VP && S.vp), v: S.v, q: S.q, measured: r ? r.cells : null };
+  /* `skill` rides ALONGSIDE `v` and is never pre-applied to it: `villainProfileOf` is what resolves
+     the pair, and resolving it twice would push the pool past the lattice floor it is anchored to. */
+  return { on: !!(HAS_VP && S.vp), v: S.v, q: S.q, skill: S.skill, measured: r ? r.cells : null };
 }
 /* Every axis of the profile that can move a number. Folded into `evalKey`/`curveKey` below for the
    same reason `envKey()` is: the page's own 400-entry memo must not hand back another field's
@@ -3325,7 +3390,7 @@ function profileNow() {
 function vpKey() {
   if (!(HAS_VP && S.vp)) return 'OFF';
   var r = simResult();
-  return 'ON|' + S.v + '|' + S.q + '|' + (r ? r.settingsHash : '-');
+  return 'ON|' + poolV() + '|' + S.q + '|' + (r ? r.settingsHash : '-');
 }
 /* THE SHADOW MODEL IS BUILT BY `POLICY.profiledModel`, AND NOWHERE ELSE (P2 pre-stage).
    This function used to carry a line-for-line copy of that construction. Lane M hoisted the
@@ -3591,69 +3656,151 @@ var RAMP_PIN = ['var(--surface-2)', '#C79E33', '#674698'];
    payoff accessor produces and introduces no model constant. */
 var RAMP_EV = ['#12191C', '#1C333C', '#245160', '#2A7180', '#3E9391', '#77B57C', '#C6D267'];
 
-/* ============================================ EV COLOUR MODE (V3-PLAN §8 item 13, against §2's
-   FROZEN PAYOFF STUB). Read this before changing any of it — the honesty of the mode is in the
-   argument, not in the picture.
+/* @block:ev ==================================== THE EV COLOUR MODE AND THE EV PRESENTATIONS
+   (V3-PLAN §8 item 13 and §5.4, against §2's FROZEN PAYOFF ACCESSOR and §3.4's absolute-EV cut.)
+   Read this before changing any of it — the honesty of the mode is in the argument, not the picture.
 
-   WHAT THE CELL SHOWS. Hero's expected share of the FINAL POT at this node, a pot fraction in
-   [0,1], straight out of the frozen accessor. NOT bb. The bb conversion §2 specifies —
-   `EVbb = ev*finalPot - invested` — is CALLER arithmetic and the caller cannot do it yet: V3-PLAN
-   §3.2's phase-0 annotation measured that the frozen interface must also return `potMult`
-   (measured range 1.603-11.865) and `invShare` (0.199-0.730) before that formula is right, "or
-   `EVbb = ev*finalPot - invested` is wrong by up to an order of magnitude in the pot term". Those
-   are P2's amendments to the freeze. Until they land, this mode ships the quantity the interface
-   actually returns, and says so on the legend, rather than a bb figure built on a pot term nobody
-   has measured.
+   WHAT THE CELL SHOWS, AND WHAT IT USED TO SHOW. It shows `evBB`: hero's expected win at this node
+   in big blinds, referenced to the fold. Until P4 it showed the raw `ev` the accessor returns — a
+   FRACTION of the final pot — and said so, because the bb conversion §2 specifies was not yet
+   computable: the phase-0 annotation measured that `EVbb = ev*finalPot - invested` is wrong in the
+   pot term by up to an order of magnitude without `potMult` and `invShare`, and the frozen
+   interface did not return them. P2 amended the freeze to six keys and P4 built the arithmetic in
+   `policy.mjs`. So this surface no longer does its own EV arithmetic AT ALL:
 
-   HOW THE VILLAIN SET IS CHOSEN, AND WHY IT IS NOT AN OPINION. The accessor's supported domain is
-   PAIRWISE (`cells` length 2, hero first). A whole-grid colour mode has no named villain to put
-   opposite 145 cells, and inventing one would be an opinion painted into every cell. So the mode
-   asks the accessor the question it can answer without one — the MULTIWAY door — at the table's
-   own opponent count:
+       evBB = (ev * rakeRhoFactor(env) - invShare) * potMult * potSize - stake
 
-     nOpp >= 2   `[key, key, ..., key]` with nOpp villain slots. The multiway branch reads HERO
-                 ONLY (`hero.eq[len-2]`), so the villain keys are provably inert; filling them
-                 with hero's own key therefore encodes no choice at all. `test/ui-payoff-mirror`
-                 asserts that invariance directly, by substituting every other live cell into the
-                 slots and requiring the same answer.
-     nOpp == 1   `[key]`. Below the shape floor on purpose: the contract's documented out-of-domain
-                 path is "the request was malformed but the HERO resolves, so the honest fallback
-                 is hero's own checkdown ladder, read at the nearest measured opponent count",
-                 which is exactly `eq[0]` — the one-opponent rung. The alternative was to clamp to
-                 two opponents and paint 8.3% of the (position x node x VPIP) surface with the
-                 wrong rung, silently. A flagged right answer beats an unflagged wrong one.
+   is `policy.mjs`'s expression, computed there, for both the accessor path and the (unreachable)
+   EV-primary path, so the number this page paints is BY CONSTRUCTION the number a tier would be
+   cut on the day primacy is ever stamped. The page's own `nodePotBB()` is deleted with this change
+   rather than left beside it: it wrote the pot from the posted blinds while the layer writes it
+   from the checkdown geometry `(nOpp + 1)` stakes, and two pot arithmetics with one accessor
+   between them is exactly the drift `policy.mjs` is inlined to prevent.
 
-   Both branches return `supported:false` and `source:'checkdown'`, and the legend says both. That
-   is not a defect being papered over: S-B graded C, V3-PLAN §3.2 rules that the stub payoff stays
-   and P2 builds no payoff table, so `checkdown` is v3's shipped truth about this surface and the
-   badge is the finding, not an apology for one.
+   NOTHING HERE CAN MOVE A TIER, AND THAT IS STRUCTURAL RATHER THAN CAREFUL (gate I34). `evCut` is a
+   SIBLING accessor: it calls `solve`, hands the same solve object back, reads `aggressiveSet`'s
+   memoised set and writes into a map of its own. View mode is not an input to either. So this file
+   may read the EV surface as often as it likes, in any order, and the grid's tiers are identical BY
+   OBJECT to the tiers of a page that never opened this mode.
+
+   THE ACCESSOR IS BOUND TO THE MODEL BEING SCORED, which is a fix rather than a restatement. `PAY`
+   is bound to MODEL; under a villain profile the page scores a SHADOW model whose cells carry
+   filtered equities, and reading EV off MODEL there would have painted random-villain money over
+   filtered-villain tiers. `payNow()` binds the accessor to `emodel()`, and `evCut`'s memo key
+   carries `payoff.modelHash`, so the two can never alias. With the profile off `emodel() === MODEL`
+   and `payNow() === PAY`, so the legacy path is the same object it always was.
+
+   HOW THE VILLAIN SET IS CHOSEN, AND WHY IT IS NOT AN OPINION. Unchanged, and now made in ONE
+   place: `policy.mjs`'s `evRequest` is the same shape `MODES.requestFor` documents, and the module
+   is what calls it. The accessor's supported domain is PAIRWISE (`cells` length 2, hero first); a
+   whole-grid colour mode has no named villain to put opposite 145 cells and inventing one would be
+   an opinion painted into every cell, so the mode asks the MULTIWAY door at the table's own
+   opponent count, where the branch reads HERO ONLY and the villain slots are provably inert.
+
+   Every percentile-node return comes back `supported:false` with `source:'checkdown'`, and the
+   badge says both on every surface that renders one. That is not a defect being papered over: S-B
+   graded C, §3.2 rules that the stub payoff stays, so `checkdown` is v3's shipped truth about this
+   surface and the badge is the finding rather than an apology for one.
 
    ONE CONSEQUENCE WORTH SAYING OUT LOUD, because a reader will notice it before we do: with the
-   checkdown stub the EV surface is hero's shipped equity ladder, so at a fixed opponent count EV
-   mode ORDERS THE CELLS EXACTLY AS rho MODE DOES. The two will part company the day a payoff that
-   knows about postflop lands behind the same accessor — and not one day before. */
-function nodePotBB() {
-  if (S.node === '3bet') {
-    /* the vs-3-bet node commits to exactly one pot quantity — the PRICE — so the pot is written
-       from it: breakeven = call/(pot+call), hence pot = call*(1-be)/be, normalised to a one-unit
-       call. Nothing else about that node's tree is modelled and nothing here pretends otherwise. */
-    var be = C.vs3bet.breakeven;
-    return (be > 0 && be < 1) ? (1 - be) / be : 1.5;
-  }
-  /* posted money in bb, converted to CURRENT units: a straddle doubles the unit, so the blinds are
-     worth half as many units and the straddler's own post is worth exactly one. */
-  var u = S.straddle ? (STRAD.unit || 2) : 1;
-  var bb = S.node === 'limps' ? S.L + 1.5 : S.node === 'raise' ? 4.5 : 1.5;
-  return bb / u + (S.straddle ? 1 : 0);
+   checkdown stub the EV surface is an affine function of hero's shipped equity ladder, so at a
+   fixed opponent count EV mode ORDERS THE CELLS EXACTLY AS rho MODE DOES. What the bb conversion
+   adds is not a new ORDER, it is a SCALE with a zero on it — which is the whole of limitation 17's
+   fix, because a percentile cut can change which hands you play but never how many, and "evBB >= 0"
+   can. The two orderings part company the day a payoff that knows about postflop lands behind the
+   same accessor, and not one day before. */
+
+/* The accessor bound to the model actually being scored. One entry, because `emodel()` itself is
+   memoised: a slider step that returns to a profile it has visited gets the same pair back. */
+var EVPAY = { model: null, fn: null };
+function payNow() {
+  var m = emodel();
+  if (m === MODEL) return PAY;
+  if (EVPAY.model === m) return EVPAY.fn;
+  var f = null;
+  try { f = PAYOFF.makePayoff(m); } catch (e) { f = null; }
+  EVPAY.model = m; EVPAY.fn = f;
+  return f;
+}
+/* The EV layer at the current state, memoised on the page's OWN evaluation key — the same key the
+   tier evaluation uses, which already carries the state, the environment and the villain profile.
+   `policy.mjs` memoises too; this one-entry front is here so a repaint that touches 123 cells does
+   not rebuild the key 123 times. */
+var EVL = { key: '', out: null };
+function evLayer(ev) {
+  if (!POL || typeof POL.evCut !== 'function') return null;
+  var pay = payNow();
+  if (!pay) return null;
+  var k = evalKey(ev.v, S.pos, S.node, S.L, S.raiser || defaultRaiser(), S.mix);
+  if (EVL.key === k) return EVL.out;
+  var out = null;
+  /* A THROW HERE IS A WIRING ERROR, NOT A REQUEST. `evStake` throws on a model with no sizing
+     ladder, which is the one deliberate throw in the layer; catching it disables the mode by name
+     rather than painting zeros, which is the same posture `PAY` itself is built with. */
+  try { out = POL.evCut(emodel(), stateOf({ v: ev.v, mix: mixW(S.mix) }), pay); } catch (e) { out = null; }
+  EVL.key = k; EVL.out = out;
+  return out;
 }
 /**
- * One context per repaint, for every mode.
+ * The ramp's FIXED DOMAIN, in bb — THE SAME ANCHOR THIS MODE ALWAYS HAD, re-expressed in the unit
+ * the layer now speaks.
  *
- * Built once and threaded through the cell loop rather than recomputed per cell: `pinEval()` is a
- * whole second evaluation of the model and the EV pot/spr are the same for all 145 cells. The
- * per-cell work left inside the loop is the accessor call itself, which is pure arithmetic over
- * shipped numbers.
+ * Before P4 the mode painted the accessor's pot FRACTION on "zero to TWICE the fair share, which
+ * puts fair share on the middle step — arithmetic, not taste, and fixed, so two settings stay
+ * comparable". The endpoints are unchanged; what changed is that they go through `evBB` now:
+ *
+ *     lo = evBB at ev = 0          a hand that never wins loses exactly its stake, and not a chip more
+ *     hi = evBB at ev = 2·fair     fair share, doubled — the same reference the ν and ρ ramps use
+ *
+ * AND THE FIRST VERSION OF THIS FUNCTION USED ev = 1 FOR THE TOP, WHICH IS WHY THIS PARAGRAPH
+ * EXISTS. "A hand that always wins takes the raked pot" is a true endpoint and a useless one: no
+ * cell on this grid is anywhere near it, so 123 cells landed in three of seven steps and the ramp
+ * stopped resolving the thing it is for. Exactness at an unreachable end is not a virtue. Fair
+ * share is both exact and REACHED — it is where the grid actually lives — so it is the end that
+ * earns the top of the scale. Break-even then falls just above the middle step, at ev = fair/ρ,
+ * because the rake is the only reason beating your share is not enough.
+ *
+ * The per-cell loop keeps it honest under a payoff whose `potMult`/`invShare` are not the checkdown
+ * identities: today every cell answers 1 and 0 and the loop is a formality. It is still a function
+ * of the NODE and the environment and never of which cells are on screen, so two settings stay
+ * comparable — which is the property the whole construction is for.
  */
+function evDomain(L, fair) {
+  var lo = Infinity, hi = -Infinity, top = Math.min(1, 2 * fair), k;
+  for (k in L.cells) {
+    if (!Object.prototype.hasOwnProperty.call(L.cells, k)) continue;
+    var c = L.cells[k], f = c.potMult * L.potSize;
+    var a = (0 - c.invShare) * f - L.stake, b = (top * L.rho - c.invShare) * f - L.stake;
+    if (a < lo) lo = a;
+    if (b > hi) hi = b;
+  }
+  return { lo: isFinite(lo) ? lo : -1, hi: isFinite(hi) && hi > lo ? hi : (isFinite(lo) ? lo + 1 : 1) };
+}
+/** One cell's EV record — the layer's, never a second computation of it. */
+function evOf(rec, ctx) {
+  return (ctx && ctx.L && ctx.L.cells) ? (ctx.L.cells[rec.key] || null) : null;
+}
+/** The decision word the EV predicate reaches, in the vocabulary the cut itself uses. */
+function evWord(r) { return r.mix ? 'MIX' : r.keep ? 'play' : 'fold'; }
+/**
+ * The mode's source line, DERIVED from the layer's own cells rather than typed here.
+ *
+ * §2 clause (f): a `supported:false` number may never reach a surface unlabelled. The legend is one
+ * of those surfaces and it speaks for 123 cells at once, so it reports the census rather than one
+ * cell's answer — and it reports it off the data, so the day a payoff supports some of this grid
+ * the sentence changes without anybody remembering to change it.
+ */
+function evSourceText(L) {
+  var k, n = 0, sup = 0, src = '';
+  for (k in L.cells) {
+    if (!Object.prototype.hasOwnProperty.call(L.cells, k)) continue;
+    n++;
+    if (L.cells[k].supported) sup++;
+    if (!src) src = L.cells[k].source;
+  }
+  return src + (sup === n ? ', supported' : sup === 0 ? ', unsupported' : ', ' + sup + ' of ' + n + ' supported');
+}
+/* @end:block */
 function modeCtx(ev, mode) {
   var c = { mode: mode, pinE: null, nOpp: 0, fair: 0, hi: 1, pot: 0, spr: 0 };
   if (mode === 'pin' && S.pin) c.pinE = pinEval();
@@ -3666,34 +3813,98 @@ function modeCtx(ev, mode) {
     if (bc.ok) c.base = { nd: bc.nd, depth: gtoDepth() }; else c.baseWhy = bc.why;
   }
   /* @end:block */
-  if (mode === 'ev') {
-    c.pot = nodePotBB();
-    c.spr = c.pot > 0 ? Math.max(0, dEff() / c.pot) : 0;
-    c.nOpp = clamp(Math.round(ev.N), 1, NMAX);
-    c.fair = 1 / (c.nOpp + 1);
-    /* the ramp's fixed domain: zero to TWICE the fair share, which puts fair share on the middle
-       step. Arithmetic, not taste — and fixed, so two settings stay comparable. */
-    c.hi = 2 * c.fair;
+  /* @block:ev */
+  /* THE LAYER IS RESOLVED ONCE PER REPAINT, like `pinEval` and the baseline row above it: the pot
+     geometry, the stake, the rake factor and the MIX band are properties of the (node, environment,
+     N) the whole grid is painted at, not of a cell. Everything the EV surfaces read comes off `c.L`
+     — there is no second EV arithmetic on this page. */
+  if (mode === 'ev' || S.pres !== 'score') {
+    c.L = evLayer(ev);
+    if (c.L) {
+      c.nOpp = c.L.nOpp || 1;
+      c.pot = c.L.potSize;
+      c.spr = c.pot > 0 ? Math.max(0, dEff() / c.pot) : 0;
+      c.fair = 1 / (c.nOpp + 1);
+      var dom = evDomain(c.L, c.fair);
+      c.lo = dom.lo; c.hi = dom.hi;
+      /* the delta presentation's zero, resolved once per repaint for the same reason the rest of
+         this context is: it is a property of the cut, not of a cell */
+      if (S.pres === 'delta') c.ref = evCutRef(ev, c.L);
+    }
   }
+  /* @end:block */
   return c;
 }
+/* @block:ev ---- THE THREE PRESENTATIONS (V3-PLAN §5.4, locked 4.4 / brief item 14).
+   "All three presentations (absolute EV, decision-delta, score) ship as switchable view modes; THE
+   SCORE CUTS TIERS." All three are re-quotations of the SAME verdict in different units — none of
+   them re-solves anything, and switching between them cannot move a cell, because the tier path
+   never reads `S.pres` at all. That is gate I34's quarantine restated at the presentation layer,
+   and it is why `score` is the load default: with it selected this whole block is unreached.
+
+   THE SECOND PRESENTATION'S NAIVE READING IS DEGENERATE, AND THAT IS RECORDED RATHER THAN DRESSED
+   UP. "Decision-delta" normally means EV(play) − EV(fold). Here EV(fold) = 0 BY CONSTRUCTION — the
+   only money in `evBB` is money that goes in at or after the decision node, so folding neither wins
+   nor loses anything the layer measures (gate I39(a)) — and therefore EV(play) − EV(fold) IS the
+   absolute presentation, to the last bit. Shipping one number twice under two names would be the
+   page inventing a distinction the model does not have.
+
+   SO THE DELTA THAT SHIPS IS THE DELTA AGAINST THE DECISION THIS PAGE ACTUALLY MAKES: `evBB` minus
+   the `evBB` of the LAST HAND THE SCORE TELLS YOU TO PLAY — the marginal cell of the percentile cut,
+   found by its own score margin. Positive means this hand beats the worst hand you are already
+   playing; negative means the score is telling you to play something whose own EV this cell clears.
+   That is METHODOLOGY limitation 17's subject rendered per cell: a percentile cut can change WHICH
+   hands you play but never HOW MANY, and this is the number that says what that costs. Two readings
+   of the shipped layer, subtracted; no constant enters. */
+var PRES = [
+  ['score', 'Score', 'Points clear of the percentile cut — the presentation that cuts the tiers'],
+  ['ev',    'EV',    'Big blinds clear of the fold, which is exactly zero'],
+  ['delta', 'Δ cut', 'Big blinds clear of the last hand the score tells you to play']
+];
+function presInfo(k) { for (var i = 0; i < PRES.length; i++) if (PRES[i][0] === k) return PRES[i]; return PRES[0]; }
+/** The presentation actually quoted, after capabilities — the `MODES.resolve` idiom, one layer up. */
+function presKey() { return (S.pres !== 'score' && modeCaps().payoff) ? S.pres : 'score'; }
 /**
- * The page's ONE payoff call site, and the place the badge is derived.
+ * The delta presentation's zero: the marginal hand of the cut the page is applying.
  *
- * V3-PLAN §2 clause (f) and gate I33's page-side clause: a `supported:false` number may never
- * reach a surface unlabelled. So `supported` is turned into a badge HERE, at the call, rather than
- * at each of the four places that render one — the legend, the cell tooltip, the accessible name
- * and the inspector's verdict line all read `r.badge` and none of them can forget. The vocabulary
- * is the page's existing one: the villain accessor's own `supported:false` path already badges
- * 'unsupported', and this joins it instead of inventing a second, quieter word for the same thing.
+ * Found by the SCORE margin, not by the EV — the reference has to be the boundary the tiers were
+ * actually cut at, or the number stops being a comparison BETWEEN the two cuts and becomes a
+ * comparison of the EV surface with itself.
  */
-function evOf(rec, ctx) {
-  if (!PAY) return null;
-  var payoff = PAY;
-  var r = payoff(MODES.requestFor(rec.key, ctx.nOpp), ctx.pot, ctx.spr, { ip: false });
-  r.badge = r.supported ? r.source : 'unsupported';
-  return r;
+function evCutRef(ev, L) {
+  var best = null, bm = Infinity, i, t, m;
+  for (i = 0; i < NCELL; i++) {
+    if (!CELLS[i].live) continue;
+    t = ev.tier[i];
+    if (t !== 1 && t !== 2) continue;
+    m = ev.margin[i];
+    if (m < bm) { bm = m; best = CELLS[i]; }
+  }
+  var r = best && L.cells[best.key];
+  return r ? { rec: best, evBB: r.evBB } : null;
 }
+/** One cell's headline number in the active presentation, with its unit, its reference and its badge. */
+function presOf(rec, ev, ctx) {
+  var k = presKey(), e = ev.entry && ev.entry[rec.i];
+  if (k === 'score') {
+    return { k: k, v: ev.margin[rec.i], d: 1, cuts: true, badge: 'score',
+      unit: (e && e.marginUnit) || (S.node === '3bet' ? 'eq pts' : 'pts'),
+      of: (e && e.marginOf) || 'the cut' };
+  }
+  var r = evOf(rec, ctx);
+  if (!r) return null;
+  /* `marginUnit` and `marginOf` are the LAYER's own fields, never strings composed here: §8 item 14
+     asks EV to slot into the existing margin seam, and those two names ARE the seam. */
+  if (k === 'ev') {
+    return { k: k, v: r.evBB, se: r.seBB, d: 2, cuts: false, badge: r.badge, unit: r.marginUnit, of: r.marginOf };
+  }
+  if (!ctx.ref) return null;
+  return { k: k, v: r.evBB - ctx.ref.evBB, se: r.seBB, d: 2, cuts: false, badge: r.badge, unit: 'bb',
+    of: 'the last hand the score plays (' + ctx.ref.rec.row.short + ' × ' + ctx.ref.rec.col.short + ')' };
+}
+/** The presentation's number as it is written on every surface that writes one. */
+function presText(p) { return signed(p.v, p.d) + ' ' + p.unit + (p.se == null ? '' : ' ±' + f2(p.se)); }
+/* @end:block */
 /* @block:gto — THE vs-GTO COLOUR MODE (V3-PLAN §8 item 13; §3.3 adjudications 8 and 12; §14 item 4).
 
    THE MARKER IS LOAD-BEARING. `scripts/lib/variant.mjs`'s `stripMarkedBlocks` deletes every
@@ -3940,12 +4151,14 @@ function paintOf(rec, ev, mode, ctx) {
   /* @block:gto */
   if (mode === 'gto') return gtoPaint(rec, ev, ctx);
   /* @end:block */
+  /* @block:ev */
   if (mode === 'ev') {
     var res = evOf(rec, ctx);
     if (!res) return { col: RAMP_EV[0], k: 0 };
-    var ke = MODES.bucket(res.ev, 0, ctx.hi, RAMP_EV.length);
+    var ke = MODES.bucket(res.evBB, ctx.lo, ctx.hi, RAMP_EV.length);
     return { col: RAMP_EV[ke], k: ke };
   }
+  /* @end:block */
   return { col: null, k: 0 };
 }
 /** One line saying what THIS mode has painted on THIS cell — the tooltip and accessible name. */
@@ -3961,12 +4174,25 @@ function modeReadout(rec, ev, mode, ctx) {
   /* @block:gto */
   if (mode === 'gto') return gtoReadout(rec, ev, ctx);
   /* @end:block */
+  /* @block:ev */
   if (mode === 'ev') {
     var res = evOf(rec, ctx);
-    if (!res) return 'no payoff accessor in this build';
-    return f1(res.ev * 100) + '% of the final pot ±' + f1(res.se * 100) + ' vs ' + ctx.nOpp
-      + (ctx.nOpp === 1 ? ' opponent' : ' opponents') + ' · ' + res.source + ' · ' + res.badge;
+    if (!res) return 'no expected-value surface here — ' + (PAY ? 'the payoff layer could not be built' : PAYWHY);
+    /* THE DECISION WORD COMES BEFORE THE NUMBER, because the number's job is to say how clear of
+       the fold this is and the word is what "clear" means. The badge is the layer's own. */
+    return evWord(res) + ' ' + signed(res.evBB, 2) + ' bb ±' + f2(res.seBB) + ' vs ' + ctx.nOpp
+      + (ctx.nOpp === 1 ? ' opponent' : ' opponents') + ' · ' + res.badge;
   }
+  /* @end:block */
+  /* @block:ev */
+  /* THE TIER MODE'S READOUT CARRIES THE ACTIVE PRESENTATION. The colour is the tier either way —
+     the presentation re-quotes the margin, it does not re-cut anything — so this line is the one
+     place a reader sees which unit the page is currently answering in. */
+  var pr = presOf(rec, ev, ctx);
+  if (pr && pr.k !== 'score') {
+    return tierLabel(ev.tier[rec.i]) + ' · ' + presText(pr) + ' clear of ' + pr.of + ' · ' + pr.badge;
+  }
+  /* @end:block */
   return tierLabel(ev.tier[rec.i]) + ' · margin ' + signed(ev.margin[rec.i]);
 }
 /** The legend's own description of the active ramp: colours, endpoints, and what the middle means. */
@@ -3985,9 +4211,26 @@ function rampScale(key, ev) {
   /* @block:gto */
   if (key === 'gto') return gtoScale();
   /* @end:block */
+  /* @block:ev — THE EV SCALE. Endpoints in bb, because a ramp with no domain printed on it is a
+     picture and not a scale, and because bb is the unit the reader's money is in. The ORDER of the
+     mid line is the order it may be truncated in (`.ramp .mid` ellipsises): the break-even step
+     first, because that is the one thing a reader must not have to guess. */
   var c = modeCtx(ev, 'ev');
-  return { colors: RAMP_EV, lo: '0%', hi: (c.hi * 100).toFixed(0) + '% of pot',
-    mid: 'fair share ' + (c.fair * 100).toFixed(1) + '% · vs ' + c.nOpp + ' · checkdown, unsupported' };
+  if (!c.L) {
+    return { colors: RAMP_EV, lo: '', hi: '',
+      mid: 'no expected-value surface here — ' + (PAY ? 'the payoff layer could not be built' : PAYWHY) };
+  }
+  var zk = MODES.bucket(0, c.lo, c.hi, RAMP_EV.length), st = [], i;
+  for (i = 0; i < RAMP_EV.length; i++) {
+    st.push(signed(c.lo + (c.hi - c.lo) * i / RAMP_EV.length, 2) + ' to '
+      + signed(c.lo + (c.hi - c.lo) * (i + 1) / RAMP_EV.length, 2) + ' bb'
+      + (i === zk ? ' — the fold sits in this step: everything below it loses money' : ''));
+  }
+  return { colors: RAMP_EV, lo: signed(c.lo, 2) + ' bb', hi: signed(c.hi, 2) + ' bb', stepTitles: st,
+    mid: 'break-even 0 bb in step ' + (zk + 1) + ' of ' + RAMP_EV.length
+      + (c.L.mixK ? ' · MIX inside ±' + f2(c.L.mixK) + '·se' : '')
+      + ' · top of scale = 2× fair share vs ' + c.nOpp + ' · ' + evSourceText(c.L) };
+  /* @end:block */
 }
 function render(opts) {
   opts = opts || {};
@@ -4164,7 +4407,9 @@ var legendChips = [], compSegs = {}, modeBtns = [], rampEl = null;
 
 /** What this build can actually paint. Read by MODES.availability; see the disablement idiom. */
 function modeCaps() {
-  var c = { pinned: !!S.pin, payoff: !!PAY };
+  /* `payoff` is the whole EV capability, not just the accessor: the surface is `policy.mjs`'s
+     `evCut` reading through `PAY`, and a build with one and not the other can paint neither. */
+  var c = { pinned: !!S.pin, payoff: !!(PAY && POL && typeof POL.evCut === 'function') };
   /* @block:gto */
   /* THE BUILD CAPABILITY IS THE SHARED-CORE BLOCK, in both artifacts: §5.3 buys lite a tier-level
      vs-GTO mode by shipping `model.baselineTiers`, and the full artifact's injected EQUILIBRIUM
@@ -4737,7 +4982,9 @@ function renderVerdictTable(host, rec, ev) {
     r.appendChild(v);
     if (badge) {
       var b = el('span', 'vbadge' + (o.warn ? ' warn' : ''), badge);
-      if (o.why) b.title = o.why;
+      /* the badge ellipsises, so its own text goes on the title too — a reader who sees
+         "unsupported/che…" must be able to hover and read what the number actually is */
+      b.title = badge + (o.why ? ' — ' + o.why : '');
       r.appendChild(b);
     }
     box.appendChild(r);
@@ -4748,22 +4995,53 @@ function renderVerdictTable(host, rec, ev) {
         structurally out of reach of everything below it. */
   var tl = line('tier', 'TIER', '', 'score');
   tl.querySelector('.val').appendChild(tierPill(t));
-  /* 2. MARGIN — in the unit the policy layer itself reports, never a guessed one. */
+  /* 2. MARGIN — in the unit the ACTIVE PRESENTATION reports, and never a guessed one. In `score`
+        (the default, and the only presentation that cuts anything) this is the row it always was,
+        read off the policy layer's own `marginUnit`/`marginOf`; the two EV presentations re-quote
+        the same verdict through the same two seams, which is what §8 item 14 asks for. */
+  var ctx = modeCtx(ev, 'ev');
   var unit = (entry && entry.marginUnit) || (S.node === '3bet' ? 'eq pts' : 'pts');
+  /* @block:ev */
+  /* THE LABEL DOES NOT MOVE WITH THE PRESENTATION, AND THAT IS DELIBERATE. Every presentation
+     answers the same question — how far clear of the decision is this cell — so the row is MARGIN
+     in all three, and what changes is the unit and the reference. Re-labelling it "EV" under the
+     absolute presentation would put the word EV on two rows showing two different quantities, which
+     is the one thing this tab's four fixed lines exist to prevent. */
+  var pr = presOf(rec, ev, ctx);
+  if (pr && pr.k !== 'score') {
+    line('margin', 'MARGIN', signed(pr.v, pr.d)
+      + '<span class="u">' + pr.unit + (pr.se == null ? '' : ' ±' + f2(pr.se)) + '</span>',
+      pr.badge, { warn: pr.badge.indexOf('unsupported') === 0,
+        why: (pr.v < 0 ? 'short of ' : 'clear of ') + pr.of + '. Display only — the score is what cut '
+          + 'the tier above, in every presentation, and gate I34 makes that structural rather than careful.' });
+  } else
+  /* @end:block */
   line('margin', 'MARGIN', signed(ev.margin[rec.i]) + '<span class="u">' + unit + '</span>'
     + (Math.abs(ev.margin[rec.i]) < C.closeMargin ? ' <span class="u">CLOSE</span>' : ''),
     'score', { why: entry && entry.marginOf ? (ev.margin[rec.i] < 0 ? 'short of ' : 'clear of ') + entry.marginOf : '' });
-  /* 3. EV — display only, and badged by SOURCE, per §5.4: the score cuts tiers, EV never does. */
-  var mode = 'ev', ctx = modeCtx(ev, mode), res = PAY ? evOf(rec, ctx) : null;
+  /* 3. EV — display only, and badged by SOURCE, per §5.4: the score cuts tiers, EV never does.
+        THIS ROW IS THE MEASUREMENT AND THE ROW ABOVE IS THE VERDICT. The accessor returns hero's
+        share of the final pot, with an `se` in equity points; `policy.mjs` turns that into bb. The
+        derived bb figure belongs on the MARGIN line, where the page's decision quantity lives and
+        where the two EV presentations put it — so this line stays what the interface actually
+        answered, which is also what keeps the tab at four rows saying four different things. The
+        full conversion, term by term, is the Numbers tab's waterfall; the bb figure is on the
+        tooltip here so it is never more than a hover away even in the score presentation. */
+  var res = evOf(rec, ctx);
   if (res) {
-    line('ev', 'EV', f1(res.ev * 100) + '<span class="u">% of the final pot ±' + f1(res.se * 100) + '</span>',
-      res.source + ' · ' + res.badge, {
+    line('ev', 'EV', f1(res.ev * 100) + '<span class="u">% of pot ±' + f1(res.se * 100) + '</span>',
+      res.badge, {
         warn: !res.supported,
-        why: 'Expected share of the final pot vs ' + ctx.nOpp + ' — frozen payoff accessor. source says what kind '
-          + 'of number it is, supported whether the request was in the measured domain. Display only.'
+        why: signed(res.evBB, 2) + ' ' + res.marginUnit + ' ±' + f2(res.seBB) + ' clear of ' + res.marginOf
+          + ' — ' + (res.mix ? 'inside the MIX band' : res.keep ? 'the EV predicate plays it' : 'the EV predicate folds it')
+          + '. evBB = (ev·ρ_rake − invShare)·potMult·potSize − stake, computed in policy.mjs, against '
+          + ctx.nOpp + ' opponent' + (ctx.nOpp === 1 ? '' : 's') + '; the fold is at exactly zero because the '
+          + 'only money in it is money that goes in at or after this node. `source` says what kind of number '
+          + 'it is, `supported` whether the request was in the measured domain. Display only.'
       });
   } else {
-    line('ev', 'EV', 'unavailable', 'no accessor', { off: true, warn: true, why: PAYWHY });
+    line('ev', 'EV', 'unavailable', 'no payoff layer', { off: true, warn: true,
+      why: PAY ? 'the EV layer could not be built at this state' : PAYWHY });
   }
   /* 4. DIVERGENCE — the model's RAW action against the equilibrium's, in action steps, badged with
         the domain label the payload DERIVES from its seat count ('GTO' at two seats). Where the
@@ -5035,36 +5313,71 @@ function renderNumbers(host, rec) {
     s3.appendChild(tb3);
     s3.appendChild(el('div', 't-sm dim', 'Equity against a mixture is exactly the weighted mean of its components — this blend is exact, not approximated.'));
   }
-  /* ---- the EV decomposition, against V3-PLAN §2's FROZEN ACCESSOR.
-     Every row is an argument the page actually passes, beside the answer it got back, because the
-     one way a payoff call goes quietly wrong is an argument nobody can see. `potSize` and `spr`
-     are validated by the accessor and then ignored by the checkdown stub — that is stated here
-     rather than left for a reader to infer from a number that does not move. */
+  /* @block:ev ---- THE EV DECOMPOSITION (V3-PLAN §8 item 14: "the equity ladder + EV decomposition
+     + waterfall"). Three parts, and the order is the argument: what the page ASKED the frozen
+     accessor, what it got BACK, and how those six numbers become one bb figure. Every row is a
+     quantity that actually crossed the interface, because the one way a payoff call goes quietly
+     wrong is an argument nobody can see. */
   var evs = sec(host, 'EV decomposition', el('span', 't-micro dim', 'frozen payoff interface'));
-  if (!PAY) {
-    evs.appendChild(el('div', 't-sm dim', 'No payoff accessor in this build — ' + PAYWHY + '.'));
+  var ectx = modeCtx(ev, 'ev'), er = evOf(rec, ectx);
+  if (!er) {
+    evs.appendChild(el('div', 't-sm dim', 'No expected-value surface in this build — '
+      + (PAY ? 'the payoff layer could not be built at this state.' : PAYWHY + '.')));
   } else {
-    var ectx = modeCtx(ev, 'ev'), er = evOf(rec, ectx), etb = el('table', 'tbl');
+    var L = ectx.L, etb = el('table', 'tbl');
     etb.innerHTML = '<tr><th>argument</th><th>value</th></tr>'
       + '<tr><td>cells (hero first)</td><td>' + rec.key + ' × ' + ectx.nOpp + '</td></tr>'
-      + '<tr><td>potSize (current-unit bb)</td><td>' + f2(ectx.pot) + '</td></tr>'
+      + '<tr><td>potSize (' + er.marginUnit + ')</td><td>' + f2(L.potSize) + '</td></tr>'
       + '<tr><td>spr</td><td>' + f2(ectx.spr) + '</td></tr>'
-      + '<tr><th>result</th><th></th></tr>'
+      + '<tr><th>returned</th><th></th></tr>'
       + '<tr><td>ev (share of final pot)</td><td>' + f1(er.ev * 100) + '%</td></tr>'
-      + '<tr><td>se</td><td>±' + f1(er.se * 100) + '</td></tr>'
+      + '<tr><td>se</td><td>±' + f1(er.se * 100) + ' pt</td></tr>'
       + '<tr><td>source</td><td>' + er.source + '</td></tr>'
       + '<tr><td>supported</td><td>' + (er.supported ? 'true' : 'false') + '</td></tr>'
-      + '<tr><td>badge</td><td>' + er.badge + '</td></tr>'
-      + '<tr><td>fair share at ' + ectx.nOpp + '</td><td>' + f1(ectx.fair * 100) + '%</td></tr>';
+      + '<tr><td>potMult (E[final pot]/potSize)</td><td>' + f2(er.potMult) + '</td></tr>'
+      + '<tr><td>invShare (hero post-node/E[pot])</td><td>' + f2(er.invShare) + '</td></tr>'
+      + '<tr><td>badge</td><td>' + er.badge + '</td></tr>';
     evs.appendChild(etb);
-    evs.appendChild(el('div', 't-sm dim', 'source ‘checkdown’ is a game in which postflop does not exist: '
-      + 'built from the shipped all-in equities, it knows nothing about position, stacks or the flop. '
-      + 'potSize and spr are validated by the interface and unused by it — ev is a pot FRACTION, and a '
-      + 'fraction does not know how big the pot is. No big-blind figure is shipped: the frozen interface '
-      + 'does not yet return the pot multiple and invested share that conversion needs, and one built '
-      + 'without them is wrong in the pot term by up to an order of magnitude. Display only — the score '
-      + 'cuts tiers, and no EV number can move one.'));
+    /* THE WATERFALL, on the score waterfall's own chip idiom, so the page has one way of showing
+       "this number times that number". It is `policy.mjs`'s expression term for term and in its
+       order — nothing here recomputes it, and the last chip is the layer's own `evBB` rather than
+       this row's product, so a drift between the two would show as an arithmetic that does not
+       close on screen. */
+    var wf = el('div', 'waterfall');
+    [['ev', f2(er.ev), 'hero’s share of the final pot, straight out of the accessor'],
+      ['×ρ_rake', f2(L.rho), 'what the house leaves: 1 − rakeFraction(env), the exact I31(c) machinery'],
+      ['−invShare', f2(er.invShare), 'hero’s expected investment AFTER this node, as a share of the final pot'],
+      ['×potMult', f2(er.potMult), 'E[final pot] / potSize — 1 under checkdown, where no money goes in after the node'],
+      ['×potSize', f2(L.potSize), 'the pot at the node: (' + ectx.nOpp + ' + 1) stakes'],
+      ['−stake', f2(L.stake), 'what hero puts in — the first rung of constants.solver.sizingLadder, an identity of the game'],
+      ['EV', signed(er.evBB, 2), 'evBB, referenced to ' + er.marginOf + ' at exactly zero']
+    ].forEach(function (x, i, a) {
+      if (i) wf.appendChild(el('span', 'wsep', i === a.length - 1 ? '=' : '→'));
+      var ch = el('span', 'wchip');
+      ch.innerHTML = x[0] + ' <b>' + x[1] + '</b>';
+      ch.title = x[2];
+      wf.appendChild(ch);
+    });
+    evs.appendChild(wf);
+    var band = el('table', 'tbl');
+    band.innerHTML = '<tr><th>the cut</th><th></th></tr>'
+      + '<tr><td>EV in bb</td><td>' + signed(er.evBB, 2) + ' ± ' + f2(er.seBB) + '</td></tr>'
+      + '<tr><td>predicate (evBB ≥ 0)</td><td>' + (er.keep ? 'play' : 'fold') + '</td></tr>'
+      + (L.mixK == null ? '<tr><td>MIX band</td><td>no band — this model stamps no k</td></tr>'
+        : '<tr><td>MIX band (|evBB| &lt; k·se)</td><td>k = ' + L.mixK + ' → ±' + f2(L.mixK * er.seBB)
+          + (er.mix ? ' · <b>inside</b>' : ' · outside') + '</td></tr>')
+      + '<tr><td>EV-mode width</td><td>' + pct(L.width) + ' of combos, against ' + pct(L.setWidth) + ' the score plays</td></tr>';
+    evs.appendChild(band);
+    evs.appendChild(el('div', 't-sm dim', 'source ‘' + er.source + '’ is a game in which postflop does not exist: '
+      + 'built from the shipped all-in equities, it knows nothing about position, stacks or the flop, and every '
+      + 'reading at this node comes back supported:false. The bb conversion is real arithmetic on real returns — '
+      + 'potMult and invShare are what the frozen interface gained at P2 precisely so a caller could do it — but '
+      + 'the EV it converts is a stub’s, and the badge says so on every surface that renders one. '
+      + 'k is DERIVED, not chosen: it solves “the EV-mode MIX band carries the same combo mass t4Band’s frequency '
+      + 'band does”, on the shipped distribution. Display only — the score cuts tiers, and gate I34 makes it '
+      + 'structurally impossible for any EV number to move one.'));
   }
+  /* @end:block */
   if (S.node !== '3bet') {
     sec(host, 'Score').appendChild(waterfallEl(rec, ev, S.pos));
   }
@@ -5489,6 +5802,35 @@ function buildRail() {
   }
   syncRail();
 }
+/* @block:ev */
+function setPres(k) {
+  if (!presInfo(k) || k === S.pres) return;
+  var av = modeCaps().payoff;
+  if (k !== 'score' && !av) { toast(presInfo(k)[1] + ' — ' + MODES.availability('ev', modeCaps()).reason); return; }
+  S.pres = k;
+  render(); renderInspector(true); syncLegend(); syncDisplayCtl();
+  announce('numbers now quoted as ' + presInfo(k)[2].toLowerCase());
+}
+/** The presentation switch, built like `miniRow` but with the disablement idiom on two of three. */
+function presRow() {
+  var host = $('#displayctl'), c = el('div', 'ctl'), av = modeCaps().payoff;
+  var why = av ? '' : MODES.availability('ev', modeCaps()).reason;
+  c.appendChild(el('span', null, 'Numbers'));
+  var m = el('div', 'mini');
+  m.setAttribute('role', 'group');
+  m.setAttribute('aria-label', 'Which presentation the page quotes its numbers in');
+  PRES.forEach(function (x) {
+    var b = el('button', null, x[1]), ok = x[0] === 'score' || av;
+    b.setAttribute('aria-pressed', presKey() === x[0] ? 'true' : 'false');
+    b.setAttribute('aria-disabled', ok ? 'false' : 'true');
+    b.title = ok ? x[2] : x[1] + ' unavailable — ' + why;
+    b.setAttribute('aria-label', ok ? x[2] : x[2] + ' — unavailable: ' + why);
+    b.onclick = function () { setPres(x[0]); };
+    m.appendChild(b);
+  });
+  c.appendChild(m); host.appendChild(c);
+}
+/* @end:block */
 function renderDisplayCtl() {
   var host = $('#displayctl'); host.innerHTML = '';
   function toggleRow(label, get, set, title) {
@@ -5520,6 +5862,16 @@ function renderDisplayCtl() {
      it colours. It is not on the top bar either (item 15) — the top bar's view switch is
      unchanged, and a control that changes what the grid MEANS does not belong beside one that
      changes which pane is on screen. */
+  /* @block:ev */
+  /* THE PRESENTATION SWITCH (V3-PLAN §5.4). It is HERE and not on the legend row because it is not
+     an encoding: the legend row owns what a COLOUR means (item 13, locked 4.6), and this owns what
+     UNIT the page's numbers are quoted in — the inspector's headline, the cell tooltips, the
+     accessible names. A control that changes every number on the page belongs with the other
+     page-wide display settings, which is what this section is.
+     The two EV presentations render DISABLED WITH A NAMED REASON where the build cannot serve them,
+     the same structural-disablement idiom the colour modes use. */
+  presRow();
+  /* @end:block */
   toggleRow('Rain', function () { return S.rain > 0; }, function (v) { S.rain = v ? 8 : 0; startRain(); });
   toggleRow('Colorblind patterns', function () { return S.cbPatterns; }, function (v) { S.cbPatterns = v; $('#matrixpane').classList.toggle('hatch', v); });
   toggleRow('Mono suits', function () { return S.monoSuits; }, function (v) { S.monoSuits = v; document.body.classList.toggle('monosuit', v); });
@@ -5835,13 +6187,21 @@ function openDisplayHelp() {
     '<li><b>Density</b> — row height only; nothing recomputes.</li>' +
     '<li style="margin-top:8px"><b>Columns</b> — <b>Equal</b> draws all five suit columns the same width, which exaggerates rare shapes. ' +
     '<b>True freq</b> makes each column as wide as that shape is common: single-suited is ~49% of all deals, rainbow only ~11%.</li>' +
+    /* @block:ev */
+    '<li style="margin-top:8px"><b>Numbers</b> — which of the three presentations every figure on the page is ' +
+    'quoted in. <b>Score</b> is points clear of the percentile cut, and it is the only one that <i>cuts</i> ' +
+    'anything: the tiers are identical whichever you pick. <b>EV</b> is big blinds clear of the fold. ' +
+    '<b>Δ cut</b> is big blinds clear of the last hand the score tells you to play — how much the percentile ' +
+    'cut is costing you at this cell. The EV two are dimmed with a reason in a build with no payoff layer.</li>' +
+    /* @end:block */
     '<li style="margin-top:8px"><b>Colour mode</b> — the switch on the legend’s second line, above the grid: ' +
     'the tier chips are the filter, the line under them is the encoding. ' +
     'A mode this build cannot serve is dimmed and says why, never hidden:<ul>' +
     '<li><b>TIER</b> (default) — the verdict colours from the legend: gold raise, orange exploit-raise, teal call, split MIX, grey fold.</li>' +
     '<li><b>ν — nut potential</b> — dark → gold as a class more often makes the <i>best</i> hand rather than a good one.</li>' +
-    '<li><b>EV</b> — expected share of the final pot: a pot FRACTION, not big blinds, badged <i>checkdown</i> because the game ' +
-    'behind it has no postflop. Display only — no EV number can move a tier.</li>' +
+    '<li><b>EV</b> — expected value <b>in big blinds</b>, referenced to the fold, which is at exactly zero. ' +
+    'Dark loses money, bright makes it, and the legend names which step the break-even sits in. Badged ' +
+    '<i>checkdown</i> because the game behind the number has no postflop. Display only — no EV number can move a tier.</li>' +
     /* @block:gto */
     '<li><b>vs GTO</b> — how far this seat\u2019s verdict is from a solved equilibrium, in <i>action steps</i>: ' +
     '<span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#C79E33;vertical-align:-1px"></span> <b>gold = looser</b> than the equilibrium, ' +
@@ -6152,12 +6512,26 @@ function liveInspector() {
   if (!rec || !rec.live || !lastEv) return;
   var eqEl = $('#ibody .t-metric-xl');
   if (eqEl) eqEl.textContent = f1(S.node === '3bet' ? eqMixOf(rec.d, S.mix) * 100 : eqAt(rec.d, lastEv.N)) + '%';
-  /* the EV line, which moves with N and therefore with the VPIP slider under the hand */
+  /* @block:ev */
+  /* THE EV AND MARGIN LINES, which move with N and therefore with the VPIP slider under the hand.
+     Both are addressed by their row's `data-k`, never by position, so a row added above them does
+     not silently redirect the write — which is the reason `renderVerdictTable` stamps those names. */
   var evRow = $('#ibody .vlines .vline[data-k=ev] .val');
-  if (evRow && PAY) {
-    var lctx = modeCtx(lastEv, 'ev'), lr = evOf(rec, lctx);
-    if (lr) evRow.innerHTML = f1(lr.ev * 100) + '<span class="u">% of the final pot ±' + f1(lr.se * 100) + '</span>';
+  var lctx = (evRow || S.pres !== 'score') ? modeCtx(lastEv, 'ev') : null;
+  if (evRow && lctx) {
+    var lr = evOf(rec, lctx);
+    if (lr) {
+      evRow.innerHTML = f1(lr.ev * 100) + '<span class="u">% of pot ±' + f1(lr.se * 100) + '</span>';
+    }
   }
+  if (lctx && S.pres !== 'score') {
+    var mRow = $('#ibody .vlines .vline[data-k=margin] .val'), mp = presOf(rec, lastEv, lctx);
+    if (mRow && mp && mp.k !== 'score') {
+      mRow.innerHTML = signed(mp.v, mp.d) + '<span class="u">' + mp.unit
+        + (mp.se == null ? '' : ' ±' + f2(mp.se)) + '</span>';
+    }
+  }
+  /* @end:block */
   /* anti-strobe: the action word only commits after 180 ms of stability */
   var t = lastEv.tier[rec.i];
   if (t !== heldTier) {
@@ -6429,7 +6803,7 @@ function simRunning() { return !!SIMRUN; }
 function vpTrigger() {
   var r = simResult();
   return SIMUI.triggerState({
-    on: !!(HAS_VP && S.vp), v: S.v, q: S.q, qDef: QDEF, pts: VPTS,
+    on: !!(HAS_VP && S.vp), v: poolV(), q: S.q, qDef: QDEF, pts: VPTS,
     measured: r ? { trials: r.trialsPerCell } : null,
     available: simAvailable()
   });
@@ -6516,13 +6890,13 @@ function simCacheHint() {
 function cacheOffer() {
   if (!simAvailable() || !window.SIM.cache) return 'none';
   var hit = null;
-  try { hit = window.SIM.cache.peek({ v: S.v, q: S.q, trials: simTrials() }); } catch (e) { return 'none'; }
+  try { hit = window.SIM.cache.peek({ v: poolV(), q: S.q, trials: simTrials() }); } catch (e) { return 'none'; }
   if (!hit) return 'none';
   return 'full';
 }
 function vpBracketText() {
   if (!POL.latticeBracket) return '';
-  var br = POL.latticeBracket(VPTS, S.v);
+  var br = POL.latticeBracket(VPTS, poolV());
   if (br.lo < 0 || br.exact) return '';
   if (br.lo === br.hi) return 'clamped to the ' + VPTS[br.lo] + '% row (the end of the measured range)';
   return 'interpolated ' + Math.round((1 - br.f) * 100) + '/' + Math.round(br.f * 100) + ' between the measured '
@@ -6536,7 +6910,7 @@ function eqProvenanceText() {
   var t = vpTrigger(), r = simResult();
   if (t.badge === 'measured') {
     return 'simulated ±' + r.se.toFixed(2) + ' pt — ' + SIMUI.group(r.trialsPerCell) +
-      ' trials/cell measured in this browser vs a field playing the top ' + S.v + '% at q ' + S.q.toFixed(2) +
+      ' trials/cell measured in this browser vs a field playing the top ' + poolVTxt() + '% at q ' + S.q.toFixed(2) +
       (r.source === 'cache' ? ' (from cache)' : '') + (r.degraded ? ' (main-thread fallback)' : '');
   }
   if (t.badge === 'unsupported') {
@@ -6547,7 +6921,7 @@ function eqProvenanceText() {
       ((MODEL.meta.trials && MODEL.meta.trials.latt) || 100000).toLocaleString() + ' trials/cell/point, ±' + MODEL.meta.se.latt + ' pt';
   }
   return ((MODEL.meta.trials && MODEL.meta.trials.latt) || 100000).toLocaleString() +
-    ' trials/cell measured vs a filtered field at VPIP ' + S.v + ', q ' + S.q.toFixed(2) + ' · SE ±' + MODEL.meta.se.latt + ' pt';
+    ' trials/cell measured vs a filtered field at VPIP ' + poolVTxt() + ', q ' + S.q.toFixed(2) + ' · SE ±' + MODEL.meta.se.latt + ' pt';
 }
 function vpStatHTML(t, r) {
   if (!S.vp) return 'SHIPPED &middot; random villains, &plusmn;' + MODEL.meta.se.cell + ' pt';
@@ -6558,7 +6932,7 @@ function vpStatHTML(t, r) {
   }
   if (t.badge === 'unsupported') return 'NO SHIPPED ANSWER at q ' + S.q.toFixed(2) + ' &middot; showing the random-villain baseline';
   if (t.badge === 'interpolated') return 'INTERPOLATED &middot; ' + vpBracketText();
-  return 'MEASURED (shipped lattice) &middot; VPIP ' + S.v + ' at q ' + S.q.toFixed(2) + ' &middot; &plusmn;' + MODEL.meta.se.latt + ' pt';
+  return 'MEASURED (shipped lattice) &middot; VPIP ' + poolVTxt() + ' at q ' + S.q.toFixed(2) + ' &middot; &plusmn;' + MODEL.meta.se.latt + ' pt';
 }
 /* §2.3's headline, which is the single most valuable new number in v2 and had no surface until now.
    Read off the shipped deltas rather than transcribed, so a regeneration moves the sentence. */
@@ -6637,7 +7011,7 @@ function paintSimBadge(t, r) {
   var say = el('span');
   if (t.badge === 'measured') {
     say.innerHTML = 'Equities on this grid were measured in this browser against a field playing the top '
-      + S.v + '% at q ' + S.q.toFixed(2) + '. ' + (r.degraded ? 'No Web Worker was available, so this ran on the '
+      + poolVTxt() + '% at q ' + S.q.toFixed(2) + '. ' + (r.degraded ? 'No Web Worker was available, so this ran on the '
       + 'page’s own thread: much slower &mdash; often 10× or more &mdash; and it stops while the tab is '
       + 'in the background; same numbers, worse clock. ' : '') + 'Shipped numbers carry no ± here; this one does.';
   } else if (t.badge === 'unsupported') {
@@ -6656,6 +7030,9 @@ function syncVP() {
   sec.hidden = false;
   var t = vpTrigger(), r = simResult();
   $('#vptoggle').setAttribute('aria-pressed', S.vp ? 'true' : 'false');
+  /* @block:skill */
+  syncSkill();
+  /* @end:block */
   $('#vpqrow').hidden = !S.vp;
   $('#vpq').value = S.q;
   $('#vpqval').textContent = S.q.toFixed(2);
@@ -6704,7 +7081,7 @@ function startSim(mult) {
   SIMERR = ''; SIMCB = '';
   SIMRUN = { token: mine, handle: null };
   var h = window.SIM.run({
-    v: S.v, q: S.q, trials: trials,
+    v: poolV(), q: S.q, trials: trials,
     /* Each handler guards its own body. The engine would catch a throw anyway (and log it), but it
        cannot know that the thing that failed was the page's own painting — only we can say that on
        screen, and only from outside the code that broke. */
@@ -6719,7 +7096,7 @@ function startSim(mult) {
   });
   if (SIMRUN && SIMRUN.token === mine) SIMRUN.handle = h;
   syncVP();
-  announce('simulating ' + SIMUI.group(trials) + ' trials per cell against a field playing the top ' + S.v +
+  announce('simulating ' + SIMUI.group(trials) + ' trials per cell against a field playing the top ' + poolVTxt() +
     '% of hands.');
 }
 function onSimDone(r) {
@@ -6754,7 +7131,7 @@ function setProfile(on) {
   S.vp = on;
   commitVP();
   announce(on
-    ? 'villain profile on — every equity is now read against a field that plays the top ' + S.v +
+    ? 'villain profile on — every equity is now read against a field that plays the top ' + poolVTxt() +
       '% of hands, discipline ' + S.q.toFixed(2) + '. ' + vpStatPlain()
     : 'villain profile off — back to the random-villain measurement the page ships.');
 }
@@ -6765,6 +7142,48 @@ function setQ(q) {
   S.q = q;
   if (S.vp) commitVP(); else { syncVP(); pushHash(); }
 }
+/* @block:skill — THE DIAL'S SETTER AND ITS STATUS LINE.
+   THE STATUS LINE IS THE HONEST HALF OF THE CONTROL. A dial that silently slides a pool between
+   measured rows would be the page inventing villains; the badge it prints is the ACCESSOR'S OWN
+   (`POLICY.latticeBracket` over the shipped lattice at the resolved pool VPIP), which is what gate
+   I37(c) reads: at a setting that lands on a measured row every cell reads `lattice`, and at an
+   interior one every cell reads `interpolated`. The DETENTS are the shipped `constants.skill.detents`
+   — forced by the lattice rather than chosen — and they are offered as clickable ticks rather than
+   as the slider's step, so the interior stays reachable and stays labelled for what it is. */
+function setSkill(s) {
+  s = clamp(Math.round(s * 100) / 100, SKILL ? SKILL.min : 0, SKILL ? SKILL.max : 1);
+  if (!HAS_SKILL || s === S.skill) return;
+  simCancelOnChange('the pool-skill dial');
+  S.skill = s;
+  if (S.vp) commitVP(); else { syncVP(); pushHash(); }
+}
+/** Is this dial setting on a MEASURED lattice row, and what does the pool play there? */
+function skillReading() {
+  var p = poolV(), br = (POL && POL.latticeBracket) ? POL.latticeBracket(VPTS, p) : null;
+  var exact = !!(br && (br.exact || (br.lo >= 0 && br.lo === br.hi)));
+  return { pool: p, exact: exact, badge: exact ? 'lattice' : 'interpolated', br: br };
+}
+function syncSkill() {
+  var row = $('#vpskillrow'), stat = $('#vpskillstat');
+  if (!row) return;
+  if (!HAS_SKILL) { row.hidden = true; stat.hidden = true; return; }
+  row.hidden = !S.vp; stat.hidden = !S.vp;
+  $('#vpskill').value = S.skill;
+  $('#vpskillval').textContent = S.skill.toFixed(2);
+  $('#vpskillreset').disabled = (S.skill === (SKILL.ref || 0));
+  if (!S.vp) return;
+  var r = skillReading();
+  /* The dial's whole claim, in one sentence a reader can check against the lattice printed beside
+     it: what it MOVED (table VPIP → pool VPIP), where that lands (a measured row or between two),
+     and the fact that nothing else about the villains changed. */
+  stat.innerHTML = S.skill === 0
+    ? 'LOBBY &middot; the pool plays the table’s own <b>' + S.v + '%</b> — the model this page ships'
+    : 'POOL <b>' + poolVTxt() + '%</b> &middot; ' + (r.exact ? 'a MEASURED lattice row' : 'INTERPOLATED between measured rows')
+      + ' &middot; folds more, plays no better';
+  $('#vpskill').setAttribute('aria-valuetext', S.skill.toFixed(2) + ' — the pool plays '
+    + poolVTxt() + ' percent, ' + (r.exact ? 'a measured row' : 'interpolated between measured rows'));
+}
+/* @end:block */
 function vpStatPlain() {
   var t = vpTrigger();
   return t.why + '.';
@@ -6790,6 +7209,16 @@ function wireVP() {
   q.addEventListener('input', function () { $('#vpqval').textContent = (+q.value).toFixed(2); });
   q.addEventListener('change', function () { setQ(+q.value); });
   $('#vpqreset').onclick = function () { setQ(QDEF); q.value = S.q; };
+  /* @block:skill — same two-event shape as q: the readout tracks the drag, the re-solve waits for
+     the release, because a pool change re-profiles every cell in the model. */
+  var sk = $('#vpskill');
+  if (sk && HAS_SKILL) {
+    sk.min = SKILL.min; sk.max = SKILL.max;
+    sk.addEventListener('input', function () { $('#vpskillval').textContent = (+sk.value).toFixed(2); });
+    sk.addEventListener('change', function () { setSkill(+sk.value); });
+    $('#vpskillreset').onclick = function () { setSkill(SKILL.ref || 0); sk.value = S.skill; };
+  }
+  /* @end:block */
   $('#simbtn').onclick = function () {
     if (simRunning()) { simCancel('you stopped it'); return; }
     startSim(vpTrigger().badge === 'measured' ? 4 : 1);
@@ -7936,7 +8365,7 @@ var SOLVER_CONST = { solver: 1 };
    red team said so in five separate memos (docs/refutations/P1.md). Keyed by DOTTED PATH because
    every one of them is a nested field, and asserted from the other side by I41(g)/I44(f), which
    read this map out of the source: a flagged constant missing from it fails the build. */
-var UNANCHORED = { 'rake.potScale': 1, 'sizing.min': 1, 'sizing.premiumCalibratedAt': 1, 'sizing.detents': 1, 'baselineQuant': 1 };
+var UNANCHORED = { 'rake.potScale': 1, 'sizing.min': 1, 'sizing.premiumCalibratedAt': 1, 'sizing.detents': 1, 'baselineQuant': 1, 'skill.blend': 1, 'skill.playsBetter': 1, 'skill.min': 1, 'skill.ref': 1, 'skill.max': 1 };
 /* v2 put four nested blocks into `constants`; JSON.stringify rendered them as one-line blobs */
 function constHTML(v, p) {
   if (v == null || typeof v !== 'object') return String(v);
@@ -8686,6 +9115,55 @@ function init() {
         caps: BASE.block.caps, notCovered: BASE.block.notCovered };
     },
     setGtoDepth: function (bb) { S.gtoD = bb; syncLegend(); render(); renderInspector(true); },
+    /* @end:block */
+    /* @block:ev */
+    setPres: setPres, PRES: PRES,
+    evState: function () {
+      var ev = lastEv || evalNow(), ctx = modeCtx(ev, 'ev'), rec = CK[S.sel];
+      if (!ctx.L) return { on: false, why: MODES.availability('ev', modeCaps()).reason };
+      var r = rec && rec.live ? evOf(rec, ctx) : null;
+      return { on: true, pres: presKey(), lo: ctx.lo, hi: ctx.hi, nOpp: ctx.nOpp,
+        stake: ctx.L.stake, potSize: ctx.L.potSize, rho: ctx.L.rho, mixK: ctx.L.mixK,
+        width: ctx.L.width, setWidth: ctx.L.setWidth, keepWidth: ctx.L.keepWidth,
+        source: evSourceText(ctx.L),
+        cell: r ? { evBB: r.evBB, seBB: r.seBB, ev: r.ev, badge: r.badge, keep: r.keep, mix: r.mix,
+          unit: r.marginUnit, of: r.marginOf } : null };
+    },
+    /**
+     * I34's quarantine, observable from the browser: the layer CONSUMES the memoised solve rather
+     * than making one of its own.
+     *
+     * IT CLEARS FIRST, AND THAT IS THE POINT RATHER THAN A CONVENIENCE. `solve`'s memo is capped and
+     * clears wholesale when it fills, so a layer cached from an earlier repaint can legitimately be
+     * holding a solve object that has since been evicted — comparing it against a fresh `solve` then
+     * measures the memo's age, not the quarantine. Clearing both memos and this page's own front,
+     * then solving and cutting in that order, asks the one question that matters: given a cold
+     * cache, does `evCut` hand back the object `solve` just produced, or a second one?
+     */
+    evQuarantine: function () {
+      if (!POL || !POL.evCut || !POL.clearSolveMemo || !payNow()) return null;
+      var ev = lastEv || evalNow(), st = stateOf({ v: ev.v, mix: mixW(S.mix) });
+      POL.clearSolveMemo(); EVL.key = '';
+      var solved = POL.solve(emodel(), st);
+      var cut = POL.evCut(emodel(), st, payNow());
+      var out = { same: cut.solved === solved, cells: Object.keys(cut.cells).length };
+      EVL.key = ''; render(); renderInspector(true);
+      return out;
+    },
+    /* @end:block */
+    /* @block:skill */
+    setSkill: setSkill, hasSkill: HAS_SKILL,
+    skillState: function () {
+      if (!HAS_SKILL) return null;
+      var r = skillReading();
+      /* Deliberately does NOT surface the plays-better record. Gate I38(e) bounds that half's reach
+         at exactly zero and enforces it by scanning eight shipped files for the name — a harness
+         hook that read it would be the page acquiring a reach the measurement says it has none of,
+         and the gate refused this line when it was first written. The reach bound is the finding. */
+      return { s: S.skill, tableV: S.v, pool: r.pool, badge: r.badge, exact: r.exact,
+        vFloor: SKILL.vFloor, detents: SKILL.detents,
+        on: !!S.vp, rowHidden: $('#vpskillrow').hidden, stat: $('#vpskillstat').textContent };
+    },
     /* @end:block */
     setMode: setMode, modeReadout: function (key) {
       var rec = CK[S.sel], ev = lastEv || evalNow(), m = key || activeMode();

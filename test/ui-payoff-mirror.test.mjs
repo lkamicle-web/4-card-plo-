@@ -204,10 +204,23 @@ test('a fabricated model moves both copies the same way, or neither', () => {
 test('the copy declares its own seam, and the page has exactly one bound accessor', () => {
   assert.match(SRC, /@inject|injection region/i,
     'the block must name the seam that deletes it, or it becomes permanent by silence');
-  // One `makePayoff(MODEL)` in the whole shell: two accessors is two models, and the second one
-  // is the memo-key trap the module's docstring warns about arriving by another door.
-  const binds = SHELL.match(/PAYOFF\.makePayoff\(/g) || [];
-  assert.equal(binds.length, 1, 'exactly one bound accessor in the page');
+  /* TWO BINDING SITES SINCE THE P4 UI, AND WHAT IS PINNED IS TIGHTER THAN THE COUNT WAS.
+     The rule read "one `makePayoff(MODEL)` in the whole shell: two accessors is two models, and the
+     second one is the memo-key trap arriving by another door". Two accessors IS two models — and
+     two is now the CORRECT number, because the page scores a SHADOW model whenever the villain
+     profile is on, and reading EV off MODEL there painted random-villain money over
+     filtered-villain tiers. What makes the pair safe is not scarcity: `evCut`'s memo key carries
+     `payoff.modelHash`, which is exactly why policy.mjs makes the accessor a per-call argument
+     rather than a module-level `setPayoff` that "would alias two models' EV in one process". So the
+     sites are pinned by NAME, and the second one is pinned to the model it is bound to. */
+  const binds = SHELL.match(/PAYOFF\.makePayoff\([A-Za-z_$][\w$]*\)/g) || [];
+  assert.deepEqual(binds, ['PAYOFF.makePayoff(MODEL)', 'PAYOFF.makePayoff(m)'],
+    'exactly two bound accessors: the shipped model, and the profiled shadow the page scores');
+  assert.match(SHELL, /if \(m === MODEL\) return PAY;/,
+    'the shadow accessor is never built for the unprofiled model — with the profile off the page '
+    + 'must hand back the same accessor object it always had');
+  assert.match(SHELL, /var EVPAY = \{ model: null, fn: null \}/,
+    'the shadow accessor is stored PAIRED with the model it was bound to, so the two cannot drift');
   assert.match(SHELL, /var PAY = null, PAYWHY = ''/,
     'a page that cannot build an accessor must disable the EV mode BY NAME, not paint zeros');
 });

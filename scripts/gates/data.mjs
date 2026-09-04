@@ -120,6 +120,8 @@ export function build(ctx) {
       order: model.order ? b(model.order) : 0,
       baseline: model.baselineTiers ? b(model.baselineTiers) : 0,
       solver: model.constants && model.constants.solver ? b(model.constants.solver) : 0,
+      skill: model.constants && model.constants.skill ? b(model.constants.skill) : 0,
+      evCut: model.constants && model.constants.evCut ? b(model.constants.evCut) : 0,
       total: b(model),
     };
     // Budgets, raised for the v2 payload (V2-PLAN §2.5), in the same spirit as build.mjs's own
@@ -208,17 +210,59 @@ export function build(ctx) {
     //                  the same bytes, against the same ceilings, as the run before P3. No existing
     //                  block gained one byte of headroom, and the gate prints all four numbers so
     //                  that cannot be taken on trust.
+    //
+    // P4 ADDS A THIRD RESERVED BLOCK, by the same rule and measured before it was granted:
+    //   skill      1K  new. `constants.skill` — the pool-skill axis's domain, its lattice-anchored
+    //                  floor, the interior blend's published formula, the plays-better coefficient
+    //                  that ships `null` because Grade C does not build it, and the `flag` that says
+    //                  all of that out loud (V3-PLAN §6; gates I37/I38). Measured 991 B, of which
+    //                  ~840 B is the flag: the same trade the solver block made, and made for the
+    //                  same reason — §6's contract is "named in `constants`, labeled in the Method
+    //                  view, bounded by a gate", and an admission that lives only in a source
+    //                  comment is not on the page.
+    //   meta   16 -> 17K   the skill block lands inside the meta bucket, which was at 12.7K of 13K —
+    //                  340 B of headroom, so the block does not fit without the raise and the raise
+    //                  is what has to be stated.
+    //   total 135 -> 136K
+    //                  RESERVED, NOT GRANTED, exactly as the other two were: `core` now subtracts
+    //                  all THREE new blocks and still faces the original 120K, and `metaCore`
+    //                  subtracts the solver and skill blocks and still faces the original 13K. No
+    //                  pre-existing block gains one byte of headroom, and the gate prints every
+    //                  reading so that cannot be taken on trust.
+    //
+    // P4'S SECOND DELIVERABLE ADDS A FOURTH RESERVED BLOCK, measured before it was granted:
+    //   evCut      2K  new. `constants.evCut` — the EV MIX band's multiplier `k`, the t4 mass it was
+    //                  solved against, the mass the rounded k actually delivers and the next step up
+    //                  (the target lies between them: the distribution is a step function with tie
+    //                  plateaus, so no achievable band hits it exactly), the se unit, a fingerprint
+    //                  of the default state it was derived at, and the DERIVATION SENTENCE. Measured
+    //                  1,141 B, of which ~740 B is that sentence — the same trade the solver and
+    //                  skill blocks made: §6's contract is "named in `constants`, labeled in the
+    //                  Method view, bounded by a gate", and a derivation that lives only in a source
+    //                  comment is not on the page. Gate I40 re-derives the whole block from scratch
+    //                  every run and Object.is-compares it against this one.
+    //   meta   17 -> 19K   the block lands inside the meta bucket, which is at 13.7K of 17K after the
+    //                  skill raise — 3.3K of headroom, which would have fitted. It is raised anyway,
+    //                  by the same rule the other three were: a block gets its own reserved
+    //                  sub-budget so that its bytes cannot be spent by anything else, and `metaCore`
+    //                  keeps facing the original 13K with all four subtracted.
+    //   total 136 -> 138K
+    //                  RESERVED, NOT GRANTED. `core` now subtracts all FOUR blocks and still faces
+    //                  the original 120K; `metaCore` subtracts the three that live in `constants`
+    //                  and still faces the original 13K. Nothing pre-existing gains a byte.
     const BUD = {
-      cells: 65 * 1024, meta: 16 * 1024, order: 43 * 1024,
-      baseline: 12 * 1024, solver: 3 * 1024, total: 135 * 1024,
+      cells: 65 * 1024, meta: 19 * 1024, order: 43 * 1024,
+      baseline: 12 * 1024, solver: 3 * 1024, skill: 1 * 1024, evCut: 2 * 1024, total: 138 * 1024,
     };
-    const CORE_BUDGET = BUD.total - BUD.baseline - BUD.solver;   // the pre-raise 120K, still binding
-    const META_CORE_BUDGET = BUD.meta - BUD.solver;              // the pre-raise 13K, still binding
-    const core = sizes.total - sizes.baseline - sizes.solver;
-    const metaCore = sizes.meta - sizes.solver;
+    // the pre-raise 120K and 13K, still binding — every reserved block subtracted, none of them granted
+    const CORE_BUDGET = BUD.total - BUD.baseline - BUD.solver - BUD.skill - BUD.evCut;
+    const META_CORE_BUDGET = BUD.meta - BUD.solver - BUD.skill - BUD.evCut;
+    const core = sizes.total - sizes.baseline - sizes.solver - sizes.skill - sizes.evCut;
+    const metaCore = sizes.meta - sizes.solver - sizes.skill - sizes.evCut;
     const ok = sizes.cells <= BUD.cells && sizes.meta <= BUD.meta
       && sizes.order <= BUD.order && sizes.baseline <= BUD.baseline
-      && sizes.solver <= BUD.solver && metaCore <= META_CORE_BUDGET
+      && sizes.solver <= BUD.solver && sizes.skill <= BUD.skill && sizes.evCut <= BUD.evCut
+      && metaCore <= META_CORE_BUDGET
       && core <= CORE_BUDGET && sizes.total <= BUD.total;
     G('D6', ok, `cells ${(sizes.cells / 1024).toFixed(1)}K/${BUD.cells / 1024}K · ` +
       `meta+tables ${(sizes.meta / 1024).toFixed(1)}K/${BUD.meta / 1024}K ` +
@@ -226,9 +270,12 @@ export function build(ctx) {
       `order ${(sizes.order / 1024).toFixed(1)}K/${BUD.order / 1024}K · ` +
       `baseline tiers ${(sizes.baseline / 1024).toFixed(1)}K/${BUD.baseline / 1024}K · ` +
       `solver constants ${(sizes.solver / 1024).toFixed(1)}K/${BUD.solver / 1024}K · ` +
+      `skill axis ${(sizes.skill / 1024).toFixed(1)}K/${BUD.skill / 1024}K · ` +
+      `EV band ${(sizes.evCut / 1024).toFixed(1)}K/${BUD.evCut / 1024}K · ` +
       `total ${(sizes.total / 1024).toFixed(1)}K/${BUD.total / 1024}K ` +
       `(of which core ${(core / 1024).toFixed(1)}K/${CORE_BUDGET / 1024}K — the baseline block's ` +
-      `${BUD.baseline / 1024}K and the solver block's ${BUD.solver / 1024}K are reserved for them ` +
+      `${BUD.baseline / 1024}K, the solver block's ${BUD.solver / 1024}K, the skill block's ` +
+      `${BUD.skill / 1024}K and the EV band's ${BUD.evCut / 1024}K are reserved for them ` +
       `and grant no other block headroom, which is what the two core readings prove; ` +
       `pretty-printed ${(Buffer.byteLength(JSON.stringify(model, null, 1)) / 1024).toFixed(1)}K). ` +
       `BINDING ON THE LITE ARTIFACT (§5.3): model.json is shared, and lite is the constraining consumer`);

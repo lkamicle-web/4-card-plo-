@@ -104,20 +104,42 @@ export class VariantError extends Error {
  *                   the app payload MINUS the `@block:gto` region — the pre-raise ceiling, still
  *                   facing the same bytes it faced before P3 (359.3 KB, 682 B of headroom). Same
  *                   number in both variants, for the same reason `app` is.
- *   modelCode 50 KB NOT measured+5%, for the same reason and more strictly: it is byte-identical
+ *   modelCode 54 KB NOT measured+5%, for the same reason and more strictly: it is byte-identical
  *                   between the variants — the same two inlined modules, the same minifier.
+ *
+ *                   RAISED 50 -> 54 AT P4, and stated rather than nudged (the P2 precedent, which
+ *                   ratified +4 KB the same way). What bought it is §3.4's absolute-EV cut landing
+ *                   in policy.mjs: `evCut` and its memo, the shared per-cell arithmetic both the
+ *                   sibling accessor and the EV-primary branch come through, `evBadge`, `evStake`,
+ *                   `evPrimary` and the request shape — 4.6 KB stripped, measured 53,353 B = 52.1K.
+ *                   THE DERIVATION DID NOT SHIP: `k` is solved in scripts/lib/ev-band.mjs, which the
+ *                   page never loads, because the page reads only the stamped `constants.evCut.mixK`
+ *                   — the `constants.solver`/`solverBlock` split, applied again. Without that move
+ *                   the same feature measured 54.5K.
+ *                   54 is measured + 3.6%, DELIBERATELY BELOW the 8% margin this gate was calibrated
+ *                   with (which would give 56): a ceiling tighter than its own rule is the
+ *                   conservative direction, which is the reading D9's own P3 repair settled on.
  */
 export const VARIANTS = {
   lite: {
     name: 'lite',
     out: 'index.html',
     regions: ['data', 'taxonomy', 'policy', 'engine'],
-    budgets: { total: 600 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 50 * 1024 },
+    budgets: { total: 600 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024,
+      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024 } },
     budgetSource: 'METHODOLOGY §9.11, measured + ~5% at the v2 phase-4 end; app raised to 388K at '
       + 'P3 to pay for the vs-GTO colour mode (measured 377,993 B = 369.1K + 5% = 387.6K, rounded '
       + 'up to the whole KB, 4.9% headroom), with appCore holding everything else to the 360K the '
       + 'app block faced before the raise — the mode is bracketed @block:gto and build.mjs compiles '
-      + 'the shell twice to measure it, so both readings are printed and both are gated',
+      + 'the shell twice to measure it, so both readings are printed and both are gated; modelCode '
+      + 'raised to 54K at P4 to pay for the absolute-EV cut in policy.mjs (measured 53,353 B = '
+      + '52.1K, held at +3.6% rather than at this gate\'s calibrated +8%, which would give 56K). '
+      + 'P4 UI: app is NOT raised again — the EV surface and the skill dial fit inside the 388K '
+      + 'P3 already paid for, and appCore FELL to 357.9K (from 359.4K) because deleting the page\'s '
+      + 'own duplicate pot arithmetic returned more unmarked bytes than the shared edits added. '
+      + 'What is new is `blocks`: a per-block ceiling at measured+5%, gto 11K (10,198 B), ev 12K '
+      + '(11,403 B), skill 4K (3,532 B) — the P3 red team\'s finding that @block:gto had no cap of '
+      + 'its own, so an app raise bounded a NAME rather than a feature (docs/refutations/P3.md)',
     /* The per-variant honesty sentence D11 grep-gates. One artifact, one claim: the lite page must
        not carry the full page's, and vice versa. Text is P5's to write (§5.2, §10); these are
        shaped placeholders carrying the load-bearing clause each variant owes the reader. */
@@ -127,7 +149,8 @@ export const VARIANTS = {
     name: 'full',
     out: 'index-full.html',
     regions: ['data', 'taxonomy', 'policy', 'engine', 'eq'],
-    budgets: { total: 634 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 50 * 1024, eq: 73 * 1024 },
+    budgets: { total: 646 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024, eq: 73 * 1024,
+      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024 } },
     budgetSource: 'D9, P3, both HELD BELOW measured+5% rather than re-derived up to it (the P3 red '
       + 'team found total quoting a measurement taken before the vs-GTO block landed — '
       + 'docs/refutations/P3.md): total 634K bounds a page measured at 629,312 B (614.6K), 3.2% of '
@@ -138,7 +161,15 @@ export const VARIANTS = {
       + 'app and modelCode are LITE\'s numbers, not a fresh measurement — the application code is '
       + 'the same in both artifacts (full measures 359.7K against lite\'s 359.5K, the difference '
       + 'being one script wrapper and one bridge line), and a measured+5% here would hand the '
-      + 'shared app block 17K of headroom lite does not have (V3-PLAN §3.3 adjudication 12)',
+      + 'shared app block 17K of headroom lite does not have (V3-PLAN §3.3 adjudication 12). '
+      + 'RAISED 634 -> 646K AT THE P4 UI, and the number is not a new one: 646K is exactly what the '
+      + 'P3 repair computed as a fresh measured+5% for the pre-P4 page and DECLINED to take, on the '
+      + 'reading that a ceiling tighter than its own rule is the conservative direction. The P4 UI '
+      + 'grew the full page 13.1K (623.2 -> 636.3K, measured 651,528 B) and it grew INTO that '
+      + 'declined headroom, so the raise is a number this repository had already priced rather than '
+      + 'one invented to fit. It is still held below the CURRENT measured+5%, which would give 669K: '
+      + '646K = 661,504 B is 1.5% above the artifact. `blocks` is shared with lite and is the same '
+      + 'code in both artifacts',
     claim: 'a self-contained offline page carrying the solved baseline as well as the measurement',
   },
 };

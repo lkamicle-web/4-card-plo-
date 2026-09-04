@@ -1051,6 +1051,117 @@ folds the same hands at every depth" (I40's prediction).
 > survive (the measured lattice, and the P3 solver baseline that S-A greenlit), so its
 > monotone-interpolation clause stands as written.
 
+> **Measured (P4) — the skill axis, built as its fold-more half and gated on both halves.** *The EV
+> cut is P4's other deliverable and is recorded separately; this block is the axis.*
+>
+> **THE DIAL IS A COORDINATE CHANGE ON THE VPIP AXIS, AND NOTHING ELSE.** `skill ∈ [0, 1]` on the
+> villain profile, resolved once by `poolVpip(v, s) = v + s·(vFloor − v)` into the VPIP the pool
+> plays; `vFloor` = 25 = `villainLattice.v[0]`, the tightest pool ever measured, re-described rather
+> than authored (I38(b) asserts the identity). Nothing else in `policy.mjs` reads the dial. That is
+> what makes §6's "the measured v-lattice — no new opinion" an assertion instead of a slogan, and
+> **I38(c) mechanises it**: over 336 solves the pool at (v0, s) and the pool at (`poolVpip(v0,s)`, 0)
+> are the SAME shadow object and hand back the SAME solve object. Three things follow for free — the
+> lobby endpoint is the current model by construction, the axis cannot leak into I22's or I32's
+> legacy lane (its whole mechanism is the lattice, so with the profile OFF it is inert whatever a
+> caller passes), and there is no second memo key to forget. **I32 stayed green throughout.**
+>
+> **THE PLAYS-BETTER HALF IS NOT BUILT AND ITS COEFFICIENT SHIPS `null`, BOUNDED AT REACH ZERO
+> RATHER THAN AT A SIZE** — a size bound on a number that does not exist is decoration. I38(e):
+> `playsBetter === null` (no number invented), eight shipped files scanned comment- AND
+> string-literal-stripped so only the declaration may name it (the flag *names* it, and that
+> admission is a string, not a read), and 9,225 per-cell readings along the dial where the pipeline's
+> realization is bit-identical to the dial-blind `realization(pos, N, ν, d)`.
+>
+> **BOTH FALSIFICATIONS THIS SECTION OFFERED LAND, AND ONE OF THEM LANDS HARDER THAN OFFERED.**
+> Per cell, 29 of 369 readings violate monotone convergence and §7.2's prediction is CORROBORATED
+> with its *ordering* asserted rather than quoted: `BROADWAY_RUN` 8/15 and `RUN0_HIGH` 3/12 lead by
+> rate, `TRASH` is 1/12 and eighth. In the AGGREGATE it is worse — the signed combo-weighted
+> divergence is negative at all three covered nodes at every setting (the model is TIGHTER than the
+> HU equilibrium everywhere) and GROWS as the pool tightens at two of them. So "monotone
+> exploit→equilibrium convergence per cell" is falsified per cell *and* in aggregate.
+>
+> **§6's SECOND ANCHORED ENDPOINT IS UNREACHABLE, AND THAT IS RECORDED RATHER THAN PASSED.** §6 names
+> "measured lattice at one end, solver baseline at the other". The P3 baseline is HU with the SB on
+> the button and **opens 88.85% of combos — 33.85 points LOOSER than the lobby's 55** — so "pool =
+> baseline" sits on the loosen side of the axis, the plays-better side Grade C does not build.
+> Underneath the arithmetic is a seat mismatch: the baseline's SB is the BUTTON, in position; the
+> model's SB is a six-max small blind out of position (`baseR` 0.90). I37(a) records it on the
+> I15/I36-nesting precedent with a detector armed on the shipped entry frequency, and **fails** the
+> day a baseline lands at or below the lobby. This block was written pre-spike assuming a 6-max
+> baseline tighter than the lobby; S-A's HU-only outcome inverted the sign, and the inversion is the
+> finding rather than a re-planning.
+>
+> **NO PAGE CONTROL SHIPS**, on the item-9 precedent (P1 shipped the sizing axis with forward-declared
+> detents and no slider): the mechanism, its constants and its gates land first, so the first control
+> that lands is not also the place the model gets designed. **Two gates promoted (57), one new family
+> `scripts/gates/skill.mjs`, one new node-side lib `scripts/lib/skill.mjs` carrying three frozen
+> exception records, one new D6 sub-budget (`skill` 1K, measured 991 B — **948 B after the red-team
+> stage rewrote the flag to carry a third record without raising the ceiling** — reserved not
+> granted).**
+>
+> **ONE PRE-EXISTING DEFECT FOUND AND FIXED IN PASSING**, because arming I38's records against a
+> perturbed model is what surfaced it: a shadow model's `meta.hash` prefix was built from
+> `villainKey` ALONE, and both memos key on `meta.hash.slice(0, 8)` — so two DIFFERENT models
+> profiled at the same (v, q) in one process shared a `SOLVE_MEMO` entry and the second was handed
+> the first's answer. The `envKey` trap one level up, where the axis missing from the key is *which
+> model*. Nothing in GREEN reached it; the fix is one concatenation in `profiledModelUncached` and
+> I38(a) is the assertion on it.
+
+> **Measured (P4) — the absolute-EV cut, P4's other deliverable.** *This block is the cut; the one
+> above is the axis.*
+>
+> **THE PREDICATE RUNS BESIDE `aggressiveSet`, NOT INSIDE IT, AND THAT IS THE WHOLE OF I34.** This
+> section's wording ("a second predicate `EV ≥ 0` in `aggressiveSet`") and §5.4's object-identity
+> clause are jointly satisfiable in exactly one shape: **view mode is not an input to `solve` or
+> `aggressiveSet` at all.** `evCut(model, state, payoff)` is a SIBLING accessor with its own memo,
+> which calls `solve`, hands the SAME object back as `solved`, reads `aggressiveSet`'s memoised set,
+> and writes into a map of its own. A mode flag threaded into `aggressiveSetUncached` without a
+> matching memo-key change is *precisely* the poisoning I34 is written to catch. The plan's own
+> phrasing is recorded as a disagreement resolved by measurement rather than re-planned: **the tier
+> path is byte-identical whether or not anybody calls the cut**, so I22, I32 and the v3 default
+> fixture needed zero ceremony. The accessor is a **per-call argument** — `policy.mjs` has no
+> imports and gains none — and `payoff.modelHash`, the route tag, `ip` and the model hash are all in
+> the EV memo key, which `policy.mjs`'s filename exempts from I33(g); I39(f) runs that detector here
+> **voluntarily** rather than leaving the blind spot standing.
+>
+> **THE THIRD MARGIN UNIT IS bb, AND NO bb FIGURE IS TYPED.** `evBB = (ev·rakeRhoFactor(env) −
+> invShare)·potMult·potSize − stake`, with rake entering ONLY through the exact I31(c) machinery.
+> `stake` is the first rung of `constants.solver.sizingLadder` — §6's own "arithmetic identity of the
+> game" — and it is a pure DISPLAY SCALE: the pot is `(nOpp+1)` stakes, so `keep`, `mix`, `width` and
+> `k` are invariant under it and I39(e) proves that by doubling it on a fabricated twin. **EV(fold) =
+> 0 by construction**, read off the layer at the two equities where the arithmetic is exact: a hand
+> that never wins loses exactly its stake and not a chip more.
+>
+> **§7.2's OFFERED PREDICTION IS FALSIFIED, AND THE FINDING SHIPS.** "Shallow+raked folds more than
+> deep+raked at every seat" holds at 57 of 75 seat–VPIP readings and **inverts at 18**, enumerated in
+> `scripts/lib/ev-band.mjs` and compared in both directions by I40. The inversions are not scattered:
+> 13 of 18 are at the vs-Raise node, with `SB|raise` and `BB|raise` inverting at 4 of 5 VPIPs each.
+> The two couplings pull against each other — `rakeDepth` grows the reference pot with the stack so
+> the 3bb cap binds HARDER when shallow, putting the higher effective rake DEEP, while `depthWidth`
+> tightens every seat whose `baseR` is under 1 as the stack grows.
+>
+> **WHAT THE FIX BUYS, MEASURED, IS THE ANSWER TO LIMITATION 17.** At 225 identical settings a 5%
+> rake moves the score-path width **0 times** and the EV-mode width **177 times**; over 900 settings
+> the EV-mode width narrows 22.83% → 19.66% and widens at none of them. I31(a) is re-scoped to the
+> score path with that qualifier ASSERTED rather than announced.
+>
+> **NO PAGE CONTROL SHIPS**, on the item-9 precedent this phase's other half also invoked: the
+> mechanism, its constants and its gates land first. The Method view renders `constants.evCut` by
+> construction (it walks `Object.keys(constants)`), so §6's "labeled in the Method view" leg is met
+> without touching the shell — which also means no new `payoff(`-shaped call site and no movement in
+> `appCore`. **Three gates promoted (60), one new family `scripts/gates/ev.mjs`, one new node-side
+> lib `scripts/lib/ev-band.mjs` carrying the derivation and one frozen exception record, one new D6
+> sub-budget (`evCut` 2K, measured 1,141 B, reserved not granted), and one STATED byte raise:
+> `modelCode` 50 → 54 KB (measured 52.1, held at +3.6% rather than this gate's calibrated +8%, which
+> would give 56).**
+>
+> **ONE DEFECT FOUND BY THE WORK'S OWN TEST, IN PASSING.** `test/ev-cut.test.mjs`'s twin helper
+> originally fabricated every twin with one constant `meta.hash`; both memos read
+> `meta.hash.slice(0, 8)`, so the "no stamped k" twin was handed the "display scale" twin's cached
+> layer and reported a `mixK` for a model carrying none. Same class as P4's other find, one level
+> further out: the axis missing from the key is *which fabrication*.
+
+
 ### 3.5 P5 — calibration decision + residue
 
 Run the pre-registered primacy test (S-C's criteria, untouched since Phase 0); ship
@@ -1338,6 +1449,30 @@ METHODOLOGY §10 limitation rendered in the Method view.
 > unchanged the day a lawful, hero-visible, assigned corpus exists. §5.1's fixture-re-freeze ceremony
 > is therefore not exercised for primacy in v3.
 
+> **Measured (P4) — the quarantine is built, and it is architectural rather than defensive.** I34
+> ships with four clauses. **(a)** The settings-hash walk is real and is MEASURED to be real: 420
+> settings (21 legal seats × the 5-VPIP grid × 12 environment lanes, 1-in-3 of 1,260) ordered by
+> `fnv1a` of each setting's own key, with 40.6% of consecutive visits differing on seat, node, VPIP
+> AND lane at once — against 45.6% expected of a random ordering of this very surface (computed over
+> all ordered pairs, so the bar is the surface's own and not a felt number) and 1.2% in construction
+> order. That arming clause exists because the first implementation sorted on `fnv1a`'s HEX STRING
+> with a numeric comparator, which is NaN, which is a sort that does nothing — and every other clause
+> passed anyway. **(b)** The walk visits all 420 with score/EV/score interleaved and 55 hash-chosen
+> memo clears, and the tiers are identical BY OBJECT: 51,660 `Object.is` comparisons on the cell
+> objects themselves, plus `evCut(...).solved === solve(...)`, plus one EV-first pass from a cold
+> memo, armed against a wrapper that mutates a memoised cell. **(c)** The badge is one function whose
+> three inputs are each proven load-bearing by perturbation, and the unit test §5.4 asks for by name
+> also greps `policy.mjs` (comment- and literal-stripped) for the vocabulary spelled anywhere else.
+> **(d)** `evPrimary` is FALSE on the shipped model — no `calibration` block exists — rejects every
+> near-miss verdict, and the path behind it is REAL rather than a comment: a fabricated distinct-hash
+> twin with `verdict: 'pass'` **throws** without a payoff (never silently scoring), cuts different
+> tiers with one, and never aliases the shipped model's memo. The flag is read ABOVE the cache and is
+> IN the key, which is the failure §7.2's I34 row names.
+>
+> **So S-B's "+∞ by construction" is now a property of running code rather than of a plan.** The
+> quarantine is what lets the EV surface be display-only and honest at the same time: it is not that
+> the EV numbers are good enough to be safe, it is that they cannot reach a tier at all.
+
 ---
 
 ## 6. New constants and anchors
@@ -1354,10 +1489,10 @@ Per brief §2.1: anchored, or flagged unanchorable and gated. "Flagged" means na
 | solver tree/sizing set | the existing pot-sized conventions (the `breakeven = 0.29` lineage); every cap listed on-screen; **flagged** as an abstraction choice, bounded by I35's cap-list clause (the on-screen list must match the solver's actual tree, grep-gated from shipped data) |
 | `rake.potBB(d)` coupling form | knee-at-100bb identity (3/0.05 = 60 = the existing constant re-described); the scaling exponent is one new opinion — **flagged**: linear proposed, shipped gated (I41), with the honest statement that "final pot scales with effective stack" is a modeling choice |
 | depth→width gain | none — the raw `baseRealization(pos,d)/baseRealization(pos,100)` ratio, zero new opinion (brief §5.4); the *allowances* it forces (I23(d), I28) are re-measured, not authored |
-| skill-dial fold-more half | the measured v-lattice — no new opinion |
-| skill-dial interior blend | **cannot be anchored → gated (I37), flagged, badged `interpolated`** (endpoints anchored: measured lattice at one end, solver baseline at the other; I37's monotone-interpolation clause is the bounding gate — endpoints reproduced exactly) |
-| skill-dial plays-better coefficient | **cannot be anchored today** — no measurement of postflop skill exists; ships gated (I38 bounds its reach), flagged `estimate`, said out loud in METHODOLOGY |
-| EV MIX band | width = k·payoff-`se` at default trials, **k fixed by arithmetic, not felt**: k is solved so the EV-mode MIX band's combo-weighted mass at default settings equals `t4Band`'s measured frequency mass — §10.11's frequency lesson transposed to EV units as an equation (the `se` sets the unit, `t4Band`'s mass sets the multiplier). Computed from the shipped distribution, so k introduces no new opinion; I40's width assertions bound the result |
+| skill-dial fold-more half | the measured v-lattice — no new opinion. **THE DIAL'S DOMAIN IS THE ONE EXCEPTION AND IT WAS REFUTED AT P4** (`docs/refutations/P4.md`): `skill.min`/`ref`/`max` shipped as *anchored by construction* and 3 refuters of 3 returned **unanchorable** — `min = -1` ships 60/60 green while resolving the load default to VPIP 85, i.e. LOOSENING the pool onto the plays-better side §3.6 does not build, and the page's slider takes its bounds from that very constant; `max = 2` and `ref = 0.05` ship green too; and both of `poolVpip`'s early returns, which were the whole construction argument, are removable with everything green. **No replacement anchor was invented.** The triple now takes this section's flagged idiom — a third record in `constants.skill.flag`, `UNANCHORED['skill.min'/'skill.ref'/'skill.max']` in the Method view, and new clause **I38(g)**, which derives `ref` and `max` from the published blend and the measured floor, pins `min` by the dial's own direction, and sweeps 909 settings at the page's own slider step to assert the dial never loosens, never reaches the floor before `max`, and is monotone. A bound is not an anchor, which is why the badge stays |
+| skill-dial interior blend | **cannot be anchored → gated (I37), flagged, badged `interpolated`** (endpoints anchored: measured lattice at one end, solver baseline at the other; I37's monotone-interpolation clause is the bounding gate — endpoints reproduced exactly). **P4 RED TEAM: 4 of 6 returned unanchorable, which is this row's own disposition — and the bounding clause was extended.** Three refuters shipped `v + (s + 0.05·sin(4πs))·(vFloor − v)`, published truthfully in the constant and in both copies the gate compares, monotone, exact at every setting I37(b) sampled, **60/60 green**, and up to **2.3 VPIP points** off linear at settings the 0.01 slider can select — so "linear" was a claim about five samples while the shipped flag said "the path between them is linear". I37(b) now asserts the **second difference is zero** at the page's own step (1e-9-pt IEEE guard), with the refuters' ripple carried as an armed control, and reads the two endpoints at LITERAL 0 and 1 rather than through the constants they pin |
+| skill-dial plays-better coefficient | **cannot be anchored today** — no measurement of postflop skill exists; ships gated (I38 bounds its reach), flagged `estimate`, said out loud in METHODOLOGY. **P4 RED TEAM: 4 of 6 unanchorable — this row's own disposition — and every leg held under attack, with no change made.** Two refuters called it "the best-defended constant in the P4 set": any value at all (0.05, and even 0) fails I38(e) on sight, and two evasions that never write the identifier — a realization cut carried on the shadow's cells, and one hidden inside the shadow's own `ν` — were caught by the 9,225-reading realization probe and by I38(d)/I37(d)'s frozen records respectively. **Scope recorded rather than repaired:** the file scan is lexical, so an invented coefficient under a *different name* with its own consumer is not what this clause bounds (one refuter shipped `postflopEdge` green); what makes the reach zero structurally is that the dial is a coordinate change on VPIP, so any dial-driven effect is a v-driven effect and the frozen v1/v2 fixtures already sweep those |
+| EV MIX band | width = k·payoff-`se` at default trials, **k fixed by arithmetic, not felt**: k is solved so the EV-mode MIX band's combo-weighted mass at default settings equals `t4Band`'s measured frequency mass — §10.11's frequency lesson transposed to EV units as an equation (the `se` sets the unit, `t4Band`'s mass sets the multiplier). Computed from the shipped distribution, so k introduces no new opinion; I40's width assertions bound the result. **P4 RED TEAM: k, `t4Mass` and both bracket readings re-derived independently by three refuters and reproduced BIT FOR BIT, so the arithmetic stands** — but the gate line describing itself did not. `verify.mjs` stamps `constants.evCut` *before* the gates, so I40(d)'s field-by-field `Object.is` is a self-comparison; what holds the block is the BRACKET (which caught every wrong derivation the refuters built, after a full restamp and rebuild) plus `test/ev-cut.test.mjs` reading the model off disk unstamped. One row had neither and was **majority-unanchored 3 of 3**: `seUnit`, whose three figures could each be typed in place of their derivations and ship 60/60 green. Its anchor was true and enforced by nothing — the P2 precedent — so it is now asserted as the identity it claims to be (`trials === meta.trials.cell`, `sePt === seOfTrials(that count)`, `seBBMean` against a second independent walk), in the gate and in the unit test |
 | Phase-0 spike success thresholds (§1: S-A's 0.25%-pot / 120 s / 1 GB, S-B's 2.5 / 5.0 band edges, S-C's 1M / 100 / 80 counts) | **pre-registered decision thresholds, fixed before any measurement exists** — deliberately set in the plan so the bar cannot move once results are in (the I46 pre-registration idiom applied to the spikes themselves). They are decision rules for spike verdicts, not shipped model constants: none enters `constants` or the model; each is recorded with its verdict in the spike memo. The S-B edges are the load-bearing pair, so the flag has teeth: S-B's memo must report, beside its p95, the two structural quantities the edges stand in for — the stub payoff's `se` at default trials and the smallest EV difference that moves a tier under I34's quarantine — so the blind edges are audited against measured scale in the same memo that grades against them, and a mismatch ships as a finding, never a re-drawn line |
 | sizing-axis defaults (item 9) | pot-size = the identity anchor; off-default thresholds are exact arithmetic on `breakeven(s)`; the 7-pt premium's sizing-dependence **cannot be anchored** — held constant, flagged "calibrated at pot", I44 measures the consequence |
 | `baselineQuant` (tier quantization step) | the payload bytes it buys, stated at D6's new sub-budget — **MEASURED AT P3: 0.01.** The table IS the anchor, over 369 tier readings on the shipped T100 solve: `0.05 → 4,589 B / 15 MIX cells`, `0.01 → 4,964 B / 20 MIX`, `0.001 → 5,357 B / 23 MIX`. The reading never *stops* moving — a CFR+ average strategy has a long tail of tiny weights and a fine enough step always resolves one more — so the step is chosen on what a TIER-LEVEL surface can render, which is arithmetic: at step q a cell reads MIX exactly when its off-argmax weight reaches q/2. 0.05 writes down as pure five cells mixing at 0.5–2.5 % (a vs-GTO surface would paint a disagreement the equilibrium does not make); 0.001 buys three cells mixing at 0.05–0.5 % for 393 B more, below what the surface can paint and below the solve's own two-seed spread. Re-derivable: `node scripts/generate-equilibrium.mjs --quant-table`. The block lands at **11.5 KB of D6's 12**. **REFUTED AS AN ANCHOR AT P3 — 6 refuters of 6 returned *unanchorable* (`docs/refutations/P3.md`), and the disposition is §6's own: FLAGGED, no replacement anchor invented.** The table is not what was refuted (every refuter re-derived it exactly); the claim that it *fixes the value* is. Nothing in GREEN ran it, so 0.02, 0.05 and 0.5 all regenerated with 55/55 gates, 591/591 tests and 2/2 variants current, the first bound that bit was D6's byte ceiling five orders of magnitude away, and the anchor's own prose could be fabricated and still reach the Method view. The constant now ships §6's three legs — `kind: 'estimate'` with `flag` in `data/equilibrium.json` and `quantFlag` in `model.baselineTiers` (named, and in the surface **lite** reads), the `UNANCHORED['baselineQuant']` badge in the Method view (labelled), and **gate I36 clause (e)** (bounded), which re-derives the table from the shipped strategies every run and refuses an unpriced step, a misquoted figure, or a block that is not that quantization. 0.05 and 0.001 remain priced rows and would still pass: which priced step to take is a judgment about what a tier-level surface can paint, and that judgment is what the badge is on |
@@ -1389,6 +1524,111 @@ Per brief §2.1: anchored, or flagged unanchorable and gated. "Flagged" means na
 > designed: see §5.4's S-C annotation.
 
 ---
+
+> **Measured (P4).** *Three rows of this table are settled, and one of them is settled against its
+> own wording.* **`skill-dial fold-more half`: ANCHORED as written, and stronger than the row
+> assumed** — the anchor is not merely "the measured lattice" but the lattice's own FLOOR:
+> `skill.vFloor` = 25 = `villainLattice.v[0]`, so the dial's reach IS the measurement's reach and
+> going past it would be asking the accessor a question no trial answered (I38(b) asserts the
+> identity every run). The half introduces **zero new constants of its own** beyond the dial's
+> domain, because it is a coordinate change on an axis the model already has. **`skill-dial interior
+> blend`: FLAGGED, badged, gated, exactly as this row specifies** — linear, because nothing here
+> measures a pool-skill scale and linear is the form the two endpoints determine on their own;
+> `kind: 'estimate'` via `constants.skill.flag`, the `UNANCHORED['skill.blend']` badge in the Method
+> view, and I37(b) recomputing it from the published spelling at 20 interior settings with both
+> endpoints reproduced exactly. **ONE CORRECTION TO THE ROW'S OWN PARENTHESIS:** "endpoints anchored:
+> measured lattice at one end, **solver baseline at the other**" is not satisfiable on the shipped
+> payload. The HU baseline opens 88.85% of combos, LOOSER than the lobby, so that endpoint sits on
+> the plays-better side of the axis; only the lattice end is reachable, and I37(a) records the other
+> as NOT MEASURABLE with a detector armed against the day it stops being so. **`skill-dial
+> plays-better coefficient`: ships `null` and is bounded at REACH ZERO** — see §3.4's P4 block. The
+> row said "ships gated (I38 bounds its reach), flagged `estimate`, said out loud in METHODOLOGY";
+> all three are done, and the reach bound is a measurement (9,225 dial-blind realization readings)
+> rather than a range on a coefficient nobody wrote.
+
+> **Measured (P4, the EV cut) — two more rows settled, and one of them is settled by arithmetic that
+> could not quite close.** **`EV MIX band`: DERIVED, exactly as the row demands — k = 2.453.** k is
+> solved so the EV-mode MIX band's combo-weighted mass at the default state equals `t4Band`'s
+> measured frequency mass: every cell of every seat the page can stand on, ranked by `|evBB|/seBB`
+> ascending, with the crossing read by **`scoreAtCut` — the percentile cut's OWN function, on its own
+> `cumMid` convention** — at the pooled t4 mass of 4.95%, then rounded half-away-from-zero to four
+> decimals. The `se` sets the unit, `t4Band`'s mass sets the multiplier, and **no bb figure is typed
+> anywhere in the layer**: `stake` comes from `constants.solver.sizingLadder`, which this table's own
+> phase-0 block already recorded as an arithmetic identity. It is `kind: 'derived'`, NOT an
+> `estimate`, and it is deliberately not in `UNANCHORED`.
+>
+> **ONE CORRECTION TO THE ROW'S OWN WORD "EQUALS".** On the shipped distribution it cannot be made
+> to. The z distribution is a **step function with fat tie plateaus** — a checkdown payoff hands many
+> cells identical equity, and one cell is read at several seats — so no achievable band carries
+> exactly 4.95%. The crossing is therefore the definition, and BOTH sides of it ship rather than one:
+> `evMassAtK` **4.05%** strictly below k, `evMassNextStep` **5.33%** at the next distinct z, with the
+> target between them. That bracket is a measurement of the shipped distribution, published in
+> `constants.evCut`, and I40 re-derives the whole block from scratch every run and
+> `Object.is`-compares it — the `baselineQuant`/I36(e) idiom, for the same reason: what actually
+> happens to a derived constant is that the data is regenerated and the constant is not.
+>
+> **`evPrimary` mechanism: SHIPS FAILING, and the branch behind it is real.** The row says "anchored
+> to I46 by construction — ships failing", and both halves are now code:
+> `model.calibration?.verdict === 'pass'` on a model that carries no `calibration` block at all, so
+> it fails by absence as well as by value. The EV-primary path EXISTS, requires `state.payoff` and
+> throws without one, and I34(d) proves it cuts real tiers on a fabricated twin — because a flag
+> guarding a branch nobody wrote is a flag guarding a comment.
+>
+> **AND ONE BYTE CEREMONY, STATED RATHER THAN NUDGED.** `modelCode` 50 → **54 KB**: the cut lands in
+> `policy.mjs`, which the build inlines verbatim into both artifacts. Measured 53,418 B = 52.2K
+> (**corrected at P4's red-team stage** — the 53,353 B first stated here was taken before a last
+> edit and a refuter re-measured it), held at **+3.5%** rather than at this gate's calibrated +8%
+> (which would give 56), on the reading D9's own
+> P3 repair settled — a ceiling tighter than its own rule is the conservative direction. **The
+> DERIVATION deliberately did not ship**: `k` is solved in `scripts/lib/ev-band.mjs`, which the page
+> never loads, on the `constants.solver`/`solverBlock` precedent. Without that split the same feature
+> measured 54.5K and the raise would have had to be 6 KB. `constants.evCut` gets a fourth D6 reserved
+> sub-budget (2K, measured 1,141 B), with `core` and `metaCore` still facing the original 120K and
+> 13K with all four blocks subtracted.
+
+> **Measured (P4, the red-team stage) — twenty tally keys, sixty memos, four majority-unanchored
+> claims, and one anchor gone.** The full record is `docs/refutations/P4.md`, committed with the
+> phase; this is what it changed.
+>
+> **ONE ANCHOR WAS REFUTED OUTRIGHT AND NO REPLACEMENT WAS INVENTED.** `skill.min`/`ref`/`max` — the
+> dial's domain — came back **3 of 3 unanchorable**, and the refutation was live rather than
+> academic: `min = -1` ships the whole GREEN triple while resolving the load default to VPIP 85, the
+> *loosen* half of the axis §3.6's Grade C does not build, and `wireVP` copies that constant onto
+> the page's slider. The triple now ships this section's flagged idiom in all three legs and is
+> bounded by new clause **I38(g)**, which derives the domain from the published blend and the
+> measured floor rather than asserting it, and sweeps the dial at the page's own step. The flag's
+> new record was paid for out of D6's existing 1K sub-budget — the block measures 948 B — rather
+> than by a raise.
+>
+> **TWO PLAN-DECLARED UNANCHORABLES CAME BACK MAJORITY-UNANCHORED, WHICH IS THE DISPOSITION WORKING,
+> AND ONE OF THE TWO BOUNDS WAS TOO NARROW.** Every leg of §6's contract holds for both `blend` and
+> `playsBetter` and every leg fires when deleted. But three refuters shipped a **curved dial**,
+> published truthfully, 60/60 green, 2.3 VPIP points off linear between the sampled settings — so
+> I37(b) now bounds the SHAPE (second difference zero at the page's own step) and not merely the
+> spelling, the monotone direction and five samples. A fourth finding closed the same class one
+> level out: a refuter left the `UNANCHORED` map intact and deleted the **branch that reads it**,
+> and the badge left the Method view green — so I38(f) now asserts the reader as well as the table,
+> the way `gates/baseline.mjs` already does for `baselineQuant`.
+>
+> **ONE ANCHOR WAS TRUE AND ENFORCED BY NOTHING — the P2 precedent, and the same disposition.**
+> `evCut.seUnit` came back **3 of 3 NOT FALSIFIABLE**: `sePt`, `seBBMean` and `trials` could each be
+> *typed* in place of their derivations and ship 60/60 green, because `stampConstants` runs before
+> the gates (so I40(d)'s comparison is with itself), the unit test did not cover the block, and
+> nothing downstream reads it. No number was invented and none was flagged — badging a derived
+> identity `estimate` would be a lie on the page — so the identity the block already claimed is now
+> asserted against the model and the accessor, in the gate and in the on-disk unit test.
+>
+> **WHAT DID NOT CHANGE, AND IS ON THE RECORD INSTEAD.** `vFloor`, `detents`, `mixK`, `t4Mass`, the
+> bracket pair, `evStake`, `evPrimary` and all three byte ceremonies survived every perturbation
+> three refuters could build; `modelCode` is "pinned in both directions", and the only correction it
+> drew was to its own quoted measurement. Five findings are recorded rather than repaired, each
+> because it is an idiom's standing limitation rather than a defect in this phase's work: prose
+> fields are bounded by length and substrings and never by meaning (`skill.flag`, `evCut.derivation`
+> — a denial ships); `derivedAt.state` is compared against the function that writes it, so a
+> fingerprint that stops fingerprinting is invisible; `detents` is asserted in one direction only;
+> `BUD.total` is unpinned, so a raise to it silently grants `core` headroom no test objects to; and
+> I38(e)'s reach scan is lexical, so it bounds the shipped coefficient rather than the mechanism.
+
 
 ## 7. The gate catalog (the plan's core)
 
@@ -1500,6 +1740,76 @@ Ids continue the live numbering (I1–I31 with no I17; D1–D8 with no D3).
 > **D9 is live on the first payload that ever existed to measure**, and its own deferred decision —
 > embed the 7,626-pair matrix or reference it — came out REFERENCE on a 2.51× measurement. See §5.3.
 
+> **Measured (P4) — I37 and I38 promoted, and the report is 57.** *This annotation sits under the
+> I37 and I38 rows above.*
+>
+> A new family `scripts/gates/skill.mjs` is appended after `baseline.mjs`, for the fifth time and the
+> same reason: **55 stays a strict prefix of 57**, so the P3 report diffs against this one as two
+> added rows rather than as a re-ordering. Inside the family the emission order is **I38 then I37** —
+> the axis before the accounting taken along it — and `EXPECTED_IDS` carries that same order, which
+> is why the two ids read out of catalog order there and only there.
+>
+> **I38's four clauses all hold, and the third is the one that does the work.** The lobby endpoint is
+> the current model by OBJECT IDENTITY (`Object.is` over the whole VPIP domain, the same shadow
+> object, a fixed-point profile, and the model itself with the profile OFF). Combo-weighted width
+> tightens 16.12% → 13.76% over the 21 legal pairs, monotone at every step. The per-cell exceptions
+> are ENUMERATED in frozen records compared in both directions — 6 endpoint pairs (all six vs-3-Bet
+> pairs, all through `BROADWAY_RUN|DS` and `BROADWAY_RUN|SSA` going T3→T2, which at that node is CALL
+> → AMBUSH CALL: a tier LABEL moving, not a hand) and 11 interior (pair, step) rises (those six
+> relabels plus five nut-gate releases). The plays-better coefficient's reach is bounded at ZERO.
+> **A SEVENTH CLAUSE LANDED AT THE RED-TEAM STAGE:** I38(g), the dial's DOMAIN, after 3 refuters of 3
+> moved `min`, `ref` and `max` with the whole GREEN triple intact (`docs/refutations/P4.md`). It
+> derives the domain from the published blend and the measured floor and sweeps 909 settings at the
+> page's own slider step; (f) grew the badge map's READER alongside it, after a refuter deleted that
+> branch and shipped with the family green.
+>
+> **I37's prediction is CORROBORATED and its first clause is NOT MEASURABLE.** The rank-overlap rows
+> lead the violation table by rate — `BROADWAY_RUN` 8/15, `RUN0_HIGH` 3/12 — against the junk row
+> `TRASH` at 1/12 and eighth, so "not the junk rows" is a measured ORDERING here rather than a turn
+> of phrase, and the gate asserts the ordering rather than quoting the prediction. The "≈ 0 at pool =
+> baseline" clause cannot be read on an HU baseline that opens looser than the lobby, and is recorded
+> with an armed detector on the I15/I36-nesting precedent. **What the gate publishes instead is the
+> measurement the clause was asking for**: signed combo-weighted divergence negative at all three
+> covered nodes at every dial setting, growing at two of them.
+
+> **Measured (P4, the EV cut) — I34, I39 and I40 promoted, and the report is 60.** *This annotation
+> sits under the I34, I39 and I40 rows above.*
+>
+> A new family `scripts/gates/ev.mjs` is appended after `skill.mjs`, for the sixth time and the same
+> reason: **57 stays a strict prefix of 60**, so the skill lane's report diffs against this one as
+> three added rows rather than as a re-ordering. Inside the family the emission order is the
+> CATALOG's own — I34, I39, I40 — unlike I38/I37 next door, because the quarantine has to report
+> above the two gates whose subject it protects: an EV number that has poisoned a tier makes every
+> reading below it a reading of the wrong model.
+>
+> **I34's four clauses hold, and clause (a) is the one that nearly did not exist.** The
+> settings-hash walk was first written with a numeric comparator on `fnv1a`'s **hex string** — NaN,
+> which is a sort that does nothing — and every other clause passed over the un-mixed order anyway.
+> The fix is a lexicographic comparator; the lesson is a new clause that MEASURES the mixing (40.6%
+> of consecutive visits differ on all four axes, against 45.6% expected of a random ordering of this
+> surface and 1.2% in construction order) with the bar computed from the surface rather than chosen.
+>
+> **I39 holds on all six clauses**, including the one with teeth: the accessor's own six keys are
+> `Object.is`-identical across every rake setting over 8,856 readings, so "rake re-modelled inside
+> the payoff" — this row's named failure — is excluded rather than trusted. The vs-3-bet sign is an
+> **identity** on 19,926 of 19,926 readings with nothing left in the ±se band, and the fact that that
+> route BYPASSES the frozen accessor (a mix is not a cell) is stated in the gate detail and in
+> METHODOLOGY §5.4 rather than left to be noticed.
+>
+> **I40's prediction row is FALSIFIED and the finding ships.** 57 of 75 seat–VPIP readings go the
+> predicted way and **18 invert**, 13 of them at the vs-Raise node, with `SB|raise` and `BB|raise`
+> inverting at 4 of 5 VPIPs each — the two couplings pull against each other. All 18 are frozen in
+> `scripts/lib/ev-band.mjs` and compared in BOTH directions, on the `WIDTH_*_EXCEPTIONS` idiom. What
+> the gate DOES assert instead is stronger than the prediction was: rake narrows EV-mode width at 900
+> of 900 settings, and the depth signs are read on I42 clause (c)'s own differenced control and
+> scoped exactly as I42 scopes itself — asserted on CO/BTN/SB/BB, reported for UTG and HJ.
+>
+> **I31(a) is re-scoped to the score path (§7.1), and the re-scope is ASSERTED.** I31 now measures
+> the EV-mode set moving 59 times at the same 5% preset that leaves all 27,675 percentile tiers
+> alone, so "score path" is a measured qualifier rather than a hedge, and the clause's own "must be a
+> deliberate, documented model change" is recorded as *invoked*.
+
+
 ### 7.3 Adversarial verification duty
 
 Every opinion-layer constant in §6 gets a red-team agent whose task is to move it and produce a
@@ -1583,6 +1893,74 @@ shipped data (`stampConstants` flows new blocks in), so documentation cannot dri
 > shared code the mode's disablement work added to the legend row. `scripts/lib/variant.mjs` gains a third seam —
 > `@block:<name>`, which ships nothing and strips nothing — and `build.mjs` compiles the shell twice
 > so both readings are printed and both are gated. METHODOLOGY §9.11 carries the full paragraph.
+
+> **Measured (P4 UI) — items 13, 14 and 15 land against a payoff surface that now exists, and the
+> phase's own two "no page control ships" notes are discharged.** *§3.4's two Measured blocks both
+> end by deferring the control on the item-9 precedent; this is that control, for both halves.*
+>
+> **THE EV MODE NO LONGER DOES ITS OWN ARITHMETIC, AND THE PAGE'S SECOND POT FORMULA IS DELETED
+> RATHER THAN RECONCILED.** The mode painted the accessor's raw pot FRACTION until P4 because the bb
+> conversion needed `potMult`/`invShare`; P2 amended the freeze and P4 built `evCut`, so the surface
+> now reads `policy.mjs`'s `evBB` — the same expression the EV-primary branch would cut on. In the
+> course of that, `nodePotBB()` came out: the page wrote the pot from the posted blinds while the
+> layer writes it from the checkdown geometry `(nOpp+1)` stakes, and under the stub (which ignores
+> `potSize`) no number ever moved, so the two had been disagreeing silently since item 13 landed.
+> **Two pot arithmetics with one accessor between them is the drift the inlining exists to prevent**,
+> and deleting one is also what paid for this phase's shared-code growth.
+>
+> **THE RAMP'S TOP END IS THE ONE JUDGEMENT CALL AND IT WAS MADE TWICE.** The first version ran the
+> domain to `evBB` at `ev = 1` — exact, derived, and useless: no cell is near it, so 123 cells landed
+> in three of seven steps. The shipped domain is `evBB` at `ev = 0` to `evBB` at `ev = 2 × fair
+> share`, which is the fraction ramp's OWN pre-P4 anchor re-expressed in bb, introduces no constant,
+> and puts break-even just above the middle step at `ev = fair/ρ`. **Exactness at an unreachable
+> endpoint is not a virtue**, and the discarded version is recorded because it is the kind of
+> derivation that reads correct and paints nothing.
+>
+> **§5.4's THIRD PRESENTATION IS DEGENERATE UNDER THIS PAYOFF AND SHIPS AS THE DELTA THAT IS NOT.**
+> "Decision-delta" means EV(play) − EV(fold); I39(a) makes EV(fold) exactly zero BY CONSTRUCTION, so
+> that reading IS the absolute presentation to the last bit. Rather than ship one number twice under
+> two names, `Δ cut` is measured against the last hand the score tells you to play — limitation 17's
+> subject per cell, two readings of the shipped layer subtracted. The degeneracy is the finding.
+>
+> **I34 IS NOW ASSERTED FROM THE BROWSER AS WELL AS FROM NODE.** The harness paints the grid in EV
+> and back once per presentation and compares all 123 tier classes as strings, and — from a COLD memo,
+> because a capped memo that has cleared makes a warm comparison measure the cache's age instead —
+> checks `evCut(...).solved` is the very object `solve` just returned. Two harness checks fired while
+> being written and both were the checks being wrong rather than the page: tiers read in a ramp mode
+> are empty strings, and the first-run tour drives the controls unless `sessionStorage` is seeded.
+>
+> **THE DIAL IS A SLIDER OVER A FROZEN AXIS, WHICH IS WHAT SHIPPING THE MECHANISM FIRST BOUGHT.** It
+> is LIVE IN BOTH VARIANTS — its mechanism is the shipped lattice, so §8 item 15's
+> disabled-with-a-named-REASON idiom is used for the reason that is TRUE (no profile, no pool to
+> re-describe) rather than for a variant split it does not have. The load-bearing change is a
+> distinction the page did not previously draw: `S.v` is the TABLE's VPIP and `poolV()` is the POOL's,
+> and every villain-side reading — lattice bracket, sim book key, trial request, provenance prose —
+> moves to the pool's. At skill 0 they are the same number and every string is what it was.
+>
+> **BYTES: A SHRINK WHERE IT COUNTS, AND ONE STATED RAISE.** `app` NOT raised (369.1 → 382.5 of 388,
+> so P3's own measured+5 % headroom is what paid for both features); `appCore` NOT raised and its
+> reading FELL 359.4 → 357.9 KB, the first time a UI phase returned bytes to the unmarked block;
+> full's `total` raised 634 → **646 KB**, which is not a new number but exactly the measured+5 % the
+> P3 repair priced and declined, now grown into. **New: per-block ceilings** (`gto` 11K, `ev` 12K,
+> `skill` 4K, each measured+5 %) — the P3 red team's finding that `@block:gto` had no cap of its own,
+> so an app raise bounded a NAME rather than a FEATURE, closed by making `build.mjs` compile once per
+> marked block and by asserting the caps sum to no more than the raise they explain.
+>
+> **THREE PRE-EXISTING DEFECTS FOUND AND FIXED IN PASSING**, all three by a gate or a test refusing
+> the work rather than by review: the EV surface read random-villain equities while the tiers were
+> cut on filtered ones (the accessor is now bound to `emodel()`, and `evCut`'s memo key carries
+> `payoff.modelHash`, which is why two accessors in one process is safe rather than the trap the old
+> one-accessor rule assumed); a harness hook that surfaced `constants.skill.playsBetter` was refused
+> by I38(e)'s file scan, which is that clause doing exactly what it is for; and the verdict table's
+> badge chip was `flex:0 0 auto` with `nowrap`, so a long badge took the row and wrapped the number
+> down five lines — the layer's `evBadge` is long, so the chip now shrinks and ellipsises from the
+> tail, keeping the word `unsupported` at the front where §2 clause (f) needs it.
+>
+> **ZERO NEW CONSTANTS.** Every number the surface prints is read off the shipped layer or off
+> `model.json`'s own blocks (`constants.skill`, `constants.evCut`, `constants.solver.sizingLadder`),
+> and the Method view renders those by construction. **I32 and I34 stayed green throughout**, which is
+> the identity claim this phase owed: score is the load default, the tier path never reads `S.pres`,
+> and the dial is inert with the profile off.
 
 ---
 

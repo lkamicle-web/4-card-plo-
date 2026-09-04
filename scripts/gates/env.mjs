@@ -10,6 +10,7 @@
 
 import { ROW_ORDER, COL_ORDER } from '../lib/taxonomy.mjs';
 import * as P from '../lib/policy.mjs';
+import { makePayoff } from '../lib/payoff.mjs';
 import { TOTAL, VPIP_GRID, NODES } from './_shared.mjs';
 
 export const family = 'env';
@@ -423,13 +424,22 @@ export function build(ctx) {
       // I31 — the rake (V2-PLAN §3.2). Two halves, and the first is the plan's own model asserted
       // as a fact rather than discovered as a disappointment.
       //
-      //  (a) TIER-INERT AT THE THREE PERCENTILE NODES, BY CONSTRUCTION. §3.2 specifies a flat
-      //      multiplier on rho. Every score is 100*rho*M_nut*M_play*R*M_deep, so a factor common to
-      //      every cell scales every score, every interpolated cut and every margin by one number
-      //      and re-orders nothing. Measured at the 5% preset over 27,675 cell-settings: 0 tiers
-      //      move, every score moves, and every score ratio equals (1 - rakeFrac) to within 2 ulp.
-      //      This is asserted so that nobody "fixes" the rake into a non-uniform haircut without
-      //      making that a deliberate, documented model change.
+      //  (a) TIER-INERT ON THE SCORE PATH AT THE THREE PERCENTILE NODES, BY CONSTRUCTION. §3.2
+      //      specifies a flat multiplier on rho. Every score is 100*rho*M_nut*M_play*R*M_deep, so a
+      //      factor common to every cell scales every score, every interpolated cut and every margin
+      //      by one number and re-orders nothing. Measured at the 5% preset over 27,675
+      //      cell-settings: 0 tiers move, every score moves, and every score ratio equals
+      //      (1 - rakeFrac) to within 2 ulp. This is asserted so that nobody "fixes" the rake into a
+      //      non-uniform haircut without making that a deliberate, documented model change.
+      //
+      //      RE-SCOPED TO THE SCORE PATH AT P4 (V3-PLAN §7.1: "I31(a) re-scoped to score mode — its
+      //      'must be a deliberate model change' clause is being INVOKED, not violated"). §3.4's
+      //      absolute-EV cut is that deliberate change, and it is the structural fix METHODOLOGY
+      //      limitation 17 designates: the EV predicate is ABSOLUTE, so the same 5% rake that cannot
+      //      move a percentile tier does narrow the EV-mode aggressive set. The re-scope is not left
+      //      as prose — the line below asserts that the EV-mode width DOES move at the same preset,
+      //      on the same settings, so "score path" is a measured qualifier rather than a hedge. I40
+      //      is where the EV side's own claims live; this is I31 saying which path it speaks for.
       //  (b) AND IT BITES WHERE THE THRESHOLD IS ABSOLUTE. At the vs-3-bet node the price is
       //      arithmetic (`breakeven / (1 - r)`) and the continue floor rides on it, so the continue
       //      range narrows monotonically in rakePct on the ACTION tier — 45 -> 41 cells at UTG,
@@ -476,6 +486,28 @@ export function build(ctx) {
         if (!(s[s.length - 1] < s[0])) notMono.push(`${pos} does not tighten at all (${s[0]} -> ${s[s.length - 1]})`);
         seq[pos] = s;
       }
+      // (a) THE RE-SCOPE, ASSERTED. The same rake, the same settings, the OTHER cut.
+      const EVPAY = makePayoff(model);
+      let evRakeMoved = 0, evRakeN = 0, evNarrow = 0;
+      for (const node of nodes3) {
+        for (const pos of P.POSITIONS) {
+          if (P.positionDisabled(pos, node)) continue;
+          for (const vp of VPIP_GRID) {
+            const base = { pos, node, v: vp / 100, limpers: 2, raiserPos: 'CO' };
+            const a = P.evCut(model, base, EVPAY);
+            const b = P.evCut(model, { ...base, rakePct: KR.preset }, EVPAY);
+            evRakeN++;
+            if (!Object.is(a.width, b.width)) evRakeMoved++;
+            if (b.width <= a.width) evNarrow++;
+          }
+        }
+      }
+      if (evRakeMoved === 0) {
+        aBad.push('(a) the EV-mode width does not move under the rake either — the re-scope to the '
+          + 'score path is vacuous, which means the absolute cut is not absolute');
+      }
+      if (evNarrow !== evRakeN) aBad.push(`(a) the rake WIDENED the EV-mode set at ${evRakeN - evNarrow} settings`);
+
       // (c) the arithmetic
       //
       // REWRITTEN AT P1 to the DEPTH-COUPLED reference pot (V3-PLAN §7.1). `want` was
@@ -523,10 +555,15 @@ export function build(ctx) {
         && notMono.length === 0 && aBad.length === 0;
       G('I31', pass31,
         `rake (V2-PLAN §3.2) at the ${KR.preset}% default preset, cap ${KR.capBB}bb, reference pot ${KR.potBB} units. ` +
-        `(a) the flat haircut on rho is TIER-INERT at the three percentile nodes and that is the plan's ` +
-        `model, not an accident: ${moved} of ${nCells} tiers move (allowance ${tolMoved}), all ${scored} scores do, ` +
+        `(a) the flat haircut on rho is TIER-INERT ON THE SCORE PATH at the three percentile nodes and that is ` +
+        `the plan's model, not an accident: ${moved} of ${nCells} tiers move (allowance ${tolMoved}), all ${scored} scores do, ` +
         `and every score ratio equals 1 - rakeFrac to ${worstDev.toExponential(1)}. A rake that moves a percentile ` +
         `tier would have to be non-uniform across cells; making it so is a model change, not a bug fix. ` +
+        `RE-SCOPED TO THE SCORE PATH AT P4 (§7.1), and the qualifier is MEASURED rather than asserted: at ` +
+        `${evRakeN} of the same settings the EV-mode aggressive set moves under the same preset ` +
+        `${evRakeMoved} times and narrows or holds at all ${evNarrow}. §3.4's absolute-EV cut is the ` +
+        `"deliberate, documented model change" this clause has always demanded, and METHODOLOGY limitation ` +
+        `17 names it as the structural fix; I40 carries its own claims. ` +
         `(b) where the threshold is ABSOLUTE it bites: at the vs-3-bet node the continue range narrows ` +
         `monotonically in rakePct on the action tier — ` +
         `${['UTG', 'CO'].map((p) => `${p} ${seq[p].join('->')}`).join(', ')} cells over ${KR.min}-${KR.max}%. ` +

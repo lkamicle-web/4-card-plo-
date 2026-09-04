@@ -72,11 +72,13 @@ test('I35 sits before D10/D11, so the P1 report stays a strict prefix', () => {
   const i = EXPECTED_IDS.indexOf('I35');
   assert.ok(i > EXPECTED_IDS.indexOf('I44'), 'appended after lane M, not interleaved');
   assert.ok(i < EXPECTED_IDS.indexOf('D10'), 'the artifact-reading families stay last');
-  // P3 appended I36 and D9 after D10/D11, in their own family, for the same prefix argument the
-  // list has now used four times: the 53-gate report stays a strict prefix of the 55-gate one, and
-  // I35's own position — third from the end at P2 — is unchanged relative to everything before it.
-  assert.equal(i, EXPECTED_IDS.length - 5);
-  assert.deepEqual(EXPECTED_IDS.slice(i), ['I35', 'D10', 'D11', 'I36', 'D9']);
+  // P3 appended I36 and D9 after D10/D11, in their own family; P4 appended I38 and I37 after those
+  // for the skill axis and then I34/I39/I40 for the absolute-EV cut — the same prefix argument the
+  // list has now used six times: 53 stays a strict prefix of 55, 55 of 57 and 57 of 60, and I35's
+  // own position — third from the end at P2 — is unchanged relative to everything before it.
+  assert.equal(i, EXPECTED_IDS.length - 10);
+  assert.deepEqual(EXPECTED_IDS.slice(i),
+    ['I35', 'D10', 'D11', 'I36', 'D9', 'I38', 'I37', 'I34', 'I39', 'I40']);
 });
 
 // ---------------------------------------------------------------------------

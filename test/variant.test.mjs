@@ -191,13 +191,42 @@ test('lite carries the METHODOLOGY §9.11 budgets, and full\'s are D9\'s — set
      the app payload MINUS the `@block:gto` region, still facing the 360 KB the app block faced
      before the raise, so the raise buys exactly one feature and no existing block gains a byte.
      Both numbers, and the relation between them, are pinned — a later phase that wants more app
-     headroom has to come back to this line. */
+     headroom has to come back to this line.
+
+     AND `modelCode` 50 -> 54 KB AT P4, pinned here for the same reason and by the same rule. It
+     pays for §3.4's absolute-EV cut landing in policy.mjs, which the build inlines verbatim into
+     both artifacts: measured 53,353 B = 52.1 KB, held at +3.6% rather than at the +8% margin this
+     particular gate was calibrated with (which would have given 56 KB), on the reading D9's own P3
+     repair settled — a ceiling tighter than its own rule is the conservative direction. The
+     DERIVATION of the EV band's `k` deliberately did NOT ship: it lives in scripts/lib/ev-band.mjs,
+     which the page never loads, on the `constants.solver` / `solverBlock` precedent. Without that
+     split the same feature measured 54.5 KB and the raise would have had to be 6 KB. */
+  /* AND `blocks` AT THE P4 UI — the per-feature ceilings, which are the P3 red team's one
+     structural finding turned into a gate. It found that `@block:gto` had no cap of its own: the
+     app raise named a feature and then bounded nothing inside that name, so 12.4 KB of filler
+     could be added to the marked region and every gate stayed green. A raise that bounds a NAME
+     rather than a FEATURE is not a paid raise, and these three numbers are what fix that. Each is
+     measured + 5%, rounded up to the whole KB, on the same rule as every other budget here.
+     NOTE WHAT DID *NOT* MOVE. `app` is unchanged at 388 KB: the EV surface and the skill dial fit
+     inside the ceiling P3 already paid for. `appCore` is unchanged at 360 KB and the reading under
+     it FELL, 359.4 -> 357.9 KB, because deleting the page's own duplicate pot arithmetic returned
+     more unmarked bytes than the shared edits added — a shrink-first that actually shrank. */
   assert.deepEqual(VARIANTS.lite.budgets,
-    { total: 600 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 50 * 1024 });
+    { total: 600 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024,
+      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024 } });
   assert.ok(VARIANTS.lite.budgets.app > VARIANTS.lite.budgets.appCore,
     'the raise is a raise: app must exceed the pre-raise ceiling core is still held to');
   assert.match(VARIANTS.lite.budgetSource, /vs-GTO/, 'the raise names what it bought');
   assert.match(VARIANTS.lite.budgetSource, /5%/, 'and the rule it was set by');
+  /* THE PER-BLOCK CEILINGS MUST TOGETHER FIT INSIDE THE RAISE THEY EXPLAIN. `app - appCore` is what
+     the marked features were collectively granted; the sum of their caps may not exceed it, or the
+     caps would be decoration over a ceiling that had already been passed. */
+  const caps = VARIANTS.lite.budgets.blocks;
+  const capSum = Object.keys(caps).reduce((a, k) => a + caps[k], 0);
+  assert.ok(capSum <= VARIANTS.lite.budgets.app - VARIANTS.lite.budgets.appCore,
+    `the block caps sum to ${capSum} B but the app raise is only `
+    + `${VARIANTS.lite.budgets.app - VARIANTS.lite.budgets.appCore} B`);
+  for (const k of Object.keys(caps)) assert.ok(caps[k] > 0 && caps[k] % 1024 === 0, `${k} cap is whole KB`);
   /* THE NULL PIN, FLIPPED — DELIBERATELY, WHICH IS WHY IT EXISTED.
      Until P3 this read `assert.equal(VARIANTS.full.budgets, null)` with the note "when D9 lands,
      this flips — and this test is where the flip has to be made deliberately rather than noticed
@@ -214,6 +243,16 @@ test('lite carries the METHODOLOGY §9.11 budgets, and full\'s are D9\'s — set
   assert.equal(B.appCore, VARIANTS.lite.budgets.appCore, 'nor a softer core ceiling');
   assert.equal(B.modelCode, VARIANTS.lite.budgets.modelCode);
   assert.ok(B.total > VARIANTS.lite.budgets.total, 'full carries a payload lite does not');
+  assert.deepEqual(B.blocks, VARIANTS.lite.budgets.blocks,
+    'the marked blocks are the same code in both artifacts, so they get the same ceilings');
+  /* THE P4 `total` RAISE, 634 -> 646 KB, pinned here for the same reason the app raise is: it has
+     to be a decision. 646 is not a new number — it is exactly what the P3 repair computed as a
+     fresh measured+5% for the pre-P4 page and DECLINED to take, on the reading that a ceiling
+     tighter than its own rule is the conservative direction. The P4 UI grew the full page into
+     that declined headroom (623.2 -> 636.3 KB), so the raise is a figure this repository had
+     already priced rather than one invented to fit, and it stays below the CURRENT measured+5%. */
+  assert.equal(B.total, 646 * 1024, 'the P4 total raise is the 646 KB the P3 repair priced and declined');
+  assert.match(VARIANTS.full.budgetSource, /646/, 'and the raise says so in the source note');
   assert.ok(B.eq > 0, 'the equilibrium payload has its own tripwire (§5.3)');
   assert.ok(!/UNANCHORED/.test(VARIANTS.full.budgetSource), 'the unanchored note must go with the null');
   assert.match(VARIANTS.full.budgetSource, /measured/i);
@@ -333,15 +372,31 @@ test('the names are independent: cutting one block leaves another alone', () => 
   assert.equal(stripMarkedBlocks(src, 'other').text, '/* @block:gto */g/* @end:block */\n');
 });
 
-test('the shell carries the vs-GTO block, and cutting it is cheaper than the app it pays for', () => {
+test('the shell carries three marked features, and each cut is the feature rather than a marker census', () => {
   const shell = readFileSync(resolve(ROOT, 'src', 'shell.html'), 'utf8');
-  const r = stripMarkedBlocks(shell, 'gto');
-  assert.ok(r.blocks >= 10, `the mode is marked in ${r.blocks} places; a drop to one means it was inlined somewhere`);
-  assert.ok(r.bytes > 5000, 'the marked source is the mode, not a marker census');
-  assert.ok(!/@block:gto/.test(r.text) && !/@end:block/.test(r.text), 'the cut consumes its own markers');
-  // both variants must cut identically: the mode is shared code, not a full-only surface
-  for (const v of VARIANT_NAMES) {
-    const only = stripOnlyBlocks(shell, v).text;
-    assert.ok(stripMarkedBlocks(only, 'gto').blocks >= 10, `${v} carries the whole mode`);
+  /* THREE MARKED BLOCKS SINCE THE P4 UI: the vs-GTO colour mode (P3), the EV surface and its three
+     presentations, and the pool-skill dial. Each is the subject of one line in `budgets.blocks`, so
+     each has to be a real region rather than a name sprinkled over the file.
+     THE MARKER ASSERTION IS SCOPED PER BLOCK, which it could not be while there was only one: a cut
+     consumes ITS OWN markers, and the other two features' markers legitimately survive it. Asserting
+     `!/@end:block/` over the whole remainder was true by accident of there being one block, and it
+     is the assertion that failed the day a second one landed. */
+  const MARKED = { gto: [10, 5000], ev: [8, 4000], skill: [5, 1500] };
+  for (const [name, [minBlocks, minBytes]] of Object.entries(MARKED)) {
+    const r = stripMarkedBlocks(shell, name);
+    assert.ok(r.blocks >= minBlocks,
+      `@block:${name} is marked in ${r.blocks} places, expected at least ${minBlocks}; a drop means it was inlined somewhere`);
+    assert.ok(r.bytes > minBytes, `the @block:${name} source is the feature, not a marker census (${r.bytes} B)`);
+    assert.ok(!new RegExp(`@block:${name}`).test(r.text), `the @block:${name} cut consumes its own opening markers`);
+    // both variants must cut identically: these are shared code, not full-only surfaces
+    for (const v of VARIANT_NAMES) {
+      const only = stripOnlyBlocks(shell, v).text;
+      assert.ok(stripMarkedBlocks(only, name).blocks >= minBlocks, `${v} carries the whole of @block:${name}`);
+    }
   }
+  /* Cutting all three consumes every marker in the file — which is the whole-remainder claim the
+     old single-block assertion was really making, said in a way that survives a fourth block. */
+  let left = shell;
+  for (const name of Object.keys(MARKED)) left = stripMarkedBlocks(left, name).text;
+  assert.ok(!/@block:|@end:block/.test(left), 'between them the three cuts consume every marked region');
 });

@@ -52,6 +52,8 @@ import { createHash } from 'node:crypto';
 
 import * as P from './lib/policy.mjs';
 import { solverBlock } from './lib/equilibrium.mjs';
+import { makePayoff } from './lib/payoff.mjs';
+import { evMixK } from './lib/ev-band.mjs';
 import { ROOT } from './gates/_shared.mjs';
 import {
   REGISTRY, EXPECTED_IDS,
@@ -165,14 +167,28 @@ export function stampConstants(model) {
   const before = model.constants || {};
   const has = (k) => Object.prototype.hasOwnProperty.call(live, k);
   const measured = {};
-  for (const k of Object.keys(before)) if (!has(k) && k !== 'solver') measured[k] = before[k];
+  for (const k of Object.keys(before)) if (!has(k) && k !== 'solver' && k !== 'evCut') measured[k] = before[k];
   const added = Object.keys(live).filter((k) => !Object.prototype.hasOwnProperty.call(before, k));
   const changed = Object.keys(live).filter((k) => Object.prototype.hasOwnProperty.call(before, k)
     && JSON.stringify(before[k]) !== JSON.stringify(live[k]));
   const solver = solverBlock();
   if (!Object.prototype.hasOwnProperty.call(before, 'solver')) added.push('solver');
   else if (JSON.stringify(before.solver) !== JSON.stringify(solver)) changed.push('solver');
+  /* `evCut` — the EV MIX band's k, DERIVED FROM THE SHIPPED DISTRIBUTION rather than declared, on
+     the `solver` precedent one line above (V3-PLAN §6's `EV MIX band` row; P4). It is excluded from
+     `measured` for the same reason `solver` is: a derived block that survives across a stamp is a
+     block that can go stale, and going stale is the failure that actually happens here — the tiers
+     are regenerated and the constant is not. So it is re-derived on every stamp, and gate I40
+     re-derives it a third time from scratch and `Object.is`-compares against what shipped.
+
+     THE ORDER IS LOAD-BEARING: the derivation solves the pipeline at the default state and reads
+     `t4Band` off the LIVE constants, so `model.constants` has to carry the live block before it
+     runs. `evStake` also reads `constants.solver.sizingLadder`, which the line above just wrote. */
   model.constants = { ...live, ...measured, solver };
+  const evCut = evMixK(model, makePayoff(model));
+  if (!Object.prototype.hasOwnProperty.call(before, 'evCut')) added.push('evCut');
+  else if (JSON.stringify(before.evCut) !== JSON.stringify(evCut)) changed.push('evCut');
+  model.constants.evCut = evCut;
   return { added, changed, kept: Object.keys(measured) };
 }
 
