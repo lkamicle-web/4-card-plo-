@@ -45,7 +45,9 @@ import * as calibration from './calibration.mjs';
 import { CATALOG } from './reserved.mjs';
 
 export const REGISTRY = [
-  data,          // D1 D2 D4 D5 I18 D6 D7 D8   the artifact as shipped
+  data,          // D1 D2 D4 D5 I18 D6 D7 D8   the artifact as shipped (D6's from-above clause also
+                 //   reads both built pages and src/shell.html off disk, and re-reads the lines its
+                 //   margins cite in variant.mjs / build.mjs / METHODOLOGY.md — release consolidation)
   engine,        // V1 I5 V2 V3 I4 V4 V5 V6 B I20   the objective layer
   structure,     // I1 I2 I3                   structural equity invariants
   policySweep,   // I6..I16 I19                the opinion layer over one shared sweep

@@ -267,6 +267,24 @@ test('lite carries the METHODOLOGY §9.11 budgets, and full\'s are D9\'s — set
   assert.ok(capSum <= VARIANTS.lite.budgets.app - VARIANTS.lite.budgets.appCore,
     `the block caps sum to ${capSum} B but the app raise is only `
     + `${VARIANTS.lite.budgets.app - VARIANTS.lite.budgets.appCore} B`);
+  /* AND THE RAISE IS EXACTLY THE CAPS — EQUALITY, NOT MERELY ROOM (v3 release consolidation; the
+     second of the two repairs docs/refutations/P5.md §3 wrote down and did not take). `<=` above
+     says the caps fit inside the raise; it does not say the raise is nothing BUT the caps, so
+     `app` could sit a kilobyte above `appCore + capSum` with everything green, and that kilobyte
+     would be headroom no block paid for — exactly the leftover the cap rule exists to forbid.
+     METHODOLOGY §9.11 states the invariant outright for every raise since P4 ("11+12+4+5+6 = 38 KB
+     of block caps must fit inside app − appCore", and the raise was forced BY that sum three
+     times), so a test that only asserts `<=` is weaker than the document. The equality is the
+     document's own arithmetic: 398 = 360 + (11 + 12 + 4 + 5 + 6). It is asserted for BOTH
+     variants because both carry the table. */
+  assert.equal(VARIANTS.lite.budgets.app, VARIANTS.lite.budgets.appCore + capSum,
+    `lite: app (${VARIANTS.lite.budgets.app} B) must equal appCore + the block caps `
+    + `(${VARIANTS.lite.budgets.appCore} + ${capSum} B) — a raise is the caps it pays for, no more`);
+  const fullCaps = VARIANTS.full.budgets.blocks;
+  const fullCapSum = Object.keys(fullCaps).reduce((a, k) => a + fullCaps[k], 0);
+  assert.equal(VARIANTS.full.budgets.app, VARIANTS.full.budgets.appCore + fullCapSum,
+    `full: app (${VARIANTS.full.budgets.app} B) must equal appCore + the block caps `
+    + `(${VARIANTS.full.budgets.appCore} + ${fullCapSum} B)`);
   for (const k of Object.keys(caps)) assert.ok(caps[k] > 0 && caps[k] % 1024 === 0, `${k} cap is whole KB`);
   /* THE NULL PIN, FLIPPED — DELIBERATELY, WHICH IS WHY IT EXISTED.
      Until P3 this read `assert.equal(VARIANTS.full.budgets, null)` with the note "when D9 lands,

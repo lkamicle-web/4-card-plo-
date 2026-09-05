@@ -67,9 +67,10 @@ import { minify, JsminError } from './lib/jsmin.mjs';
 import { buildSimBundle, asJsString } from './lib/sim-bundle.mjs';
 import { compileShellScripts, ShellCompileError } from './lib/shell-compile.mjs';
 import {
-  VARIANTS, VARIANT_NAMES, stripOnlyBlocks, stripMarkedBlocks, regionManifest, danglingSymbols,
+  VARIANTS, VARIANT_NAMES, stripOnlyBlocks, regionManifest, danglingSymbols,
   VariantError,
 } from './lib/variant.mjs';
+import { BLOCKS, blockCensus } from './lib/block-census.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -319,20 +320,22 @@ catch (e) {
    cap is what turns "the raise pays for this feature" into a statement the gate can refuse.
 
    Skipped under --no-minify, where none of these numbers means what the budgets were calibrated
-   against. */
-const BLOCKS = ['gto', 'ev', 'skill', 'topn', 'calib'];
-const blockBytesBy = {};
+   against.
+
+   THE LOOP ITSELF LIVES IN scripts/lib/block-census.mjs SINCE THE v3 RELEASE CONSOLIDATION, and
+   the reason is the P5 red team's finding that these ceilings were open from above
+   (docs/refutations/P5.md §3): the build refuses a page OVER a cap, but nothing refused a cap that
+   had drifted far above the +5 % rule it claims to be set by. Gate D6 now asserts that direction,
+   and it has to read the SAME census this build gates — one function, called here with the build's
+   own inputs and there with the artifact and shell on disk — or the two could hold different
+   numbers for one page. The bytes below are unchanged: `--check` is byte-identical across the move. */
+let blockBytesBy = {};
 let blockBytes = 0;
 if (!NO_MINIFY) {
   try {
-    for (const name of BLOCKS) {
-      const cut = stripMarkedBlocks(only.text, name, { label: rel(SOURCE_PATH) });
-      if (!cut.blocks) { blockBytesBy[name] = 0; continue; }
-      const core = compileShellScripts(cut.text, { label: rel(SOURCE_PATH), noMinify: false });
-      const b = Buffer.byteLength(shell.html) - Buffer.byteLength(core.html);
-      blockBytesBy[name] = b;
-      blockBytes += b;
-    }
+    const census = blockCensus(only.text, Buffer.byteLength(shell.html), { label: rel(SOURCE_PATH) });
+    blockBytesBy = census.by;
+    blockBytes = census.total;
   } catch (e) {
     if (e instanceof VariantError || e instanceof ShellCompileError) die(e.message);
     throw e;
@@ -513,19 +516,47 @@ const report = `${rel(OUT_PATH)} [${VARIANT_NAME}] ${(total / 1024).toFixed(1)} 
 // unanchored constant wearing the costume of a checked one — so the full build prints its bytes,
 // says out loud that nothing is asserted, and leaves the number to gate D9 once P3 produces a real
 // data/equilibrium.json. See docs/spikes/S-D.md.
+//
+// SINCE P3 BOTH ROWS CARRY A TABLE (D9 sized full's from its first real measurement), so the `else`
+// branch below describes a manifest that no longer exists. And SINCE THE v3 RELEASE CONSOLIDATION's
+// fix round a documented ceiling ABSENT from a table is a hard problem rather than a silent skip
+// (finding E: `appCore` deleted from lite's row built and verified green, with `core` simply missing
+// from the report): `total`, `app`, `appCore`, `modelCode` and one cap per marked block must be
+// PRESENT to be gated, here and in gate D6's from-above clause alike. It goes in `problems`, not
+// `sizeProblems`, because --allow-over-budget exists to measure a page that is knowingly over a
+// ceiling, never to build one that has none.
 const BUDGETS = VARIANT.budgets;
 
 const problems = [];
 const sizeProblems = [];
 const kb = (b) => (b / 1024).toFixed(1);
 if (BUDGETS) {
+  /* A DOCUMENTED CEILING THAT IS ABSENT IS REFUSED, NOT SKIPPED (see the note above `BUDGETS`). */
+  for (const key of ['total', 'app', 'appCore', 'modelCode']) {
+    if (BUDGETS[key] == null) {
+      problems.push(`[${VARIANT_NAME}] the ${key} ceiling is absent from the variant manifest — a ceiling `
+        + 'deleted is a ceiling nothing bounds (gate D6 refuses the same absence)');
+    }
+  }
+  if (!BUDGETS.blocks) {
+    problems.push(`[${VARIANT_NAME}] the per-block ceilings are absent from the variant manifest — `
+      + `${BLOCKS.join(', ')} each need a cap`);
+  } else {
+    for (const name of BLOCKS) {
+      if (BUDGETS.blocks[name] == null) {
+        problems.push(`[${VARIANT_NAME}] the @block:${name} region has no ceiling in the variant manifest — `
+          + 'every marked block needs its cap, or the app raise it rode in on bounds a name and not a feature');
+      }
+    }
+  }
   if (total > BUDGETS.total) sizeProblems.push(`${rel(OUT_PATH)} is ${kb(total)} KB, budget ${BUDGETS.total / 1024} KB`);
   if (app > BUDGETS.app) sizeProblems.push(`app CSS+JS+markup is ${kb(app)} KB, budget ${BUDGETS.app / 1024} KB`);
   /* THE PAID-RAISE CLAUSE (adjudication 12). `app` rose to pay for the vs-GTO mode; `core` is the
      same payload minus that mode, held to the ceiling `app` faced before the raise, so the raise
      buys exactly one feature and nothing else can drift into it. It binds whether or not the block
-     is present: with the mode removed entirely, core === app and this is the old gate verbatim. */
-  if (BUDGETS.appCore != null && appCore > BUDGETS.appCore) {
+     is present: with the mode removed entirely, core === app and this is the old gate verbatim.
+     (No `!= null` guard any more: an absent `appCore` is refused above, not skipped here.) */
+  if (appCore > BUDGETS.appCore) {
     sizeProblems.push(`app minus the marked blocks is ${kb(appCore)} KB, budget ${BUDGETS.appCore / 1024} KB `
       + `(the pre-raise app ceiling — a raise pays for the block it named, not for the rest)`);
   }
@@ -534,7 +565,7 @@ if (BUDGETS) {
   if (BUDGETS.blocks && !NO_MINIFY) {
     for (const name of BLOCKS) {
       const cap = BUDGETS.blocks[name];
-      if (cap != null && blockBytesBy[name] > cap) {
+      if (blockBytesBy[name] > cap) {
         sizeProblems.push(`the @block:${name} region is ${kb(blockBytesBy[name])} KB, budget ${cap / 1024} KB `
           + `(the app raise this feature was granted is the only thing that pays for it)`);
       }

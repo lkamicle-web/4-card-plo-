@@ -9,18 +9,316 @@
 // (D3 went with the sub-bucket layer it asserted. D1 already pins sum(cells) === 270,725, which
 // is what is left of the dual-key partition claim.)
 
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { enumerateAll } from '../lib/taxonomy.mjs';
 import { cutAt, classTableCanonical } from '../lib/villain-range.mjs';
 import { ORDER_BITS, unpackOrder, orderHash, permutationProblem } from '../lib/order-pack.mjs';
-import { TOTAL, REF_MATRIX, REF_ORDER } from './_shared.mjs';
+import { VARIANTS, VARIANT_NAMES, stripOnlyBlocks } from '../lib/variant.mjs';
+import { compileShellScripts } from '../lib/shell-compile.mjs';
+import { BLOCKS, blockCensus, pageCensus } from '../lib/block-census.mjs';
+import { ROOT, TOTAL, REF_MATRIX, REF_ORDER } from './_shared.mjs';
 
 export const family = 'data';
 export const title = 'the partition, the schema, the geometry, the payload budgets, the shipped villain order';
 export const ids = ['D1', 'D2', 'D4', 'D5', 'I18', 'D6', 'D7', 'D8'];
 export const setupLabel = 'enumerateAll()';
 
+// ---------------------------------------------------------------------------
+// D6's FROM-ABOVE CLAUSE on the page's byte ceilings (v3 release consolidation, 2026-09-05).
+//
+// The first of the two repairs the P5 red team wrote down and did not take (docs/refutations/P5.md
+// §3, "The byte budgets are anchored from below and open from above"): every ceiling in
+// scripts/lib/variant.mjs is refused DOWNWARD by the build — a page over its cap does not build —
+// and until this clause nothing refused a cap UPWARD. `app` at 460 KB and at 512 KB shipped
+// completely green, and a kilobyte moved from `gto`'s cap to `topn`'s left `topn` at measured
+// +23.9 % with every gate passing. The only shipped statement about the +5 % rule was a regex on
+// prose (`assert.match(budgetSource, /5%/)`).
+//
+// WHAT IS ASSERTED. For every ceiling that has a DOCUMENTED margin, that the ceiling is not looser
+// than that margin over the build's own measured bytes, in the idiom every derivation in
+// METHODOLOGY §9.11 spells out — measured × (1 + margin), rounded UP to the whole KB:
+//
+//     cap  <=  ceil(measured × factor / 1024) × 1024
+//
+// The margins are read out of the documents, never chosen here, and each row cites where:
+//
+//   total      +5 %   "Each budget below is that measurement plus about 5%, rounded" (build.mjs
+//                     :470, the phase-4 retune: TOTAL 600 KB at :485); METHODOLOGY §9.11:2363 ("Page
+//                     and app sit at the finished measurement plus about 5 %"); full's 660 KB is
+//                     "held at +1.1% ... DELIBERATELY far below the 686K a fresh measured+5% would
+//                     give" (variant.mjs:224; METHODOLOGY:2632). A bound at +5 % is the rule both
+//                     rows claim to sit at or under.
+//   app        +5 %   "398K is measured + 1.1%, far under the +5% this rule would allow (413K)"
+//                     (variant.mjs:159); the P3 derivation "+5 % is 387.6, rounded up to the whole
+//                     KB: 388 KB" (METHODOLOGY §9.11:2522) and the P5 readings at :2589 and :2620.
+//   appCore    +5 %   the pre-raise app ceiling (variant.mjs:104), i.e. the 360 KB the phase-4
+//                     retune set as "APP 360 KB ... Measured 344.8, headroom 4.4%" under the same
+//                     "plus about 5%, rounded" rule (build.mjs:470, :489; METHODOLOGY §9.11:2363).
+//                     The house rule this bound enforces is METHODOLOGY:254 — "a removal that does
+//                     not move the ceiling has not been paid back".
+//   modelCode  +8 %   "DELIBERATELY BELOW the 8% margin this gate was calibrated with" (variant.mjs
+//                     :119, :136); "measurement plus about 8%, the margin this gate was originally
+//                     calibrated with. Left at 8% rather than trimmed to 5%" (build.mjs:499);
+//                     METHODOLOGY §9.11:2412. NOT 5 %: the document says 8 and says why.
+//   blocks     +5 %   "a per-block ceiling at measured+5%" (variant.mjs:140); "`budgets.blocks`
+//                     fixes it, at measured+5 % rounded up to the whole KB" (METHODOLOGY §9.11
+//                     :2569), topn at :2600, calib at :2636.
+//
+// THE CITES ARE ANCHORED, NOT DECORATIVE (the fix round's finding F). A line number typed into a
+// string drifts the day a paragraph above it grows, and a factor typed beside it is then a number
+// citing nothing. So every row carries `anchors`: the file, the line, and the PHRASE that line was
+// read from — and `readPageCeilings` opens each cited file and refuses the clause if the cited line
+// no longer carries its phrase (naming the line the phrase moved to, when it merely moved). The
+// factor stays a literal on purpose: a clause that PARSED the percentage out of the prose would
+// widen itself the day someone typed 10, and tighten-never-widen is the rule. What the anchor
+// buys is that the literal cannot silently outlive the sentence it quotes. `cite` — the string the
+// detail line prints — is derived from the anchors, never typed twice.
+//
+// A DOCUMENTED CEILING THAT IS ABSENT IS REFUSED, NOT SKIPPED (the fix round's finding E). The
+// first cut of this clause bounded the ceilings that existed and said nothing about one deleted
+// from the table, so `appCore` removed from lite's row was 62/62 with `core` simply missing from
+// the detail line, and `budgets: null` read as "not measured" and passed. Every one of `total`,
+// `app`, `appCore`, `modelCode` and the five block caps is now REQUIRED to be present to be
+// measured; a missing one is a problem naming it, and a missing table is five. build.mjs refuses
+// the same absence at build time, so neither direction is left to a test's literal table.
+//
+// WHAT IS NOT ASSERTED, and stays open from above on the record (METHODOLOGY §9.11's release
+// consolidation paragraph; README's backlog): `eq` — D9 clause (b) asserts its floor only, and its
+// 73 KB is documented as one whole-KB step under measured+5 % (variant.mjs:88), so a bound would
+// hold today, but the two measurements of "eq" (the file, which D9 reads, and the injected block,
+// which the build reads) differ by the `const EQUILIBRIUM = ` wrapper, and a clause should name
+// one before it exists; and this gate's OWN model.json sub-budgets (`BUD` below), whose documented
+// margin is "4-5% on the large blocks" — a description in THIS file's `BUD` note, not a rule, and
+// not a sentence of METHODOLOGY §9.10 — and whose `total` V3-PLAN §6 already records as unpinned.
+//
+// WHERE THE MEASURED FIGURES COME FROM. `pageCensus` reads `total`, `data`, `modelCode`, `eq` and
+// therefore `app` off the artifact on disk by its own `@inject:` markers — the build's own
+// definition of `app`, to the byte. `blockCensus` is the build's marked-block loop, lifted into
+// scripts/lib/block-census.mjs so the build and this gate call ONE function: it recompiles the
+// shell on disk once per block (~120 ms per variant). Neither reads data/model.json, so this runs
+// honestly inside generate-data.mjs too, where the model in memory is not the one on disk (the trap
+// gates/variants.mjs describes). A missing artifact, a missing shell, or a page the census cannot
+// parse FAILS the clause rather than skipping it — D10's rule: lite is the non-negotiable artifact.
+//
+// TIGHTEN, NEVER LOOSEN. A ceiling this clause refuses is repaired by lowering the cap to the
+// documented formula, never by editing the factor: the factors here are quotations.
+// ---------------------------------------------------------------------------
+/** The three files the margins are quoted from, by repo-relative path. */
+const SRC = { V: 'scripts/lib/variant.mjs', B: 'scripts/build.mjs', M: 'docs/METHODOLOGY.md' };
+/** An anchor: `file` at `line` (1-based) carries `quote` verbatim, or the cite has drifted. */
+const at = (file, line, quote) => Object.freeze({ file, line, quote });
+
+/** The printed form of one file's anchors: `variant.mjs:159`, `METHODOLOGY §9.11:2522,:2620`. */
+const citeName = { [SRC.V]: 'variant.mjs', [SRC.B]: 'build.mjs', [SRC.M]: 'METHODOLOGY' };
+export function citeOf(anchors) {
+  const byFile = new Map();
+  for (const a of anchors) {
+    if (!byFile.has(a.file)) byFile.set(a.file, []);
+    byFile.get(a.file).push(a.line);
+  }
+  return [...byFile].map(([file, lines]) => `${citeName[file] || file}:${lines.join(',:')}`).join('; ');
+}
+
+const margin = (factor, anchors) => Object.freeze({ factor, anchors: Object.freeze(anchors), cite: citeOf(anchors) });
+
+export const CEILING_MARGINS = Object.freeze({
+  total: margin(1.05, [
+    at(SRC.B, 470, 'Each budget below is that measurement plus about 5%, rounded'),
+    at(SRC.B, 485, 'TOTAL 600 KB'),
+    at(SRC.M, 2363, 'measurement plus about 5 %, the same rule the phase-3 numbers were set by'),
+    at(SRC.V, 224, 'DELIBERATELY far below the 686K a fresh measured+5% would give'),
+  ]),
+  app: margin(1.05, [
+    at(SRC.V, 159, 'far under the +5% this rule would allow (413K)'),
+    at(SRC.M, 2522, '+5 % is 387.6, rounded up to the whole KB: **388 KB**'),
+    at(SRC.M, 2620, 'under the +5 % this rule would allow (413 KB)'),
+  ]),
+  appCore: margin(1.05, [
+    at(SRC.V, 104, 'the app payload MINUS the `@block:gto` region — the pre-raise ceiling'),
+    at(SRC.B, 470, 'Each budget below is that measurement plus about 5%, rounded'),
+    at(SRC.B, 489, 'APP 360 KB (was 345). Measured 344.8, headroom 4.4%'),
+    at(SRC.M, 2363, 'measurement plus about 5 %, the same rule the phase-3 numbers were set by'),
+    at(SRC.M, 254, 'a removal that does not move the ceiling'),
+  ]),
+  modelCode: margin(1.08, [
+    at(SRC.V, 119, 'DELIBERATELY BELOW the 8% margin this gate was calibrated'),
+    at(SRC.V, 136, 'calibrated +8%, which would give 56K'),
+    at(SRC.B, 499, 'measurement plus about 8%, the margin this gate was originally calibrated with'),
+    at(SRC.M, 2412, 'that measurement plus about 8 %'),
+  ]),
+  blocks: margin(1.05, [
+    at(SRC.V, 140, 'a per-block ceiling at measured+5%'),
+    at(SRC.M, 2569, 'at measured+5 % rounded up to the whole KB'),
+    at(SRC.M, 2600, '4,844 B + 5 % = 5,087 B, rounded up to the whole KB'),
+    at(SRC.M, 2636, '5,313 B + 5 % = 5,579 B, rounded up to the whole KB'),
+  ]),
+});
+
+/** The ceilings the clause REQUIRES in every variant's table, in the order it reads them. */
+export const REQUIRED_CEILINGS = Object.freeze(['total', 'app', 'appCore', 'modelCode']);
+
+/**
+ * Hold every anchor to its line: the cited file, at the cited line, still carries the quoted phrase.
+ *
+ * @param {object} [margins] CEILING_MARGINS, or a table a test built
+ * @param {(relPath:string)=>string|null} [readSource] the seam: repo-relative path -> file text, or
+ *        null when the file cannot be read (the default reads ROOT)
+ * @returns {{problems:string[], checked:number}}
+ */
+export function citationProblems(margins = CEILING_MARGINS, readSource) {
+  const read = readSource || ((rel) => {
+    const p = resolve(ROOT, rel);
+    return existsSync(p) ? readFileSync(p, 'utf8') : null;
+  });
+  const cache = new Map();
+  const linesOf = (file) => {
+    if (!cache.has(file)) { const t = read(file); cache.set(file, t == null ? null : t.split('\n')); }
+    return cache.get(file);
+  };
+  const problems = [];
+  let checked = 0;
+  for (const row of Object.keys(margins)) {
+    for (const a of margins[row].anchors) {
+      checked += 1;
+      const lines = linesOf(a.file);
+      const where = `${citeName[a.file] || a.file}:${a.line}`;
+      if (lines === null) {
+        problems.push(`${row}'s margin cites ${where}, and ${a.file} cannot be read — fail closed`);
+        continue;
+      }
+      const line = lines[a.line - 1];
+      if (line != null && line.includes(a.quote)) continue;
+      const now = lines.findIndex((l) => l.includes(a.quote)) + 1;
+      problems.push(`${row}'s margin cites ${where} for "${a.quote}", and that line no longer carries it — `
+        + (now ? `the phrase is at :${now} now; re-pin the cite to the line, never the factor to a guess`
+          : 'the phrase is gone from the file; re-find where the margin is documented before trusting the factor'));
+    }
+  }
+  return { problems, checked };
+}
+
+/** measured × factor, rounded UP to the whole KB — the idiom every §9.11 derivation uses. */
+export const ceilingBound = (measured, factor) => Math.ceil((measured * factor) / 1024) * 1024;
+
+const K = (b) => `${(b / 1024).toFixed(1)}K`;
+const KB = (b) => `${b / 1024}K`;
+
+/**
+ * The clause as a pure function, so a test can hand it a loosened cap and watch it refuse.
+ *
+ * @param {string} variant
+ * @param {object} budgets VARIANTS[variant].budgets
+ * @param {{total:number, app:number, appCore:number, modelCode:number, blocks:Record<string,number>}} m
+ *        the measured bytes
+ * @returns {{problems:string[], readings:string[]}} `problems` is empty when every documented
+ *          margin holds; `readings` is one `name measured/cap≤bound` entry per ceiling checked
+ */
+export function pageCeilingProblems(variant, budgets, m) {
+  const problems = [];
+  const readings = [];
+  if (!budgets) {
+    /* No table at all. The build's own `else` branch prints "SIZE NOT GATED" for this and goes on,
+       which was the pre-P3 stance for a full artifact nobody had measured; both artifacts have
+       carried a table since P3, and a table that vanished is every documented ceiling gone at once. */
+    problems.push(`${variant}: no budgets table — every documented ceiling (${REQUIRED_CEILINGS.join(', ')}, `
+      + `blocks ${BLOCKS.join('/')}) is absent, and an unbounded ceiling is not a checked one`);
+    return { problems, readings };
+  }
+  const check = (name, cap, measured, rule, label) => {
+    if (cap == null) {
+      problems.push(`${variant} ${label}: the documented ceiling is ABSENT from the table — a ceiling `
+        + `deleted is a ceiling nothing bounds; every documented ceiling must be present to be measured `
+        + `(${rule.cite})`);
+      return;
+    }
+    const bound = ceilingBound(measured, rule.factor);
+    readings.push(`${label} ${K(measured)}/${KB(cap)}≤${KB(bound)}`);
+    if (cap > bound) {
+      problems.push(`${variant} ${label}: the ceiling ${KB(cap)} is LOOSER than its documented margin — `
+        + `measured ${K(measured)} × ${rule.factor.toFixed(2)} rounded up to the whole KB is ${KB(bound)} `
+        + `(${rule.cite}); tighten the cap to the formula, never the formula to the cap`);
+    }
+  };
+  check('total', budgets.total, m.total, CEILING_MARGINS.total, 'total');
+  check('app', budgets.app, m.app, CEILING_MARGINS.app, 'app');
+  check('appCore', budgets.appCore, m.appCore, CEILING_MARGINS.appCore, 'core');
+  check('modelCode', budgets.modelCode, m.modelCode, CEILING_MARGINS.modelCode, 'model code');
+  if (!budgets.blocks) {
+    problems.push(`${variant} blocks: the per-block ceilings are ABSENT from the table — `
+      + `${BLOCKS.join(', ')} each need a cap to be measured against (${CEILING_MARGINS.blocks.cite})`);
+  } else {
+    /* Every marked block needs its cap (absent -> refused above); a cap for a name the shell does
+       not mark measures 0 and is refused as looser than 0K, which is the right answer for headroom
+       nothing spends. */
+    const names = [...BLOCKS, ...Object.keys(budgets.blocks).filter((n) => !BLOCKS.includes(n))];
+    for (const name of names) {
+      const measured = m.blocks && m.blocks[name] != null ? m.blocks[name] : 0;
+      check(name, budgets.blocks[name], measured, CEILING_MARGINS.blocks, name);
+    }
+  }
+  return { problems, readings };
+}
+
+/**
+ * Read every variant's ceilings and measurements off disk (or off the injection seam) and judge
+ * them. `opts.artifacts` / `opts.shellText` are the seams gates/variants.mjs already honours.
+ *
+ * @param {object} [opts]
+ * @returns {{problems:string[], lines:string[], measured:Record<string,object>}}
+ */
+export function readPageCeilings(opts = {}) {
+  const out = { problems: [], lines: [], measured: {}, anchors: 0 };
+  /* The cites first: a factor whose sentence has moved is not a documented margin, whatever the
+     ceilings measure. `opts.readSource` is the test seam for a drifted file. */
+  const cites = citationProblems(CEILING_MARGINS, opts.readSource);
+  out.anchors = cites.checked;
+  out.problems.push(...cites.problems);
+  const shellLabel = 'src/shell.html';
+  let shell = opts.shellText != null ? opts.shellText : null;
+  if (shell === null) {
+    const p = resolve(ROOT, shellLabel);
+    if (!existsSync(p)) {
+      out.problems.push(`there is no ${shellLabel} to measure the marked blocks against — fail closed`);
+      return out;
+    }
+    shell = readFileSync(p, 'utf8');
+  }
+  for (const v of VARIANT_NAMES) {
+    const spec = VARIANTS[v];
+    /* A variant without a table is NOT skipped: it is measured, and pageCeilingProblems refuses the
+       absent table by name (finding E). */
+    let text = null;
+    if (opts.artifacts) text = opts.artifacts[v] == null ? null : opts.artifacts[v];
+    else {
+      const p = resolve(ROOT, spec.out);
+      if (existsSync(p)) text = readFileSync(p, 'utf8');
+    }
+    if (text === null) {
+      out.problems.push(`there is no ${spec.out} to read ${v}'s ceilings against — fail closed, `
+        + 'as D10 does: an unmeasured ceiling is not a checked one');
+      continue;
+    }
+    try {
+      const pc = pageCensus(text, { label: spec.out });
+      const only = stripOnlyBlocks(shell, v, { label: shellLabel });
+      const base = compileShellScripts(only.text, { label: shellLabel });
+      const bc = blockCensus(only.text, Buffer.byteLength(base.html), { label: shellLabel, blocks: BLOCKS });
+      const m = { total: pc.total, app: pc.app, appCore: pc.app - bc.total, modelCode: pc.modelCode, blocks: bc.by };
+      out.measured[v] = m;
+      const r = pageCeilingProblems(v, spec.budgets, m);
+      out.problems.push(...r.problems);
+      out.lines.push(`${v} ${r.readings.join(' · ')}`);
+    } catch (e) {
+      out.problems.push(`${v}: the ceilings cannot be measured — ${e.message}`);
+    }
+  }
+  return out;
+}
+
 export function build(ctx) {
-  const { model, G } = ctx;
+  const { model, G, opts = {} } = ctx;
 
   const E = enumerateAll();
   // D6 measures the block sizes; D7 reads D6's total back. Declared here because two sections
@@ -293,13 +591,21 @@ export function build(ctx) {
     const META_CORE_BUDGET = BUD.meta - BUD.solver - BUD.skill - BUD.evCut;
     const core = sizes.total - sizes.baseline - sizes.solver - sizes.skill - sizes.evCut - sizes.calibration;
     const metaCore = sizes.meta - sizes.solver - sizes.skill - sizes.evCut;
+    /* THE PAGE'S CEILINGS, FROM ABOVE — the clause the P5 red team wrote down (see the header
+       above `CEILING_MARGINS`). Everything before this line asserts that a payload is UNDER its
+       ceiling; this asserts that the page's ceilings are not ABOVE the margins the documents claim
+       for them. It reads the artifacts and the shell on disk, never the model, so it is the same
+       assertion inside generate-data.mjs as here. */
+    const page = readPageCeilings(opts);
     const ok = sizes.cells <= BUD.cells && sizes.meta <= BUD.meta
       && sizes.order <= BUD.order && sizes.baseline <= BUD.baseline
       && sizes.solver <= BUD.solver && sizes.skill <= BUD.skill && sizes.evCut <= BUD.evCut
       && sizes.calibration <= BUD.calibration
       && metaCore <= META_CORE_BUDGET
-      && core <= CORE_BUDGET && sizes.total <= BUD.total;
-    G('D6', ok, `cells ${(sizes.cells / 1024).toFixed(1)}K/${BUD.cells / 1024}K · ` +
+      && core <= CORE_BUDGET && sizes.total <= BUD.total
+      && page.problems.length === 0;
+    G('D6', ok, (page.problems.length ? `PAGE CEILINGS FROM ABOVE: ${page.problems.join(' · ')} · ` : '') +
+      `cells ${(sizes.cells / 1024).toFixed(1)}K/${BUD.cells / 1024}K · ` +
       `meta+tables ${(sizes.meta / 1024).toFixed(1)}K/${BUD.meta / 1024}K ` +
       `(of which core ${(metaCore / 1024).toFixed(1)}K/${META_CORE_BUDGET / 1024}K) · ` +
       `order ${(sizes.order / 1024).toFixed(1)}K/${BUD.order / 1024}K · ` +
@@ -315,7 +621,16 @@ export function build(ctx) {
       `${BUD.calibration / 1024}K are reserved for them ` +
       `and grant no other block headroom, which is what the two core readings prove; ` +
       `pretty-printed ${(Buffer.byteLength(JSON.stringify(model, null, 1)) / 1024).toFixed(1)}K). ` +
-      `BINDING ON THE LITE ARTIFACT (§5.3): model.json is shared, and lite is the constraining consumer`);
+      `BINDING ON THE LITE ARTIFACT (§5.3): model.json is shared, and lite is the constraining consumer. ` +
+      `PAGE CEILINGS FROM ABOVE (release consolidation; docs/refutations/P5.md §3's first repair, ` +
+      `measured/cap≤cap-bound): ${page.lines.join('; ') || 'not measured'} — ` +
+      `bound = measured × margin rounded up to the whole KB; margins, each quoted from the line it cites: ` +
+      [['total', 'total'], ['app', 'app'], ['appCore', 'core'], ['modelCode', 'model code'], ['blocks', 'blocks']]
+        .map(([k, label]) => `${label} +${Math.round((CEILING_MARGINS[k].factor - 1) * 100)}% (${CEILING_MARGINS[k].cite})`)
+        .join(' · ') +
+      `; ${page.anchors} cited lines re-read this run and each still carries its phrase; a documented ceiling ` +
+      `absent from a variant's table is refused, not skipped. ` +
+      `Still open from above: eq (D9 asserts its floor only) and this gate's own model.json sub-budgets`);
     } },
 
     // =========================================================================

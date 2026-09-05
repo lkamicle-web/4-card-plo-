@@ -176,6 +176,149 @@ runs only when you press it.
 
 ---
 
+## What v3 added
+
+Six things, and a verdict. As with v2, the defaults are the identity or a paid-for flip: invariants
+**I22** and **I32** still reproduce v1's and v2's tiers *bit for bit* at their legacy settings, and
+the one default that moved — the villain profile, now ON at load — got its own frozen fixture
+(`data/tiers-v3-default.fixture.txt`) and a printed move-diff rather than a quiet edit.
+
+- **Four couplings on the axes v2 shipped** (gates I41–I44). Rake now scales with depth through
+  `rake.potBB(d)`: the reference raked pot grows with the stack, so `rakeFrac` falls from 5.00 %
+  at 100 bb to 2.00 % at 250 bb and the vs-3-bet price from 30.53 % to 29.59 % with it (I41).
+  Depth can move opening *width* and not just ordering, by exactly the realization ratio and no
+  new opinion (I42) — and that factor **ships OFF**, because a second width-moving default in the
+  same release as the first would have made the two indistinguishable afterwards. 3-bet sizing is
+  an axis with an exact price, `s/(1+2s)`, and a 7-point premium held constant and flagged (I44).
+  And the villain profile is on by default (I43), so the page opens on measured opponents rather
+  than random ones.
+- **Two artifacts from one source.** `index.html` is the lite page, 583.9 KB; `index-full.html`
+  is the same page plus `data/equilibrium.json` — the solved strategies — at 653.7 KB. Each
+  carries its own one-sentence claim in its banner and on screen, gates **D10/D11** grep both
+  pages for it, and `node scripts/build.mjs --check` fails a stale artifact byte for byte.
+- **An equilibrium baseline, and a vs-GTO colour mode.** A CFR+ solve of a **heads-up** five-node
+  pot-limit preflop tree (the ladder 3 / 9 / 27 / 81 bb, at 100 bb and 40 bb, exploitability
+  ≤ 5e-5 bb) over a measured pairwise checkdown payoff — 400,000 shared boards under two named
+  seeds. It ships as quantized tiers (I36) and paints a diverging signed ramp of where the model
+  disagrees with it. It is called GTO **only because the game is heads-up**; its payoff is a
+  checkdown, so it is an equilibrium of a game in which the flop never comes; and it cuts no
+  tiers.
+- **A pool-skill dial** (I37/I38): one number in [0, 1] that slides the villain pool from the
+  lobby to the tightest VPIP the lattice was ever measured at, 25. It is a coordinate change on
+  the VPIP axis and adds no pathway; the *plays-better* half — a tougher pool realizing more
+  equity postflop — is deliberately **not built**, and its coefficient ships `null`.
+- **An absolute-EV cut behind a quarantine** (I34/I39/I40). A second predicate, `EV ≥ 0`,
+  computed beside the percentile cut and painted as an EV colour mode, with the MIX band's width
+  derived from the shipped distribution rather than felt. It is display-only: gate I34 asserts
+  that no EV error of any size can move a tier, and it stays that way for as long as the verdict
+  below stands.
+- **A per-hand top-N inside every cell** (I47): the rungs of the cell's own `estimate`
+  adjustment, as many as the Example-hands grid already shows — an ordering inside the cell, and
+  structurally unable to reach the tiers.
+- **A calibration verdict, and it is FAIL.** v3 pre-registered, at Phase 0 and before any EV
+  number existed, the test that would check whether ordering hands by EV wins more money than
+  ordering them by this score (criteria PC-0..PC-8), built the harness, and could not run it:
+  **no lawful, hero-visible, assigned 4-card PLO corpus exists at any volume**, so PC-1, PC-2 and
+  PC-3 are unsatisfiable, and PC-0 counts a criterion that cannot be evaluated as a fail. **7 of 8
+  criteria are unevaluable; PC-8 passes** (890 of 987 transposed pairs beyond 2·se). The verdict
+  is stamped into `model.calibration` on every verify run and rendered in the Method view, and
+  gate **I46** is green *over* that FAIL — it asserts that the page shows the answer the
+  pre-registered bar gives, not that the answer is yes. Every score, tier and EV on the page is
+  therefore a defensible opinion that has never been checked against money, and the page says so.
+
+---
+
+## Known limitations and v3.1 backlog
+
+The standing limitations — nineteen of them, each with its measurement — are
+[`docs/METHODOLOGY.md` §10](docs/METHODOLOGY.md). This is the **one consolidated list** of what
+v3 deferred, cut, or recorded rather than repaired, with where each item is written down — the
+five refutation records' recorded-not-acted findings included, each with its standing. Nothing on
+it is scheduled, and nothing is scheduled anywhere else.
+
+1. **Depth→width ships OFF.** Turning it on is a default move, so it is a `freeze-tiers.mjs
+   --force` ceremony with a printed move-diff, and P5 did not exercise it. A v3.1 decision —
+   METHODOLOGY §5.1 (lines 1113–1124).
+2. **The squeeze / multiway 3-bet node was cut**, on two measurements rather than a preference:
+   its payload would overrun lite's `cells` budget, and the multiway payoff it needs is measured
+   absent. It moves to v3.1 with solver results in hand; nothing was built for it, and gate id
+   I45 stays reserved — METHODOLOGY limitation 19 (:3355, :3419); V3-PLAN §4 item 11 (:1287,
+   :1317).
+3. **Nothing multiway may be labelled GTO or equilibrium** — heads-up is "GTO", anything multiway
+   is a "self-play fixed point". The claim-scope rule carries forward unchanged to whatever v3.1
+   builds — METHODOLOGY :3426.
+4. **A 6-max / multiway baseline is absent, not badged.** Every multiway payoff request comes back
+   `supported:false`, so there is no multiway game to be a fixed point of; re-opening needs a
+   measured k-way sampler (`SIXMAX` leg ii), which is itself an unwritten measurement —
+   METHODOLOGY :3406–3419 and gate I35(d) (:3565); V3-PLAN :1312.
+5. **The calibration verdict is FAIL and unpassable by construction** — no lawful, hero-visible,
+   assigned corpus exists; 7 of 8 criteria unevaluable, PC-8 passes. The bar comes alive
+   unchanged the day such a corpus exists — METHODOLOGY §0 (:68), limitation 18 (:3289, :3301).
+6. **The successor experiment limitation 18 names is not built:** a *prospective randomised A/B
+   test on the marginal cells*, run by a player against their own play — the one design that
+   would test the ordering against money without a corpus. Out of scope for v3, and nothing here
+   starts it — METHODOLOGY limitation 18 (:3320–3321).
+7. **The plays-better half of the skill dial is not built.** `constants.skill.playsBetter` is
+   `null`, bounded by gate I38(e) on its *reach* rather than its size, because nothing here
+   measures postflop play; for the same reason I37's "divergence ≈ 0 at pool = baseline" clause is
+   recorded rather than passed — METHODOLOGY §3.5 (:617, :666), the I37 row (:3569).
+8. **The 3-bet premium is held constant** at its pot-sized calibration and flagged; only the
+   price moves with the sizing — METHODOLOGY limitation 8 (:3052), §7 (:1723).
+9. **Recorded, not acted on (the P1 red team) — six findings**, `docs/refutations/P1.md` (:76).
+   Three were overtaken later: the exhausted `app` budget, by P3's paid raise with `appCore`
+   holding the pre-raise ceiling (METHODOLOGY §9.11, :2522); the cold-sweep diagnosis of the
+   layout morph row, withdrawn on measurement at the P2 pre-stage (`smoke.mjs`, "WHY THERE ARE
+   TWO ROWS", :124); and the Method view's Known weaknesses, now rendered from
+   `constants.limitations` (`src/shell.html:8969`). One is closed at the release consolidation's
+   fix round: §9.11's caption, which said all three budgets sat at +5 % while the model code sits
+   at +8 % (METHODOLOGY :2362). Two stand: `depth.beta`'s tighter consequence under I42(d),
+   roughly [0.15, 0.55], is not written down — its row still gives `|β| < 1` as the bound
+   (METHODOLOGY :964); and a limitation's `of` / `fix` fields are checked for existence only
+   (`scripts/gates/couplings.mjs:67`).
+10. **Recorded, not acted on (the P2 red team) — eight findings**, `docs/refutations/P2.md`
+    (:129). Two were overtaken: `ITER_CAP`'s margin is now quoted against the worst seed, ~3x not
+    4x (`scripts/lib/cfr.mjs:113–116`); and the solver constants reach `model.json` and the
+    Method view since P3 (`constants.solver`, V3-PLAN §6's P5 audit). Six stand: the three solver
+    thresholds are anchored as interval membership, not to their values; `TWO_SEED_TOL_POT`'s
+    "~4x the measurement" is the payoff axis, inert under a checkdown source, and against the live
+    init axis the gate sits ~250x over (`cfr.mjs:126–133`); `mirrorBound`'s binding measurement
+    is `test/cfr.test.mjs`'s 2.84e-14 — a ~10x margin, not the 20x its note quotes
+    (`cfr.mjs:780–781`); `simplexBound`'s clause (b) is exercised only at `N = 3`
+    (`scripts/gates/solver.mjs:234`, `test/cfr.test.mjs:289`); the single-raise-size abstraction
+    sits in `CAPS.modelled` rather than `CAPS.omitted` (`cfr.mjs:325–337`); and `FIT` is a
+    standing tripwire on `data/model.json`, by design, named so nobody meets it by surprise.
+11. **Recorded, not repaired (the P3 red team) — four**, `docs/refutations/P3.md` §3 (:95). All
+    four stand: the chance-measure disclosure in `CAPS.omitted` is checked against a copy of
+    itself, since no required-omissions floor exists; `BOARDS` is pinned at 400,000 but not
+    asserted against S-A's regime (`SA_REPRO.boards`, `scripts/gates/solver.mjs:80`); the two seed
+    names have no falsifier; and I35(c)'s failure message templates the live board count
+    (`solver.mjs:310`).
+12. **Recorded, not repaired (the P4 red team):** prose fields are bounded by length and
+    substrings, never by meaning; `derivedAt.state` is compared against the function that writes
+    it; `detents` is asserted in one direction only; `BUD.total` — D6's `model.json` total — is
+    unpinned; I38(e)'s reach scan is lexical. All five stand — V3-PLAN §6 (:1733–1739), re-read at
+    the release consolidation (:1767).
+13. **`N = 6` example hands per cell is inherited, not chosen, and nothing bounds it.** It is the
+    Example-hands convention the top-N adopts (`scripts/generate-data.mjs:353`); bounding it would
+    mean naming a constant this layer does not own — METHODOLOGY §8.1 (:1871), P5's refutation
+    record §3.
+14. **Two byte ceilings are still open from above** after the release consolidation closed the
+    rest: `eq` (73 KB; D9 asserts its floor only) and D6's own `model.json` sub-budgets, whose
+    margin is documented as "4–5 %" (a sentence of the `BUD` note in `scripts/gates/data.mjs`)
+    rather than as a rule. `total`, `app`, `core`, the model code and the five block caps are
+    bounded from above by gate D6 — which also refuses a documented ceiling absent from the table
+    and re-reads every cited margin line each run — and pinned to `app = core + Σ caps` by
+    `test/variant.test.mjs` — METHODOLOGY §9.11 (:2643–2705).
+15. **Any further dependency needs a named consumer and a memo; the default answer is no.**
+    Playwright is the sole, dev-time one — METHODOLOGY :2717; V3-PLAN §9 (:2260).
+16. **7-max and 9-max seat ladders are deferred to v4**; 5-card PLO and street-by-street postflop
+    realization are out of scope by decision — V3-PLAN §13 (:2430); METHODOLOGY :3468.
+17. **F3 — a hidden tab suspending `requestAnimationFrame` — cannot be measured headless**, and
+    stays a recorded limitation of the browser gate — METHODOLOGY limitation 15 (:3175);
+    `smoke.mjs`.
+
+---
+
 ## Who this is for
 
 Players in **loose, low-stakes 4-card PLO lobbies** — the games where five people see a flop

@@ -1764,6 +1764,29 @@ Per brief §2.1: anchored, or flagged unanchorable and gated. "Flagged" means na
 > **ten flagged records, ten `UNANCHORED` entries, and the map is exactly the flagged set** — no
 > flagged constant renders unbadged, and no badge names a constant that is not flagged.
 
+> **Consolidated (release, 2026-09-05) — the two byte-ceremony repairs P5's red team recorded are
+> taken, and the recorded-not-repaired list above is re-read against them.** `docs/refutations/P5.md`
+> §3 found every page ceiling "anchored from below and open from above" (`app` at 460 KB and at
+> 512 KB green; a kilobyte moved from `gto` to `topn` green at measured +23.9 %) and offered two
+> repairs, taking neither. Both now ship. **D6's from-above clause** (`scripts/gates/data.mjs`,
+> `pageCeilingProblems`) refuses any of `total`, `app`, `appCore`, `modelCode` and the five block
+> caps that is looser than its documented margin over the build's own census — +5 % rounded up to the
+> whole KB, +8 % for the model code, each margin anchored to the line *and the phrase* it was read
+> from, and that line re-read every run — and, since the same-day fix round, refuses a documented
+> ceiling ABSENT from the table by name, as `build.mjs` now does; the marked-block loop is lifted into
+> `scripts/lib/block-census.mjs` so the build and the gate call one function.
+> **`test/variant.test.mjs` pins `app === appCore + Σ caps`** for both variants where it asserted
+> `<=`. Armed in a scratch copy of the tree: `app` at 448 KB is refused naming the ceiling and the
+> 414 KB bound; `app` one byte over the identity fails the test while D6 stays green; `appCore`
+> deleted, `budgets: null`, `blocks.calib` deleted and a cite shifted one line each turn D6 red with
+> the cause named. No cap, tolerance or constant moved; the report order is unchanged. **Of the five
+> findings recorded above, four stand unchanged** (prose bounded by length, `derivedAt.state`,
+> one-directional `detents`, I38(e)'s lexical scan); the fifth — `BUD.total` unpinned — stands too,
+> and is now named as one of the two ceilings still open from above (with D9's `eq`) in METHODOLOGY
+> §9.11's closing paragraph and in the README's *Known limitations and v3.1 backlog*, which is the
+> one consolidated list — and which, since the fix round, also carries the P1, P2 and P3 refutation
+> records' recorded-not-acted findings, each with its standing, beside P4's and P5's.
+
 ---
 
 ## 7. The gate catalog (the plan's core)

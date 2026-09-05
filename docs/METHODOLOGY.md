@@ -2359,8 +2359,8 @@ artifact may vary between two builds of the same inputs, or the comparison stops
 of the same tree are byte-identical, and a `src/shell.html` that ever carries the banner is refused
 as a copy of the built page rather than compiled from.
 
-**The budgets, retuned to that reality — once, at the phase end.** All three sit at the finished
-measurement plus about 5 %, the same rule the phase-3 numbers were set by:
+**The budgets, retuned to that reality — once, at the phase end.** Page and app sit at the finished
+measurement plus about 5 %, the same rule the phase-3 numbers were set by; the model code at +8 %:
 
 | gate | v1 | phase 3 | **budget** | measured, phase-4 end | **measured, as it stands** | headroom |
 |---|---:|---:|---:|---:|---:|---:|
@@ -2639,6 +2639,70 @@ time in `data`, which is why this entry moves two ceilings where item 10 moved o
   reason it is not, PC-8's numbers, and the words `potFrac` and `moneyValidated: false` on the one
   figure that could be mistaken for a result. A FAIL rendered in a sentence would have been cheaper
   and would have been the thing V3-PLAN §3.5 wrote "on screen rather than in a doc" to prevent.
+
+**AND THE PARAGRAPH THE RELEASE CONSOLIDATION OWES, WHICH IS TWO BOUNDS AND NO RAISE.** *(2026-09-05,
+after P5's release boundary; no phase, no red team, no new gate id.)* Every ceiling in this section
+is refused *downward* by the build — a page over its cap does not build — and the P5 red team
+recorded that nothing refused one *upward*: `app` at 460 KB and at 512 KB shipped completely green,
+a kilobyte moved from `gto`'s cap to `topn`'s left `topn` at measured +23.9 % with every gate
+passing, and the only shipped statement about the +5 % rule was a regex on prose
+(`docs/refutations/P5.md` §3, which wrote down two repairs and took neither). Both are taken now.
+
+- **Gate D6 gains a from-above clause.** For every ceiling with a documented margin,
+  `cap ≤ measured × (1 + margin)`, rounded up to the whole KB — the idiom every derivation above
+  uses — read against the build's own figures. The margins are quotations, not choices: **+5 %** for
+  `total`, `app`, `core` and the five block caps, **+8 %** for the inlined model code, which is the
+  margin the phase-4 note says that gate was calibrated with and deliberately not trimmed to 5. Each
+  row of `CEILING_MARGINS` in `scripts/gates/data.mjs` cites the line it was read from, and so does
+  the gate's detail line.
+- **The measured figures are the build's.** The marked-block loop moved out of `build.mjs` into
+  `scripts/lib/block-census.mjs`, so the build and the gate call one function over the same shell;
+  `app`, `total` and the model code are read off the artifact by its own `@inject:` markers, which
+  is the build's definition of `app` to the byte. It recompiles the shell once per block, about
+  120 ms per variant, reads no `model.json`, and fails closed on a missing artifact or shell.
+- **Armed before it was relied on.** In a scratch copy of the tree, lite's `app` raised to 448 KB
+  turns D6 red with *the ceiling 448K is LOOSER than its documented margin — measured 393.7K × 1.05
+  rounded up to the whole KB is 414K*; `test/block-census.test.mjs` replays the P5 refuters'
+  perturbations against the clause and asserts it says no.
+- **And `test/variant.test.mjs` pins the raise to equality** — `app === appCore + Σ caps`, both
+  variants — where it asserted only `≤`. That is the arithmetic this section has stated at every
+  raise since P4 (11 + 12 + 4 + 5 + 6 = 38 KB; 398 = 360 + 38), so a kilobyte of raise no block paid
+  for is now a test failure rather than headroom. Armed the same way: `app` one byte over the
+  identity fails the test while D6 stays green, which is the division of labour — the clause bounds
+  looseness, the pin catches the stray byte.
+
+As it stands every bound holds with the margin this section claims: lite `app` 393.7 against a
+bound of 414 KB, `core` 359.3 against 378, model code 52.1 against 57, `total` 583.9 against 614
+(full 653.7 against 687), and each block cap is exactly its own bound. **No ceiling moved, in either
+direction.**
+
+**The fix round, the same day, closed the clause's own two gaps and one caption.** *(Eight yellow
+findings, no red; nothing widened, no constant added.)* The first cut bounded the ceilings that
+*existed* and said nothing about one deleted from the table — `appCore` removed from lite's row
+verified 62/62 with `core` simply missing from the report, and `budgets: null` read "not measured"
+and passed — so a documented ceiling **absent** from a variant's table is now refused by name, in D6
+and in `build.mjs` alike (`total`, `app`, `appCore`, `modelCode` and one cap per marked block; a
+missing table is all of them at once). The second: the margins were literals citing literal line
+numbers, and nothing read the line, so a paragraph growing above this section would have drifted
+every cite silently. Each row of `CEILING_MARGINS` now carries its *anchors* — file, line, and the
+phrase quoted from that line — and D6 re-reads every cited line each run, refusing the clause when a
+line no longer carries its phrase and naming the line the phrase moved to. The factor stays a
+literal on purpose: a clause that parsed its percentage out of the prose would widen itself the day
+someone typed 10, and what the anchor buys is that the literal cannot outlive the sentence it
+quotes. The gate's detail line now prints every row's cite, `core`'s included. And the caption above
+the budget table, which P1's red team recorded as contradicting itself — "all three" at +5 % with
+the model code at +8 % forty lines later — and no phase corrected, now says what the table says.
+Armed on a scratch copy of the tree: `appCore` deleted, `budgets: null`, `blocks.calib` deleted and
+one blank line inserted above `variant.mjs:104` each turn D6 red with the cause named, and the
+deleted ceiling refuses the build too.
+
+What stays **open from above**, on the record: `eq` — D9 clause (b) asserts its floor only, and the
+file D9 measures and the injected block the build measures differ by the `const EQUILIBRIUM = `
+wrapper, so a bound should name one before it exists; and D6's own `model.json` sub-budgets, whose
+margin is documented as a description — "4–5 % on the large blocks", a sentence of the `BUD` note in
+`scripts/gates/data.mjs`, not of §9.10, which states the sub-budgets and not their rule — rather
+than as a rule, and whose `total` V3-PLAN §6 already records as unpinned. The consolidated list of
+everything v3 leaves open is the README's *Known limitations and v3.1 backlog*.
 
 **One dependency, scoped as a property rather than a promise.** *(From spike S-E §7.)* This
 repository is no longer "zero-dependency" flatly, and pretending otherwise would have been the
@@ -3361,6 +3425,23 @@ Nothing here is hidden behind a disclosure. They are listed in the app's Method 
     approximated, badged or interpolated — it is absent.** The claim-scope rule from `SIXMAX`
     carries forward unchanged to whatever v3.1 builds: nothing multiway may be labelled GTO or
     equilibrium; heads-up is "GTO" and anything multiway is a "self-play fixed point".
+
+**Release consolidation** *(2026-09-05, after the P5 release boundary; no phase, no red team, no new
+gate id, no re-freeze).* Two things changed after P5 and nothing else did. The two byte-ceiling
+repairs P5's red team wrote down and did not take (`docs/refutations/P5.md` §3) are taken: gate
+**D6** now refuses a page ceiling looser than its documented margin over the build's own measured
+bytes, and `test/variant.test.mjs` pins `app` to `appCore + Σ caps` by equality — §9.11's closing
+paragraph has the clause, the margins with their sources, and both armings — and, since the
+same-day fix round, the refusal of a ceiling absent from the table and the re-reading of every cited
+line. No cap moved, no gate widened, no constant was added, the calibration verdict stands at FAIL,
+and the 62-gate report order is unchanged; `eq` and D6's own sub-budgets remain open from above and
+say so there. Everything this release leaves open — the depth→width flip (§5.1), the squeeze node
+(limitation 19, above), the multiway claim-scope rule, the calibration corpus (limitation 18) and
+the successor experiment it names, the plays-better half of the skill dial (§3.5), the findings the
+refutation records P1 through P5 recorded rather than acted on (each carried with its standing:
+overtaken by a later phase, or still standing), and the two ceilings still open from above — is
+consolidated in **one list, the README's *Known limitations and v3.1 backlog***, which is the single
+place the v3.1 work is enumerated; this document stays the record of why each item is where it is.
 
 ### v2 list — shipped
 
