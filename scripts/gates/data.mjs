@@ -122,6 +122,7 @@ export function build(ctx) {
       solver: model.constants && model.constants.solver ? b(model.constants.solver) : 0,
       skill: model.constants && model.constants.skill ? b(model.constants.skill) : 0,
       evCut: model.constants && model.constants.evCut ? b(model.constants.evCut) : 0,
+      calibration: model.calibration ? b(model.calibration) : 0,
       total: b(model),
     };
     // Budgets, raised for the v2 payload (V2-PLAN §2.5), in the same spirit as build.mjs's own
@@ -250,18 +251,52 @@ export function build(ctx) {
     //                  RESERVED, NOT GRANTED. `core` now subtracts all FOUR blocks and still faces
     //                  the original 120K; `metaCore` subtracts the three that live in `constants`
     //                  and still faces the original 13K. Nothing pre-existing gains a byte.
+    //
+    // P5 ADDS A FIFTH RESERVED BLOCK, measured before it was granted and stated rather than nudged:
+    //   calibration 7K  new, and it is the only block here that is not a constant. `model.calibration`
+    //                  — the primacy verdict, the Phase-0 pre-registered criteria VERBATIM (3,300 B
+    //                  of the total, and the largest single line item in it), the digest that pins
+    //                  them, all eight PC rows with their statuses and details, PC-8's numbers, the
+    //                  absent-corpus record with S-C's reason, the empty `disputed` list WITH the
+    //                  sentence saying why it is empty, the self-play consistency figures stamped
+    //                  potFrac/moneyValidated:false, and the limitation and successor sentences.
+    //                  Measured 6,394 B = 6.2K; 7K is measured+5% (6,714 B) rounded up to the whole
+    //                  KB, the D9 rule applied here.
+    //                  WHY THE CRITERIA TEXT SHIPS RATHER THAN JUST ITS DIGEST, since half the block
+    //                  is that one string: V3-PLAN §3.5 requires the reason the decision layer is
+    //                  unfalsified to be "on screen rather than in a doc", and a digest is not a
+    //                  reason. It is the same trade `constants.evCut` made for its derivation
+    //                  sentence and the solver block made for its cap list.
+    //                  IT IS NOT INSIDE `constants` and that is deliberate: it is not an opinion the
+    //                  scoring layer holds, it is a verdict ABOUT the opinions, and `stampConstants`
+    //                  would then have had to decide whether to carry it across (it must not — see
+    //                  `stampCalibration`, which re-derives it every run on the `evCut` precedent).
+    //                  So `meta` is untouched by it and `metaCore` still faces the original 13K with
+    //                  the same three blocks subtracted as before.
+    //   total 138 -> 145K
+    //                  RESERVED, NOT GRANTED, for the fifth time and by the same rule. `core` now
+    //                  subtracts all FIVE blocks and still faces the original 120K. The raise is
+    //                  exactly the sub-budget, so no pre-existing block gains one byte — and this
+    //                  time the arithmetic is worth stating, because the block would have FITTED
+    //                  without a raise: the payload was 131.8K of 138K, and 6.2K of calibration
+    //                  lands at 137.9K with 339 B to spare. Squeezing it into the existing headroom
+    //                  is exactly what this gate's own rule forbids — a block gets its own reserved
+    //                  sub-budget so that its bytes cannot be spent by anything else, and so that
+    //                  nothing else's bytes can be spent by it.
     const BUD = {
       cells: 65 * 1024, meta: 19 * 1024, order: 43 * 1024,
-      baseline: 12 * 1024, solver: 3 * 1024, skill: 1 * 1024, evCut: 2 * 1024, total: 138 * 1024,
+      baseline: 12 * 1024, solver: 3 * 1024, skill: 1 * 1024, evCut: 2 * 1024,
+      calibration: 7 * 1024, total: 145 * 1024,
     };
     // the pre-raise 120K and 13K, still binding — every reserved block subtracted, none of them granted
-    const CORE_BUDGET = BUD.total - BUD.baseline - BUD.solver - BUD.skill - BUD.evCut;
+    const CORE_BUDGET = BUD.total - BUD.baseline - BUD.solver - BUD.skill - BUD.evCut - BUD.calibration;
     const META_CORE_BUDGET = BUD.meta - BUD.solver - BUD.skill - BUD.evCut;
-    const core = sizes.total - sizes.baseline - sizes.solver - sizes.skill - sizes.evCut;
+    const core = sizes.total - sizes.baseline - sizes.solver - sizes.skill - sizes.evCut - sizes.calibration;
     const metaCore = sizes.meta - sizes.solver - sizes.skill - sizes.evCut;
     const ok = sizes.cells <= BUD.cells && sizes.meta <= BUD.meta
       && sizes.order <= BUD.order && sizes.baseline <= BUD.baseline
       && sizes.solver <= BUD.solver && sizes.skill <= BUD.skill && sizes.evCut <= BUD.evCut
+      && sizes.calibration <= BUD.calibration
       && metaCore <= META_CORE_BUDGET
       && core <= CORE_BUDGET && sizes.total <= BUD.total;
     G('D6', ok, `cells ${(sizes.cells / 1024).toFixed(1)}K/${BUD.cells / 1024}K · ` +
@@ -272,10 +307,12 @@ export function build(ctx) {
       `solver constants ${(sizes.solver / 1024).toFixed(1)}K/${BUD.solver / 1024}K · ` +
       `skill axis ${(sizes.skill / 1024).toFixed(1)}K/${BUD.skill / 1024}K · ` +
       `EV band ${(sizes.evCut / 1024).toFixed(1)}K/${BUD.evCut / 1024}K · ` +
+      `calibration ${(sizes.calibration / 1024).toFixed(1)}K/${BUD.calibration / 1024}K · ` +
       `total ${(sizes.total / 1024).toFixed(1)}K/${BUD.total / 1024}K ` +
       `(of which core ${(core / 1024).toFixed(1)}K/${CORE_BUDGET / 1024}K — the baseline block's ` +
       `${BUD.baseline / 1024}K, the solver block's ${BUD.solver / 1024}K, the skill block's ` +
-      `${BUD.skill / 1024}K and the EV band's ${BUD.evCut / 1024}K are reserved for them ` +
+      `${BUD.skill / 1024}K, the EV band's ${BUD.evCut / 1024}K and the calibration verdict's ` +
+      `${BUD.calibration / 1024}K are reserved for them ` +
       `and grant no other block headroom, which is what the two core readings prove; ` +
       `pretty-printed ${(Buffer.byteLength(JSON.stringify(model, null, 1)) / 1024).toFixed(1)}K). ` +
       `BINDING ON THE LITE ARTIFACT (§5.3): model.json is shared, and lite is the constraining consumer`);

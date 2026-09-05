@@ -320,7 +320,7 @@ catch (e) {
 
    Skipped under --no-minify, where none of these numbers means what the budgets were calibrated
    against. */
-const BLOCKS = ['gto', 'ev', 'skill'];
+const BLOCKS = ['gto', 'ev', 'skill', 'topn', 'calib'];
 const blockBytesBy = {};
 let blockBytes = 0;
 if (!NO_MINIFY) {

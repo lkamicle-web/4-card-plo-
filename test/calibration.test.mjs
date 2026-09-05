@@ -2,7 +2,9 @@
 //
 // The calibration harness — I46's plumbing (V3-PLAN §3.1 lane C, §3.5, §7.2).
 //
-// I46 IS PARKED. S-C failed, so `evaluatePrimacy` on the shipped state returns FAIL and there is no
+// I46's VERDICT IS FAIL BY CONSTRUCTION (the GATE went live at P5 — scripts/gates/calibration.mjs —
+// and is green on that FAIL; the two are not the same statement).
+// S-C failed, so `evaluatePrimacy` on the shipped state returns FAIL and there is no
 // corpus that could make it do otherwise. That makes the obvious test — "the verdict is fail" —
 // nearly worthless on its own: a function that returns 'fail' unconditionally passes it, and such a
 // function would ALSO fail the day a real corpus arrived, which is the one moment the harness has
@@ -78,11 +80,23 @@ const statusOf = (ev, id) => ev.criteria.find((c) => c.id === id).status;
 // ---------------------------------------------------------------------------
 // 1. the bar itself
 // ---------------------------------------------------------------------------
-test('I46 is still parked, and the harness refuses to load if it is not', () => {
+test('I46 is LIVE at P5, its verdict is still unpassable, and the harness refuses to load without the bar', () => {
+  // Until P5 this read `status === 'parked'` and the harness threw on import if it was not — the
+  // guard that stopped the gate being promoted as a side effect of somebody importing this file.
+  // P5 IS the promotion ceremony, so what is asserted now is the pair the ceremony had to keep
+  // apart: the GATE is live (scripts/gates/calibration.mjs runs it on every verify), and the
+  // VERDICT is still FAIL by construction with its whole reason attached. Nothing in the bar moved,
+  // and the digest below is the copy of that claim which cannot be argued with.
   const e = CATALOG.find((x) => x.id === 'I46');
-  assert.equal(e.status, 'parked');
-  assert.equal(e.unpassable, true);
+  assert.equal(e.status, 'live');
+  assert.equal(e.verdictUnpassable, true);
   assert.deepEqual([...e.blockedBy], ['PC-1', 'PC-2', 'PC-3']);
+  assert.equal(e.criteria, 'I46_CRITERIA');
+  assert.equal(C.CRITERIA_DIGEST, '58a70f0cb95a44ed', 'the pre-registered bar moved');
+  // and the import-time guard still refuses a catalog with no I46 entry to quote thresholds from
+  const src = readFileSync(resolve(ROOT, 'scripts/lib/calibration.mjs'), 'utf8');
+  assert.ok(src.includes("CATALOG.find((e) => e.id === 'I46')"),
+    'the harness no longer checks that the bar it quotes has a catalog entry');
 });
 
 test('every threshold in the harness is a QUOTATION from the pre-registered criteria', () => {
@@ -424,7 +438,10 @@ test('buildCalibrationBlock ships the FAIL as loudly as a pass — the REPORTING
   assert.match(block.corpus.reason, /no lawful, hero-visible, assigned/);
   assert.match(block.limitation, /unfalsified against money/);
   assert.match(block.successor, /prospective randomised A\/B test/);
-  assert.match(block.gate, /I46 \(parked\)/);
+  assert.match(block.gate, /I46 \(live at P5\)/);
+  // the sentence must keep saying WHY it is green, or the promotion reads as the bar passing
+  assert.match(block.gate, /NOT because the verdict passed/);
+  assert.match(block.gate, /FAIL by construction/);
   assert.equal(block.selfPlay.moneyValidated, false);
   assert.equal(block.selfPlay.unit, 'potFrac');
   assert.ok(Object.isFrozen(block));

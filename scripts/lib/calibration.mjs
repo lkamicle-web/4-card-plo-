@@ -17,13 +17,22 @@
 //   (3) the primacy verdict computed ONLY from the
 //       Phase-0 pre-registered criteria             -> `evaluatePrimacy`
 //
-// I46 IS PARKED, AND THIS FILE DOES NOT UNPARK IT. S-C failed: no lawful, hero-visible, assigned
-// 4-card PLO corpus exists at any volume, so PC-1, PC-2 and PC-3 cannot be evaluated, and PC-0 is
-// failure-closed — a criterion that cannot be evaluated counts as FAIL. `evaluatePrimacy` with no
-// corpus therefore returns `fail`, naming which criteria could not be reached and why. That is not
-// the harness giving up; it is the harness returning the correct answer to the question as asked.
-// `scripts/gates/reserved.mjs` keeps I46's status at `parked` and nothing here changes it,
-// because promoting a gate to a form that passes is how a bar gets lowered.
+// THE VERDICT IS FAIL BY CONSTRUCTION, AND AT P5 THE GATE WENT LIVE ANYWAY. Those are two
+// statements about two different things and this file is where the difference is easiest to lose.
+// S-C failed: no lawful, hero-visible, assigned 4-card PLO corpus exists at any volume, so PC-1,
+// PC-2 and PC-3 cannot be evaluated, and PC-0 is failure-closed — a criterion that cannot be
+// evaluated counts as FAIL. `evaluatePrimacy` with no corpus therefore returns `fail`, naming which
+// criteria could not be reached and why. That is not the harness giving up; it is the harness
+// returning the correct answer to the question as asked.
+//
+// What changed at P5 is the GATE, not the ANSWER. `scripts/gates/calibration.mjs` runs I46 on every
+// `verify.mjs` and passes — on an honest FAIL, because what it asserts is that the verdict was
+// computed from the pre-registered bar and from nothing else, that the failure-closed rule refuses
+// a fabricated 'pass', and that the FAIL is shipped and rendered as loudly as a pass would have
+// been (the criteria's own REPORTING DUTY). NOTHING IN `I46_CRITERIA` MOVED, and nothing may: the
+// text is byte-compared against docs/spikes/S-C.md and its digest is asserted in the gate. A gate
+// that passes on a FAIL is not a gate written to pass; a gate narrowed until the FAIL disappeared
+// would have been, and that is the thing this file still refuses to build.
 //
 // THE ONE FAILURE MODE THIS LANE COULD CREATE, AND THE GUARD AGAINST IT. A calibration harness's
 // characteristic bug is a plausible-looking number reaching the verdict: a synthetic fixture
@@ -35,29 +44,31 @@
 //     provenance record at all — the shipped fixture is stamped synthetic on purpose
 //   * PC-4 refuses any statistic not stamped `unit: 'bb/100'`, which the self-play run never is
 //
-// NO GATE IS ADDED BY THIS LANE, ON PURPOSE. §7.2 names exactly one id for calibration and it is
-// I46, which B0 step 4 recorded as `parked` — unpassable by construction, for written-down reasons.
-// Promoting it now would take one of two forms and both are forbidden: evaluated honestly it
-// FAILS, so `verify.mjs` would exit non-zero and the build would not be green; narrowed to the
-// clauses that can pass today it would be a gate written to pass, which is the post-hoc
-// bar-lowering §5.4 exists to prevent. Inventing a fresh id instead would defeat the point of
-// reserving ids at Phase 0. So the harness is bounded by `test/calibration.test.mjs` and
-// `test/calibration-hh.test.mjs` — `node --test` is one of the three GREEN checks, and P0 set the
-// precedent itself: `test/gates-reserved.test.mjs` pins the catalog boundary with no gate at all.
+// NO GATE WAS ADDED BY THE P1 LANE, ON PURPOSE, AND P5 ADDED EXACTLY THE ONE §7.2 NAMES. The lane
+// that wrote this file argued that promoting I46 could only take one of two forms and both were
+// forbidden: evaluated honestly it FAILS, so `verify.mjs` would exit non-zero; narrowed to the
+// clauses that pass today it would be a gate written to pass. THE THIRD FORM IS WHAT P5 BUILT, and
+// the lane's own dichotomy is the thing it corrects: the gate does not assert that the verdict is
+// 'pass', it asserts that the verdict is WHAT THE BAR SAYS IT IS — which is FAIL — and that every
+// route to 'pass' is refused. So the exit code is 0 and no clause was narrowed. Inventing a fresh
+// id was never on the table; §7.2 names exactly one and it is I46.
 //
-// WHAT P5's PROMOTION LOOKS LIKE, so the parking is a pause and not a dead end:
+// P5's PROMOTION, AS BUILT (the recipe this file used to carry as a plan, kept as a record):
 //
-//   1. `scripts/gates/reserved.mjs`  flip I46 `status: 'parked'` -> 'live', drop `unpassable`
-//   2. `scripts/gates/index.mjs`     add a `calibration` family to REGISTRY and 'I46' to EXPECTED_IDS
-//   3. `scripts/gates/calibration.mjs` (new) asserting, in this order:
-//        (a) `harnessSelfCheck(model).ok` — clause (1), reproducibility
-//        (b) `evaluatePrimacy(...).verdict === model.calibration.verdict` — the verdict in the
-//            shipped data was computed HERE and nowhere else
-//        (c) `model.calibration.criteriaDigest === CRITERIA_DIGEST` — the bar that was evaluated
-//            is the bar that was pre-registered
-//        (d) every `calibration.disputed` entry renders in the Method view (the grep-gate idiom)
-//      and the import-time guard in `assertThresholdsArePreRegistered` stops step 3 from landing
-//      without step 1.
+//   1. `scripts/gates/reserved.mjs`  I46 `status: 'parked'` -> 'live'; `unpassable` renamed
+//      `verdictUnpassable` and KEPT, with blockedBy/blockedReason/consequence, because what is
+//      unpassable is the verdict rather than the gate
+//   2. `scripts/gates/index.mjs`     a `calibration` family in REGISTRY and 'I46' in EXPECTED_IDS,
+//      appended last so 61 stays a strict prefix of 62
+//   3. `scripts/gates/calibration.mjs` (new), six clauses (a)-(f) — reproducibility; the block
+//      REBUILT and digest-compared so the shipped verdict was computed by the gate's own call;
+//      the bar byte-equal and digest-equal to the pre-registration; the failure-closed rule ARMED
+//      against a fabricated 'pass'; `disputed` empty WITH its reason and both rendered; and the
+//      self-play figure proven to be potFrac and to fail PC-4 by name
+//   4. `scripts/verify.mjs`          `stampCalibration(model)` after `stampConstants`, so the block
+//      is inside `meta.hash` and D6 measures it
+//
+// and the import-time guard below, rewritten in the same step rather than deleted.
 //
 // NO NEW CONSTANTS. PC-5's 0.20 bb/100 and PC-7's 2-SE agreement rule are READ OUT OF the
 // pre-registered criteria text and re-checked against it at import (`assertThresholdsArePreRegistered`),
@@ -116,10 +127,23 @@ function assertThresholdsArePreRegistered() {
         + 'carries that the bar does not is a new constant, not a quotation.');
     }
   }
-  const parked = CATALOG.find((e) => e.id === 'I46');
-  if (!parked || parked.status !== 'parked') {
-    throw new Error('calibration: I46 is no longer parked in scripts/gates/reserved.mjs. The '
-      + 'harness is written for a parked bar; promoting it is a P5 ceremony, not an import.');
+  /* THE SECOND HALF OF THE GUARD, REWRITTEN AT P5 RATHER THAN DROPPED.
+     Until P5 this read `status !== 'parked'` and threw, so that promoting the gate could not happen
+     as a side effect of an import. P5 IS that ceremony, and the promotion is real: the gate is live
+     (scripts/gates/calibration.mjs) and the VERDICT is still FAIL by construction. What the guard
+     protects now is the thing that could still be lost — the entry itself, and the written reason
+     the answer cannot be 'pass'. A catalog that stopped carrying either would leave this file's
+     thresholds quoting a bar with no record behind it, which is the pre-registration failing
+     silently rather than loudly. `verdictUnpassable` is deliberately NOT required here: the day a
+     conforming corpus exists that flag comes off and this harness must keep loading. */
+  const entry = CATALOG.find((e) => e.id === 'I46');
+  if (!entry) {
+    throw new Error('calibration: scripts/gates/reserved.mjs no longer carries an I46 entry. This '
+      + 'harness quotes its thresholds out of that entry\'s pre-registered bar; without the entry '
+      + 'the quotation has no source.');
+  }
+  if (entry.criteria !== 'I46_CRITERIA' || !entry.claim || !entry.fails) {
+    throw new Error('calibration: I46\'s catalog entry no longer names I46_CRITERIA as its bar.');
   }
 }
 assertThresholdsArePreRegistered();
@@ -608,8 +632,12 @@ export function buildCalibrationBlock(model, opts = {}) {
     successor: 'a prospective randomised A/B test on the marginal cells, run by a player against '
       + 'their own play — no corpus size fixes PC-3, because the EV of an action nobody took is '
       + 'not in the data. Out of scope for v3 (S-C §7.5).',
-    gate: 'I46 (parked): the bar is recorded at full strength and comes alive unchanged the day a '
-      + 'lawful, hero-visible, assigned corpus exists.',
+    gate: 'I46 (live at P5): green because the verdict was computed from the bar and from nothing '
+      + 'else, and because the failure-closed rule is armed — NOT because the verdict passed. The '
+      + 'verdict is FAIL by construction and stays that way until a lawful, hero-visible, assigned '
+      + 'corpus exists; the bar is recorded at full strength and comes alive unchanged that day. '
+      + 'The gate being green and the answer being FAIL are two statements about two different '
+      + 'things, and a reader who collapses them will read a promotion as a lowered bar.',
   });
 }
 

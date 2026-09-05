@@ -90,7 +90,15 @@ test('the layer badges every cell with evBadge’s own answer', () => {
 
 test('evPrimary is false on the shipped model and on every near-miss verdict', () => {
   assert.equal(P.evPrimary(MODEL), false);
-  assert.equal(MODEL.calibration, undefined, 'the shipped model carries a calibration block');
+  /* SINCE P5 THE SHIPPED MODEL DOES CARRY A CALIBRATION BLOCK, and the assertion is stronger for it.
+     This line used to read `assert.equal(MODEL.calibration, undefined)` — a true statement about a
+     model that had no verdict, and a statement V3-PLAN §3.5 then required to stop being true: the
+     verdict ships as data and renders in the Method view whatever it is. So the flag now fails on
+     VALUE rather than on absence, which is the case that was never exercised before. */
+  assert.ok(MODEL.calibration, 'the shipped model carries no calibration block (verify stampCalibration)');
+  assert.equal(MODEL.calibration.verdict, 'fail',
+    'the shipped verdict is not FAIL — EV primacy is a §5.1 re-freeze ceremony, not a stamp');
+  assert.equal(MODEL.calibration.criteriaDigest, '58a70f0cb95a44ed', 'the pre-registered bar moved');
   for (const v of ['fail', 'FAIL', 'Pass', 'passed', 'pass ', ' pass', '', 0, 1, true, null, undefined, {}]) {
     assert.equal(P.evPrimary({ calibration: { verdict: v } }), false, `accepted ${JSON.stringify(v)}`);
   }

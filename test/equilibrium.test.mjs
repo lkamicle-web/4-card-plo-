@@ -599,9 +599,12 @@ test('DECISION 11: the two model writers leave the six frozen keys byte-identica
   m2.baselineTiers = { rewritten: true };
   for (const k of FROZEN) assert.equal(JSON.stringify(m2[k]), snapshot[k], `${k} moved`);
 
-  // and the shipped model carries only the permitted additions beyond v2's key set
+  // and the shipped model carries only the permitted additions beyond v2's key set. `calibration`
+  // is P5's, added by a THIRD writer (verify.mjs's `stampCalibration`, on the `evCut` precedent:
+  // re-derived every run, never carried across a stamp) — and it is listed here for the same reason
+  // `baselineTiers` is, so a key nobody decided to add cannot appear quietly.
   assert.deepEqual(Object.keys(before).sort(),
-    ['bands', 'baselineTiers', 'benchmarks', 'cells', 'cols', 'constants', 'gates', 'meta', 'order', 'rows']);
+    ['bands', 'baselineTiers', 'benchmarks', 'calibration', 'cells', 'cols', 'constants', 'gates', 'meta', 'order', 'rows']);
 });
 
 test('DECISION 11: stampConstants is idempotent and authoritative about the solver block', () => {

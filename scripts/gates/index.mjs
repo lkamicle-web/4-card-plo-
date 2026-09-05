@@ -40,6 +40,8 @@ import * as variants from './variants.mjs';
 import * as baseline from './baseline.mjs';
 import * as skill from './skill.mjs';
 import * as ev from './ev.mjs';
+import * as subcell from './subcell.mjs';
+import * as calibration from './calibration.mjs';
 import { CATALOG } from './reserved.mjs';
 
 export const REGISTRY = [
@@ -58,10 +60,12 @@ export const REGISTRY = [
   baseline,      // I36 D9                     the P3 equilibrium baseline, off its own artifacts
   skill,         // I38 I37                    the P4 pool-skill axis and the divergence along it
   ev,            // I34 I39 I40                the P4 absolute-EV cut and its quarantine
+  subcell,       // I47                        the P5 sub-cell top-N, and §2.4's autopsy
+  calibration,   // I46                        the P5 primacy verdict, against the phase-0 bar
 ];
 
 /**
- * The frozen report order — 52 gates, D3 and I17 retired with the sub-bucket layer.
+ * The frozen report order — 62 gates, D3 and I17 retired with the sub-bucket layer.
  *
  * P1 lane I appends D10 and D11 at the END of the sequence rather than beside D6/D7 where their
  * family would otherwise sort. Deliberate: the note below says the report order is a thing
@@ -125,6 +129,26 @@ export const EXPECTED_IDS = [
   // family because it is the other half of the same phase and the later of the two to land; within
   // the family the order is the catalog's own — quarantine, arithmetic, behaviour.
   'I34', 'I39', 'I40',
+  // P5 item 10 (V3-PLAN §4's item table, §7.2's I47 row). APPENDED, for the seventh time and the
+  // same reason: 60 stays a strict prefix of 61, so the P4 report diffs against this one as one
+  // added row rather than as a re-ordering. It sits last of all because it is the only family that
+  // asserts against the SHELL SOURCE as a running program — it slices `@subcell` out of
+  // src/shell.html and evaluates it — so, like the variants and baseline families before it, its
+  // input is produced by a step outside the runner.
+  'I47',
+  // P5's calibration verdict (V3-PLAN §3.5, §5.4, §7.2's I46 row). APPENDED, for the eighth time
+  // and the same reason: 61 stays a strict prefix of 62, so the report the last phase left diffs
+  // against this one as one added row rather than as a re-ordering. It sits last because it is the
+  // only family that asserts on a payload THIS RUN stamped — `stampCalibration` writes
+  // `model.calibration` in the CLI a few lines before the gates start, and I46 rebuilds that block
+  // and digest-compares it, so its input is produced by a step outside the registry exactly as the
+  // variants, baseline and subcell families' inputs are.
+  //
+  // PROMOTED FROM `parked`, AND THE PROMOTION IS NOT A LOWERED BAR. I46's VERDICT is still FAIL by
+  // construction — see scripts/gates/reserved.mjs's header on `verdictUnpassable` — and the gate
+  // is green because it asserts the verdict AGREES WITH THE PRE-REGISTERED BAR, which on today's
+  // data means FAIL. Nothing in I46_CRITERIA moved; the gate refuses a fabricated 'pass'.
+  'I46',
 ];
 
 // Import-time consistency: what the families DECLARE must equal the frozen list. This is the

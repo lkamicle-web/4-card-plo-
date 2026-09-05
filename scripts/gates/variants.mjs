@@ -238,6 +238,18 @@ export function build(ctx) {
       if (!text.includes(spec.claim)) {
         problems.push(`${rel(path)} does not carry the ${v} claim sentence`);
       }
+      /* (f) THE ON-SCREEN COPY (P5, §5.2/§5.3 and METHODOLOGY §0). Clause (b) is satisfied by the
+         banner alone, and a claim only a `head -6` reader ever sees is not a claim the page makes:
+         §5.3 asks for the sentence ON SCREEN, and this is the clause the comment above (b) promised
+         would arm itself the day it landed in the shell. It did, at P5 — Method -> What this is
+         renders `ARTIFACT.claim`, which the variant seam supplies because model.json is shared and
+         cannot carry a per-variant string. Asserted as an occurrence AFTER the banner ends, which
+         is the cheapest statement that a second copy exists somewhere the reader can reach. */
+      const bEnd = text.indexOf('-->');
+      if (bEnd >= 0 && !text.slice(bEnd).includes(spec.claim)) {
+        problems.push(`${rel(path)} carries the ${v} claim ONLY in its provenance banner — `
+          + 'the page has to make the claim on screen too (Method -> What this is)');
+      }
       for (const other of VARIANT_NAMES) {
         if (other === v) continue;
         if (text.includes(VARIANTS[other].claim)) {
@@ -261,6 +273,50 @@ export function build(ctx) {
       notes.push(`${v} ${rel(path)}`);
     }
 
+    /* (e) THE DOCUMENT SIDE, byte-compared (P5). The three copies of each sentence — manifest,
+       banner, screen — are held together by (b) and (f); this is the fourth, and it is the one that
+       rots silently, because a document does not fail to build. METHODOLOGY §0 quotes both claims
+       and says which artifact carries which, so the grep-gate idiom `gates/couplings.mjs` uses for
+       limitations 16/17 applies here unchanged: the shipped string must appear VERBATIM inside the
+       section that claims to quote it, whitespace-normalised and nothing else normalised.
+       SCOPED TO §0's OWN SLICE, for the reason the P1 red team established on the limitations
+       register — a sentence found somewhere else in a 3,500-line document is not a sentence §0
+       carries. Blockquote markers are stripped before flattening so the quotes can stay hard-
+       wrapped like the rest of the file. Each artifact's FILENAME must be inside the same slice
+       too: two sentences a reader cannot attribute to a file are not a per-variant claim. */
+    /* `opts.methodologyText` is this clause's injection seam, in the idiom `opts.artifacts` and
+       `opts.shellText` already use above: a clause whose only input is a 3,500-line file on disk
+       cannot be shown to FAIL, and a gate nobody has watched fail is a gate nobody knows the shape
+       of. test/gates-variants.test.mjs drives every branch below through it. */
+    let docText = opts.methodologyText != null ? opts.methodologyText : null;
+    if (docText === null) {
+      try { docText = readFileSync(resolve(ROOT, 'docs/METHODOLOGY.md'), 'utf8'); } catch (err) {
+        problems.push('docs/METHODOLOGY.md is unreadable, so the per-variant claims cannot be '
+          + `checked against the document that quotes them: ${err.message}`);
+      }
+    }
+    if (docText !== null) {
+      const h = /^## 0\. /m.exec(docText);
+      if (!h) problems.push('docs/METHODOLOGY.md has no §0 honesty statement to carry the claims');
+      else {
+        const after = docText.slice(h.index + h[0].length);
+        const nx = /^## /m.exec(after);
+        const sec0 = nx ? after.slice(0, nx.index) : after;
+        const flat = (t) => t.replace(/^[ \t]*>[ \t]?/gm, ' ').replace(/\s+/g, ' ');
+        const flatSec = flat(sec0);
+        for (const v of VARIANT_NAMES) {
+          if (flatSec.indexOf(flat(VARIANTS[v].claim)) < 0) {
+            problems.push(`METHODOLOGY §0 does not quote the ${v} claim verbatim — the manifest and `
+              + 'the document have drifted; fix BOTH, never one');
+          }
+          if (flatSec.indexOf(VARIANTS[v].out) < 0) {
+            problems.push(`METHODOLOGY §0 quotes claims but never names ${VARIANTS[v].out}, so a `
+              + 'reader cannot tell which artifact makes which');
+          }
+        }
+      }
+    }
+
     /* (d) The variants that did NOT ship an artifact are named, so "1 of 2 checked" can never be
        mistaken for "2 of 2 checked". */
     const absent = VARIANT_NAMES.filter((v) => !names.includes(v));
@@ -268,9 +324,13 @@ export function build(ctx) {
     G('D11', ok, ok
       ? `${names.length}/${VARIANT_NAMES.length} artifacts present [${notes.join(', ')}]`
         + (absent.length ? ` · not built: ${absent.join(', ')}` : '')
-        + ` · each stamps its own variant, carries its own honesty sentence and no other's, and `
-        + `matches src/shell.html ${shellHash}… . The byte comparison itself is the per-variant `
-        + '`node scripts/build.mjs --check` loop, which is part of the GREEN definition.'
+        + ` · each stamps its own variant, carries its own honesty sentence and no other's — in `
+        + 'its banner AND on screen (f) — and '
+        + `matches src/shell.html ${shellHash}… . METHODOLOGY §0 quotes both sentences verbatim and `
+        + 'names both artifacts (e), so the manifest, the two banners, the two pages and the '
+        + 'document are one string apiece with gates between them. The byte comparison itself is '
+        + 'the per-variant `node scripts/build.mjs --check` loop, which is part of the GREEN '
+        + 'definition.'
       : problems.join(' · '));
     } },
     ],

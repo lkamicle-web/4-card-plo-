@@ -13,7 +13,8 @@
 //        idiom that catches memo poisoning), with an OBJECT-IDENTITY clause rather than a tolerance
 //        — so a shaky EV number is structurally unable to move a tier — that the badge derives from
 //        the accessor's own data, and that the EV-primary path exists, is real, and is unreachable
-//        without `model.calibration.verdict === 'pass'`.
+//        without `model.calibration.verdict === 'pass'` — which since P5 is a block that
+//        EXISTS on the shipped model and reads 'fail' (gate I46), rather than an absent one.
 //
 //   I39  the ARITHMETIC. That EV(fold) = 0 by construction, that rake enters through the exact
 //        I31(c) machinery and nowhere else, that the sign at vs-3-bet IS the breakeven comparison
@@ -277,9 +278,27 @@ export function build(ctx) {
     // once and they pull against each other: the flag must read FALSE on the shipped model, and the
     // path behind it must EXIST — a branch nobody can enter and nobody has written is not a gated
     // feature, it is a comment.
+    //
+    // REWRITTEN AT P5, AND STRICTLY STRONGER THAN WHAT IT REPLACED. This clause used to read
+    // `model.calibration != null -> bad`: correct while no verdict existed, and it would now fire on
+    // the very thing V3-PLAN §3.5 requires P5 to ship. The assertion it becomes is the one that was
+    // always meant — the model must carry a verdict AND that verdict must not be 'pass' — which is a
+    // tighter statement than "no block at all", because ABSENCE STOPPED BEING AVAILABLE AS EVIDENCE
+    // the moment a block had to exist. I46 is the gate on whether the verdict agrees with the
+    // pre-registered bar; what this clause keeps, in the EV family where it belongs, is that the EV
+    // layer READS that verdict and stays out of the tiers.
     {
       if (P.evPrimary(model) !== false) bad.push('(d) evPrimary is true on the shipped model');
-      if (model.calibration != null) bad.push('(d) the shipped model carries a calibration block — only P5 may stamp one');
+      if (model.calibration == null) {
+        bad.push('(d) the shipped model carries no calibration block — V3-PLAN §3.5 requires the '
+          + 'verdict to ship as data whatever it is (scripts/verify.mjs, stampCalibration)');
+      } else if (model.calibration.verdict === 'pass') {
+        bad.push('(d) the shipped calibration verdict is \'pass\' — EV primacy would be live, and '
+          + 'flipping it is the §5.1 re-freeze ceremony rather than a stamp');
+      } else if (model.calibration.verdict !== 'fail') {
+        bad.push(`(d) the shipped verdict is ${JSON.stringify(model.calibration.verdict)}, which is `
+          + 'neither pass nor fail — PC-0 admits no third answer');
+      }
       for (const v of ['fail', 'FAIL', 'pass ', 'Pass', '', null, undefined, 1, true]) {
         if (P.evPrimary({ calibration: { verdict: v } }) !== false) bad.push(`(d) evPrimary accepted verdict ${JSON.stringify(v)}`);
       }
@@ -335,10 +354,14 @@ export function build(ctx) {
       + `EV read, and evCut consuming the memoised solve rather than a copy over ${layers} cell `
       + `readings. Armed against a wrapper that mutates a memoised cell. (c) the badge is `
       + `evBadge(source, se, supported)'s answer on every cell and moves when any one of the three `
-      + `moves. (d) evPrimary is FALSE on the shipped model (no calibration block exists, and only `
-      + `the P5 ceremony may stamp one), rejects every near-miss verdict, and the path behind it is `
-      + `REAL: a fabricated distinct-hash twin with verdict 'pass' throws without a payoff, cuts `
-      + `different tiers with one, and never aliases the shipped model's memo`
+      + `moves. (d) evPrimary is FALSE on the shipped model — and since P5 that is a STRONGER reading `
+      + `than it was rather than a weaker one: the model DOES carry a calibration block now and its `
+      + `verdict is ${JSON.stringify(model.calibration && model.calibration.verdict)}, so the flag `
+      + `fails on VALUE where it used to fail on absence (I46 is the gate on whether that verdict `
+      + `agrees with the pre-registered bar; this clause is the EV layer's half — that the flag is `
+      + `READ and the tiers stay out of reach). It rejects every near-miss verdict, and the path `
+      + `behind it is REAL: a fabricated distinct-hash twin with verdict 'pass' throws without a `
+      + `payoff, cuts different tiers with one, and never aliases the shipped model's memo`
       + (bad.length ? ` — ${bad.length} problems, first: ${bad[0]}` : ''));
     } },
 

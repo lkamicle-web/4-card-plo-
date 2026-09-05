@@ -1193,6 +1193,45 @@ thesis against money, and "EV beats score" itself.
 > *prospective randomised A/B test on the marginal cells*, run by a player against their own play,
 > and it is out of scope for v3.
 
+> **Measured (P5) — the phase-0 prediction held in every particular, and one thing this section did
+> not anticipate had to be decided.** The verdict is **FAIL**, computed from PC-0..PC-8 and from
+> nothing else, and it is **stamped** rather than merely reported: `scripts/verify.mjs` writes
+> `model.calibration` on every run (`stampCalibration`, immediately after `stampConstants`, on the
+> `constants.evCut` precedent — re-derived every time, never carried across, because a verdict that
+> survives a stamp is a verdict that can go stale while the EV surface under it is regenerated).
+> 7 of 8 criteria come back `unevaluable` — PC-1..PC-7 — and PC-0 counts each as a FAIL. **PC-8
+> passes**, 890 of 987 transposed cell pairs beyond 2·se.cell, which is the one figure the bar can
+> produce without a corpus. `disputed` ships **empty with its reason**, and the prediction §7.2
+> attached to this gate — *fitted q ≠ 0.85* — is therefore **UNTESTED**: neither falsified nor
+> confirmed, a third outcome the plan had no slot for.
+>
+> **THE ONE DECISION THIS SECTION LEFT OPEN was what "stamp nothing" means.** The step's instruction
+> and §5.4's "score-primary becomes permanent" are satisfied by stamping no *pass* and touching no
+> fixture; they are NOT satisfied by shipping no block, because this section's own S-C annotation
+> requires PC-0..PC-8 "stored as shipped data and rendered by the Method view so the reason is *on
+> screen* rather than in a doc", and METHODOLOGY limitation 18 says the same in its own words. So
+> the FAIL ships, loudly, and the Method view renders every row of it from a `@block:calib` region
+> capped at 6 KB. **AND GATE I46 WENT LIVE ON A FAILING VERDICT** — see §7.2's P5 annotation for why
+> that is not a lowered bar. Items 10 and 11 landed in their own steps (10 shipped behind I47, 11
+> cut on two measurements — METHODOLOGY limitation 19), the P1–P4 allowances were re-measured in a
+> third, and **§5.1's re-freeze ceremony was not exercised**: `freeze-tiers.mjs --force` was not run,
+> and I22, I32 and the v3 default fixture all still reproduce byte-for-byte.
+>
+> **THE LAST STEP — the METHODOLOGY final rewrite — closed all three of the things this line
+> promised, and found one more.** §0's honesty statement is now per variant, with both sentences
+> quoted verbatim and D11 clauses (e)/(f) holding the document, the two banners and the two pages to
+> one manifest (§5.2's P5 annotation has the wording and the reasoning). §0 also gained the
+> paragraph the *first* sentence has owed since P3: the model carries a solved object now, so "not a
+> GTO solver" is stated with its scope — heads-up only, over a checkdown payoff, cutting no tiers
+> while I34's quarantine and limitation 18 stand. Limitations 16 and 17 were confirmed present,
+> shipped as `constants.limitations[0..1].note`, byte-compared against this document by I41/I42 and
+> rendered by the Method view's constants table; limitation 18 renders from `model.calibration`
+> itself. §6's table was audited row by row against the shipped model (the audit block under §6).
+> **The one thing this step did not expect to find was more staleness of the kind P1 already
+> fixed** — four count lines, three of them refreshed at P1 or earlier and stale again, and a fifth
+> item of a second kind: two stale byte quotes in `variant.mjs`'s `budgetSource`, falsified by this
+> step's own 1.0K of core. All are recorded under §10 rather than quietly repaired.
+
 ### 3.6 The Grade B program — the pre-written degraded v3
 
 So that a failed spike cancels one track and never stalls or re-plans the program:
@@ -1254,6 +1293,29 @@ forbids.
 | 17 FF/Safari | P1-I | exactly METHODOLOGY §10.15's three named facts |
 | 18 Playwright/smoke | P0 (S-E) → P1-I | smoke gates every phase thereafter |
 
+> **Measured (P5) — item 11's cut-line is reached and THE CUT IS TAKEN.** Both reasons bite, both
+> are recorded verbatim in METHODOLOGY §10 as limitation 19, and nothing was built: no S3b stage,
+> no gate I45, no field in the payload. **Reason (i), measured after item 5's additions:** D6 has
+> **2,917 B** free in `cells`, **4,117 B** on the `core` reading that still faces the pre-raise
+> 120 KB, and **6,360 B** in `total` — item 10 spent none of it, being browser-enumerated. The
+> smallest payload an S3b stage could ship is one `eqVs3bet`-shaped field per live cell measured
+> three-way, **6,530 B** over 123 cells, which overruns `cells` by 3,613 B, `core` by 2,413 B and
+> the whole model's remaining budget by 170 B; the caller-resolved version it is named for costs
+> 13,060 B at L ∈ {1, 2} and 19,590 B at L ∈ {1, 2, 3}. The reserved-raise idiom does not rescue it
+> — these are per-cell measured data belonging in `cells`, the one block that has no reserved
+> sub-budget because it IS the core, and hoisting them to a top-level block purely to qualify for a
+> raise is D9's own ruling in reverse ("choosing a precision to fit a rule is choosing the answer").
+> **Reason (ii), inspected on the shipped baseline:** the solved tree IS the 3-bet pot — five nodes
+> over the 3/9/27/81 bb ladder, `n2` the 3-bet, `n3` the 4-bet decision — so the half of item 11 the
+> solver reaches it reaches as an equilibrium rather than an authored range. The multiway half is
+> not reached and the deferral is measured, not scheduled: `coverage` is **3 of 24 (pos, node)
+> rows** (the `3bet` row 1 of 6), all 21 others reading "baseline is HU", and `SIXMAX`'s re-opening
+> rule fails leg (ii) structurally — `multiwayProbe` returns supported on **0 of 144** requests,
+> the six shares miss 1 by up to **0.445**, hero's share is bit-identical across disjoint sets. So
+> S3b would author a multiway scoring layer for the node whose multiway payoff is measured absent,
+> and would ship a node with neither a vs-GTO nor an EV column in the release whose thesis is those
+> two modes. **It moves to v3.1 with solver results in hand**, per this row's own instruction.
+
 ---
 
 ## 5. The mandatory decisions
@@ -1287,6 +1349,18 @@ into METHODOLOGY — alongside, not replacing, the v2 fixture. The EV-primacy fl
 happens, is likewise a constants change and passes through this same ceremony with its own
 committed diff (§5.4).
 
+> **Measured (P5) — THE CEREMONY WAS NOT EXERCISED, AND THAT IS A RECORDED OUTCOME RATHER THAN a
+> step nobody got to.** The retirement trigger this section pre-wrote is "when calibration falsifies
+> a default constant". Calibration falsified nothing, because it could not run: the verdict is FAIL
+> by construction (§3.5, §5.4), so no constant was falsified, `scripts/freeze-tiers.mjs --force` was
+> **not run at any point in P5**, and **I22 and I32 both stay**. The evidence is three `--check`
+> runs against the model as it stands, all three reproducing: I22 1,386 settings × 123 cells, I32
+> 16,632 × 123, and the v3 default fixture 16,632 × 123. The EV-primacy flip this section names as
+> passing through the same ceremony likewise did not happen — `evPrimary` is false on the shipped
+> model, and it is now false on a VALUE rather than on an absence, because the model does carry a
+> `calibration` block and its verdict reads `fail`. That is a stronger statement than P4 could make,
+> and I34(d) was rewritten to make it rather than left asserting that no block exists.
+
 ### 5.2 Brief §5.9 — lite keeps Simulate
 
 **Decision: yes.** Simulate is already offline, zero-runtime-dependency, and file://-safe in Web
@@ -1304,6 +1378,28 @@ fixes + the tier-level vs-GTO colour mode (§5.3); full = lite + solver detail /
 skill axis + toolchain-built extras.* D8 and `model.order` stay unconditional across variants;
 METHODOLOGY §9.11's honest-claim sentence is rewritten per variant and grep-gated so each
 artifact carries only its own claim (D11).
+
+> **Measured (P5) — the wording landed, and the sentence it replaced was already false.** The two
+> claims are now final in `scripts/lib/variant.mjs`, quoted verbatim in **METHODOLOGY §0** (not
+> §9.11 — an honesty statement belongs at the top of the document, and §9.11 keeps the mechanism
+> and the bytes), and rendered on screen in Method → *What this is*. The placeholder said lite
+> carried *"nothing that needed a solver"*, which stopped being true at P3: **lite ships
+> `model.baselineTiers`, and those tiers ARE solver output** — the one shared-core addition §5.3
+> pays for by name. What lite does not carry is the strategies they were quantized from, so that is
+> what the shipped sentence says, and full's names the payload by path. **D11 gained two clauses**:
+> (f) the claim must appear OUTSIDE the provenance banner, because §5.3 asks for the sentence on
+> screen and clause (b) was satisfiable by a comment nobody reading the page sees; and (e) both
+> sentences must appear verbatim inside METHODOLOGY §0's own slice, on `gates/couplings.mjs`'s
+> limitations-register idiom (whitespace-normalised, scoped to the section, blockquote markers
+> stripped), so the document cannot drift from the artifacts. Six new failure-branch tests drive
+> both. **One structural fact is worth recording because it decided the design:** the sentence
+> cannot be read out of `model.json`, which is the SHARED artifact injected byte-identically into
+> both pages — a per-variant claim there would be the same claim twice, which is the exact failure
+> D11 exists to catch. It rides the `only`-block seam instead, and this is that seam's **first use
+> in the lite direction** (the census in `test/variant.test.mjs` goes 2 → 4 blocks). The whole doc
+> step cost **1.0 KB of `appCore`** (358.3 → 359.3 of 360) — the two variant blocks, the paragraph
+> that renders them, and the Known-weaknesses entries that now render limitations 16/17 out of
+> `constants.limitations` rather than retyping them — and **no ceiling moved**.
 
 ### 5.3 D6/D7 under the dual build — plus D9/D10/D11
 
@@ -1473,6 +1569,19 @@ METHODOLOGY §10 limitation rendered in the Method view.
 > quarantine is what lets the EV surface be display-only and honest at the same time: it is not that
 > the EV numbers are good enough to be safe, it is that they cannot reach a tier at all.
 
+> **Measured (P5) — the verdict was stamped, and the flag now fails on a VALUE rather than on an
+> absence.** This section's S-C annotation predicted "`model.calibration.verdict` **can only be
+> stamped FAIL**", and that is what shipped: `stampCalibration` writes the block on every
+> `verify.mjs` run, `evPrimary(model)` is false because the verdict reads `fail`, and
+> **score-primary is permanent for v3**. The difference from P4 is small and load-bearing. At P4 the
+> flag failed because no `calibration` block existed at all, and I34(d) asserted exactly that
+> (`model.calibration != null -> bad`) — a correct assertion about a model with no verdict, and one
+> that would have FIRED on the very thing §3.5 requires P5 to ship. The clause was rewritten in the
+> same step, to the stronger statement that was always meant: the model must carry a verdict **and**
+> that verdict must not be `pass`. Absence stopped being available as evidence the moment a block
+> had to exist. §5.1's re-freeze ceremony is therefore not exercised for primacy, exactly as this
+> section anticipated, and the three fixtures reproduce byte-for-byte as the proof.
+
 ---
 
 ## 6. New constants and anchors
@@ -1496,9 +1605,9 @@ Per brief §2.1: anchored, or flagged unanchorable and gated. "Flagged" means na
 | Phase-0 spike success thresholds (§1: S-A's 0.25%-pot / 120 s / 1 GB, S-B's 2.5 / 5.0 band edges, S-C's 1M / 100 / 80 counts) | **pre-registered decision thresholds, fixed before any measurement exists** — deliberately set in the plan so the bar cannot move once results are in (the I46 pre-registration idiom applied to the spikes themselves). They are decision rules for spike verdicts, not shipped model constants: none enters `constants` or the model; each is recorded with its verdict in the spike memo. The S-B edges are the load-bearing pair, so the flag has teeth: S-B's memo must report, beside its p95, the two structural quantities the edges stand in for — the stub payoff's `se` at default trials and the smallest EV difference that moves a tier under I34's quarantine — so the blind edges are audited against measured scale in the same memo that grades against them, and a mismatch ships as a finding, never a re-drawn line |
 | sizing-axis defaults (item 9) | pot-size = the identity anchor; off-default thresholds are exact arithmetic on `breakeven(s)`; the 7-pt premium's sizing-dependence **cannot be anchored** — held constant, flagged "calibrated at pot", I44 measures the consequence |
 | `baselineQuant` (tier quantization step) | the payload bytes it buys, stated at D6's new sub-budget — **MEASURED AT P3: 0.01.** The table IS the anchor, over 369 tier readings on the shipped T100 solve: `0.05 → 4,589 B / 15 MIX cells`, `0.01 → 4,964 B / 20 MIX`, `0.001 → 5,357 B / 23 MIX`. The reading never *stops* moving — a CFR+ average strategy has a long tail of tiny weights and a fine enough step always resolves one more — so the step is chosen on what a TIER-LEVEL surface can render, which is arithmetic: at step q a cell reads MIX exactly when its off-argmax weight reaches q/2. 0.05 writes down as pure five cells mixing at 0.5–2.5 % (a vs-GTO surface would paint a disagreement the equilibrium does not make); 0.001 buys three cells mixing at 0.05–0.5 % for 393 B more, below what the surface can paint and below the solve's own two-seed spread. Re-derivable: `node scripts/generate-equilibrium.mjs --quant-table`. The block lands at **11.5 KB of D6's 12**. **REFUTED AS AN ANCHOR AT P3 — 6 refuters of 6 returned *unanchorable* (`docs/refutations/P3.md`), and the disposition is §6's own: FLAGGED, no replacement anchor invented.** The table is not what was refuted (every refuter re-derived it exactly); the claim that it *fixes the value* is. Nothing in GREEN ran it, so 0.02, 0.05 and 0.5 all regenerated with 55/55 gates, 591/591 tests and 2/2 variants current, the first bound that bit was D6's byte ceiling five orders of magnitude away, and the anchor's own prose could be fabricated and still reach the Method view. The constant now ships §6's three legs — `kind: 'estimate'` with `flag` in `data/equilibrium.json` and `quantFlag` in `model.baselineTiers` (named, and in the surface **lite** reads), the `UNANCHORED['baselineQuant']` badge in the Method view (labelled), and **gate I36 clause (e)** (bounded), which re-derives the table from the shipped strategies every run and refuses an unpriced step, a misquoted figure, or a block that is not that quantization. 0.05 and 0.001 remain priced rows and would still pass: which priced step to take is a judgment about what a tier-level surface can paint, and that judgment is what the badge is on |
-| `evPrimary` mechanism | `model.calibration.verdict`, anchored to I46 by construction — ships failing |
+| `evPrimary` mechanism | `model.calibration.verdict`, anchored to I46 by construction — ships failing. **STAMPED AT P5, AND STILL FAILING.** The block exists on the shipped model (`stampCalibration`, on the `constants.evCut` re-derive-every-run precedent), its verdict reads `fail` because 7 of 8 pre-registered criteria are unevaluable and PC-0 is failure-closed, and `evPrimary` is false on VALUE rather than on absence. **This row ships ZERO new constants**, which is the thing to check: the mechanism is a string comparison against a verdict computed from a bar that was fixed at Phase 0 |
 | per-build byte budgets (D9, full-page tripwire) | measured+5%, arithmetic — **SET AT P3 from the first real payload**: `eq` **73 KB** from a measured 70,704 B, `total` **634 KB** from a measured 618,127 B, both +5% rounded up to the whole KB. **REPAIRED AT P3's red-team stage: `total`'s measurement was stale and is now stated honestly (`docs/refutations/P3.md`).** It was taken before the vs-GTO block landed in the same phase; two refuters measured the artifact at 628,036 B and reconciled the 9,909 B gap to the byte against METHODOLOGY §9.11's own reading of the mode, so D9 printed a ceiling and a measurement that could not both be true. **Neither number was raised** — a fresh measured+5% would give 646 KB for `total` and 74 KB for `eq` — because a ceiling tighter than its own rule is the conservative direction; both rows now read as *held below* measured+5%, against the live readings `total` 629,312 B (614.6K, 3.2% under) and `eq` 71,249 B (69.6K, 4.9% under). `app` and `modelCode` are NOT re-measured: they are lite's numbers, because the application code is identical in both artifacts and a fresh measured+5% would hand the shared block 17 KB of headroom lite does not have (§3.3 adjudication 12) |
-| calibration tolerances | pre-registered at Phase 0 from S-C's power analysis |
+| calibration tolerances | pre-registered at Phase 0 from S-C's power analysis. **MEASURED (P5): still quotations, and still not constants.** PC-5's 0.20 bb/100, PC-7's 2-SE agreement rule and PC-8's 2×`meta.se.cell` are read back out of the pre-registered text at import time (`assertThresholdsArePreRegistered` greps `I46_CRITERIA` for each literal and refuses to load if one is absent), the 95% multiplier is *solved* from the normal CDF rather than typed, and PC-8's threshold is a shipped datum. **The two figures a refuter will ask about are the self-play run's `hands = 20,000` and `seed = 1`, and they are not constants either**: they are harness sampling parameters, carried in `model.calibration.selfPlay` as DATA, entering no score and anchoring nothing — the same standing as I34's stride or I36's quant table row count. Nothing in this row entered `constants` |
 
 > **Measured (phase 0).** *Five rows of this table are now measurements rather than promises, and
 > one flag's teeth bit.* **`solver exploitability target ε`.** The decision-relevant reading of "≤
@@ -1629,6 +1738,33 @@ Per brief §2.1: anchored, or flagged unanchorable and gated. "Flagged" means na
 > `BUD.total` is unpinned, so a raise to it silently grants `core` headroom no test objects to; and
 > I38(e)'s reach scan is lexical, so it bounds the shipped coefficient rather than the mechanism.
 
+
+> **Audited (P5) — the whole table, one line each, at the release boundary.** §3.5's last step is a
+> re-read of this section against the shipped model, and it found no missing constant and no
+> unbadged one. Every row, in order: **payoff estimator params** and **estimator stack-off knob** —
+> not exercised (Grade C ships no estimator), so no constant of theirs exists to anchor, which is
+> the honest outcome rather than an omission. **ε / iteration cap / tree** — `constants.solver`
+> (`epsilonBB` 5e-5, `iterCap` 2000, `sizingLadder` "3 / 9 / 27 / 81"), each carrying its own
+> `anchors` sub-block, rendered under the Method view's own `solver` provenance tag. **`rake.potBB(d)`**
+> — `constants.rake.potScale` + `rake.flag`, `UNANCHORED['rake.potScale']`, gate I41. **depth→width**
+> — no constant at all (`depth.widthRatio` ships the SPELLING of the ratio, not a coefficient), and
+> the allowances it forced were re-measured at P5 (§11.1 of METHODOLOGY). **skill fold-more half** —
+> `skill.vFloor` = 25 = the lattice floor, anchored by identity (I38(b)); **domain**
+> `skill.min`/`ref`/`max`, **interior blend**, and **plays-better coefficient** — all four flagged
+> in `constants.skill.flag`, all in `UNANCHORED`, bounded by I38(g)/I37(b)/I38(e). **EV MIX band** —
+> `constants.evCut` (`mixK` 2.453 and the bracket), `kind: 'derived'` and deliberately NOT in
+> `UNANCHORED`, re-derived every run by I40. **Spike thresholds** and **calibration tolerances** —
+> confirmed absent from `constants`, which is what those two rows promise: they are decision rules
+> and quotations, not shipped numbers. **Sizing defaults** — `sizing.min`, `sizing.detents`,
+> `sizing.premiumCalibratedAt` flagged and badged, I44. **`baselineQuant`** — flagged in
+> `model.baselineTiers.quantFlag` and in `data/equilibrium.json`, badged through the same
+> `UNANCHORED` map (`baselineQuant`), bounded by I36(e). **`evPrimary`** — zero new constants, as
+> the row requires: a string comparison against `model.calibration.verdict`, which stamps `fail`.
+> **D9 byte budgets** — in the variant manifest, re-asserted every build. So the count that matters:
+> **ten flagged records, ten `UNANCHORED` entries, and the map is exactly the flagged set** — no
+> flagged constant renders unbadged, and no badge names a constant that is not flagged.
+
+---
 
 ## 7. The gate catalog (the plan's core)
 
@@ -1809,6 +1945,111 @@ Ids continue the live numbering (I1–I31 with no I17; D1–D8 with no D3).
 > alone, so "score path" is a measured qualifier rather than a hedge, and the clause's own "must be a
 > deliberate, documented model change" is recorded as *invoked*.
 
+
+> **Measured (P5, item 10) — I47 promoted, and the report is 61.** *This annotation sits under the
+> I47 row above.*
+>
+> A new family `scripts/gates/subcell.mjs` is appended after `ev.mjs`, for the seventh time and the
+> same reason: **60 stays a strict prefix of 61**, so the P4 report diffs against this one as one
+> added row rather than as a re-ordering. It sits LAST of all, and for a reason no earlier family
+> has: it is the only family that evaluates the SHELL AS A RUNNING PROGRAM — it slices `@subcell`
+> out of `src/shell.html` and calls it — so, like the variants and baseline families, its input is
+> produced outside the runner, and unlike them it is source rather than artifact.
+>
+> **§2.4's AUTOPSY IS NOW A MEASUREMENT, WHICH IS WHAT THE ROW'S PARENTHESIS ASKS FOR.** METHODOLOGY
+> §2.4 says the removed sub-buckets were "deliberately never re-cut into the percentile sort:
+> inserting them would have moved every other cell's tier". Nobody ever measured that — the people
+> who wrote it correctly declined to do the thing, and so never found out its price, which is how a
+> reason turns into folklore and gets re-litigated by whoever arrives next with a plausible idea.
+> Clause (c) DOES the insertion, in the gate and never on the page, on every run: over 45 percentile
+> seats the 467 `adjRaw` rungs go into the sort as rows, **52 cells cross the aggressive line** and
+> **368 more are SPLIT** onto both sides of the new cut — cells that no longer have a tier at all.
+> The gate **fails if either number ever comes back zero**.
+>
+> **THE FEATURE SHIPS ZERO CONSTANTS AND ZERO DATA BYTES, and both are gate-asserted rather than
+> claimed.** `N` is the length of the cell's own shipped `ex` array — the same N the Example hands
+> grid already renders — so §6 has nothing to anchor, and clause (e) asserts there is no numeric
+> literal for it in the block. `model.json` does not move: `rowOf` reads only ranks, so the 270,725
+> combos factor into 1,820 rank multisets and the page enumerates a cell's rungs from the taxonomy
+> it already carries. The last attempt at sub-cell resolution cost **69.5 KB of payload**; this one
+> costs **4.7 KB of application code and no data at all**.
+>
+> **A PARTITION IDENTITY COMES BACK, SCOPED HONESTLY.** §2.4 records D3/I17's loss with "no honest
+> replacement at the cell layer", which is true of anything MEASURED. Clause (a)'s identity is
+> structural: Σ of a cell's rung combos IS its shipped `combos` and the combo-weighted rung mean IS
+> its shipped `adjMean`, over all 123 cells, asserted on the block sliced out of the shipped shell.
+> The page runs the same check at render time and WITHHOLDS the list rather than printing a
+> partition that does not partition.
+>
+> **THE LABELLING CLAUSE FIRED ON EXISTING CODE, which is the gate doing its job on its first run.**
+> §7.2's "every number labeled `estimate`" was FALSE of two surfaces that predate this phase: the
+> hand panel's margin box and the drill reveal's margin line, both printing `adjRaw`-adjusted
+> per-hand numbers since v1 with the word nowhere on them. Clause (d) names the per-hand surfaces
+> one at a time rather than grepping the file, because a file-wide grep passes on a page where one
+> surface carries the word and four do not — which is precisely the state it found. Both repaired.
+>
+> **THE BYTE ACCOUNTING IS THE P4 CAP RULE BITING ONE PHASE LATER.** `app` is raised 388 → 392 KB
+> and the ARTIFACT IS NOT WHY: the page measures 387.6 KB and fits under 388. What does not fit is
+> the sum of the per-block caps, which `test/variant.test.mjs` holds to `app − appCore`; gto 11 + ev
+> 12 + skill 4 + topn 5 = 32 KB against a 28 KB raise. So a feature that would otherwise have hidden
+> inside `core`'s leftover headroom had to be declared and bounded, which is exactly what the P3 red
+> team asked those caps for. `appCore` is not raised, and the 358.0 → 358.3 KB its reading moved is
+> not the feature at all — every byte of the top-N is inside `@block:topn`, and the 0.3 KB is the
+> clause-(d) repair to two surfaces that predate this phase. METHODOLOGY §9.11 carries the paragraph.
+
+> **Measured (P5, calibration) — I46 PROMOTED FROM `parked` TO LIVE, AND THE REPORT IS 62.** *This
+> annotation sits under the I46 row above, and its first duty is to stop one misreading.*
+>
+> **THE GATE IS GREEN. THE VERDICT IS FAIL. NEITHER SENTENCE WEAKENS THE OTHER.** Nothing in
+> `I46_CRITERIA` moved — the text is byte-compared against `docs/spikes/S-C.md`, its digest
+> `58a70f0cb95a44ed` is asserted inside the gate, and PC-1/PC-2/PC-3 are still unevaluable for the
+> reason S-C recorded. What went live is the gate; what stays FAIL by construction is the answer.
+> The catalog says both in two separate fields: `status: 'live'` and `verdictUnpassable: true`, the
+> second still carrying `blockedBy`, `blockedReason` and `consequence`, with the import-time guard
+> rewritten in the same edit so that the notice is required at EVERY status rather than only at
+> `parked` — otherwise flipping the status would have retired the reason along with the parking.
+>
+> **WHY PROMOTE AT ALL, since the P1 lane that built the harness argued against it.** That argument
+> (kept verbatim in `scripts/lib/calibration.mjs`) was a dichotomy: an honest I46 fails the build, a
+> passable I46 is a lowered bar. THE THIRD FORM IS WHAT SHIPPED — the gate does not assert that the
+> verdict is `pass`, it asserts that the verdict IS WHAT THE BAR GIVES, which today is FAIL, and
+> that every route to `pass` is refused. So `verify.mjs` exits 0 and no clause was narrowed. The
+> promotion was owed rather than optional: **§11 refuses to close a phase whose shipped feature has
+> no gate id in verify's output**, and `model.calibration` is now shipped — stamped by the runner,
+> budgeted by D6, rendered by the Method view and read by `evPrimary`. Inventing a second id was
+> never available; §7.2 names one. THE COUNTER-READING, recorded because it is defensible: keep I46
+> parked and bound the block under `node --test` only. It was rejected on that §11 clause, and the
+> choice is recorded here rather than left to be re-derived.
+>
+> **SIX CLAUSES, and the arming is the load-bearing one.** (a) the harness self-check, 7 of 7,
+> including a self-play stream REQUIRED not to reproduce under a different seed. (b) the shipped
+> block is REBUILT inside the gate and canonical-digest compared over 13 fields — the property that
+> makes the verdict on the page a computation rather than a claim, and the tripwire for hash churn
+> across verify → build → verify (the model is byte-identical across two consecutive verify runs,
+> checked). (c) the bar, text and digest. (d) failure-closed AND ARMED: the clause is `pass` **iff**
+> all eight criteria pass on a present corpus — so it survives the day a corpus exists — and it
+> refuses four fabricated `pass` blocks, including the shipped block with its verdict re-stamped,
+> while still returning `pass` for a lawful one, so it is a bar rather than a constant. (e)
+> `disputed` empty WITH its reason, plus a comment-stripped grep of the shell for the seven fields
+> the Method view must render. (f) the self-play figure fed to the verdict machine must fail **PC-4
+> by name** rather than by the corpus being absent — the one way this limitation could quietly stop
+> being true.
+>
+> **THE PREDICTION IS UNTESTED, WHICH IS A THIRD OUTCOME THIS ROW DID NOT HAVE A SLOT FOR.** "Fitted
+> q ≠ 0.85 — both shipped" assumes a fit. No fit exists, because PC-2 admits no corpus to fit
+> against, so `disputed` ships EMPTY — and empty for want of a comparison, not for want of a
+> disagreement. That distinction is the whole reason `disputedReason` exists as a field, and the
+> Method view prints the sentence beside the absent table.
+>
+> **BYTE CEREMONIES, three of them, each stated per its own rule.** D6 gains a fifth reserved
+> sub-budget `calibration` 7 KB (measured 6,394 B) and `total` goes 138 → 145 KB, `core` still
+> facing the original 120 KB with all five blocks subtracted — and the block WOULD have fitted in
+> the old ceiling with 339 B to spare, which is exactly why it did not get to. `app` 392 → 398 KB
+> with `blocks.calib` at 6 KB (measured 5,313 B), forced by the cap-sum rule for the third time;
+> `appCore` NOT raised and its reading did not move at all. D9's full `total` 646 → 660 KB, the
+> first D9 total raise that had to be measured rather than taken off a shelf: 668,417 B measured,
+> held at +1.1% against the +5% that would have given 686 KB. METHODOLOGY §9.10 and §9.11 carry the
+> paragraphs.
 
 ### 7.3 Adversarial verification duty
 
@@ -2028,6 +2269,48 @@ are updated to whatever is measured, degradations disclosed rather than patched 
 
 Staleness fixes (P1, lane M's doc slot): the "46 gates" line, the pre-sub-cut payload/page
 tables in §9.10/§9.11, the dangling §12.4 reference, the present-tense sub-bucket prose in §9.12.
+
+> **Measured (P5) — every row closed, and the staleness fixes needed a second pass because they are
+> a class of defect rather than a list.** Row by row: **5.1** is METHODOLOGY limitation 17, shipped
+> at P1 as `constants.limitations[1].note`, byte-compared against the document by I42 — and it did
+> not come off the list at P4, because the absolute-EV cut closed it *in a mode of its own* while
+> the grid still paints percentile tiers; the entry carries both halves. **5.2** was reconciled at
+> P1 by running §3.1's decision rule rather than assuming it (every ν-dominant re-weighting fails
+> I23(c) in the same place, and would ship an unanchored constant on top of a failed gate), the dial
+> is re-described as a **cooler** re-sort, and I23(g) recomputes both correlations every run —
+> confirmed unchanged at P5 (+0.1770 / −0.4162, λ and μ untouched by four phases). **5.3/5.4** are
+> I41/I42. **5.5** is limitation 16, shipped as `constants.limitations[0].note` and byte-compared by
+> I41. **5.6** stayed background. **5.7** is done in both halves: the labels are gated (I35's
+> checkdown-label clause, I36's derived `domainLabel`), and **§0's honesty statement is rewritten
+> per variant** — see §5.2's P5 annotation for the wording and for D11's two new clauses.
+> **THE STALENESS FIXES RE-RAN, and that is the finding worth recording**: P1 refreshed two
+> gate-count lines outside METHODOLOGY and by P5 both were stale again (a 60-gate README line and a
+> 61-gate `verify.mjs` header against a 62-gate registry), as was `generate-data.mjs`'s S6 line at
+> 52, and METHODOLOGY §11's own "thirty-six model invariants" against forty-five. All four are
+> refreshed here. A count in prose goes stale every time a gate lands, which is why the two long-form
+> ones — METHODOLOGY §11 and `generate-data.mjs`'s S6 line — say out loud that the number is derived
+> from `EXPECTED_IDS`, the register that cannot drift, rather than standing as a second source of
+> truth; the remaining two are one-line comments where that sentence would not fit. §9.11's page
+> tables were refreshed to the finished v3 readings in the same pass, and the honest-claim sentence
+> they support is now two sentences, one per artifact, with a gate between them and the manifest.
+>
+> **AND THE CLASS HAS A SECOND MEMBER, WHICH THIS STEP FOUND IN ITS OWN OUTPUT: a stale byte QUOTE
+> rather than a stale count.** `scripts/lib/variant.mjs`'s two `budgetSource` notes — which gate D9
+> prints *verbatim beside the live reading*, so the drift was visible in the gate report itself —
+> still quoted the measurements taken at the calibration step, one step before the end: lite `total`
+> 596,861 B, lite `appCore` "NOT raised and did not move (358.3K)", full `total` 668,417 B. **The
+> final rewrite falsified all three, because it is the one P5 step that spent core.** D11 clause (f)
+> requires each page to make its claim ON SCREEN and not only in its banner, so `ARTIFACT` and the
+> Method view's *This artifact* paragraph are **core** code — outside all five `@block` regions,
+> because both artifacts carry them — and they cost **1.0K**: `appCore` 358.3 → **359.3K** (0.7K under
+> its 360K ceiling), `app` 392.7 → **393.7K**, lite `total` **597,942 B** = 583.9K, full `total`
+> **669,362 B** = 653.7K. The notes now say so, and **no ceiling was raised for it** — least of all
+> `appCore`, which is the whole point of the paid-raise clause: the claim block is a cost core absorbs
+> out of its own headroom or does not ship. This is the P3 red team's finding recurring in the same
+> string for the same reason — a measurement quoted from before the last change of its own phase —
+> which is why the repair is a restatement and never a re-derivation upward. §9.11's tables, written
+> last, were already correct, and that is the asymmetry: the document that gets rewritten at the end
+> is the one that ends up true.
 
 ---
 

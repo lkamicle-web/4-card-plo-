@@ -24,7 +24,7 @@ import { resolve } from 'node:path';
 
 import { ROW_ORDER, COL_ORDER } from '../lib/taxonomy.mjs';
 import * as P from '../lib/policy.mjs';
-import { ROOT, TOTAL, VPIP_GRID } from './_shared.mjs';
+import { ROOT, TOTAL, VPIP_GRID, overPct, underPct } from './_shared.mjs';
 
 export const family = 'couplings';
 export const title = 'the v3 axes — rake-depth, depth-width, villain profile-ON, 3-bet sizing';
@@ -419,14 +419,40 @@ export function build(ctx) {
 
       // (d) THE COMPOUNDING ALLOWANCE, RE-MEASURED — V3-PLAN §7.2's own words, and §6's rule that
       // the allowances this factor forces are "re-measured, not authored". I23(d) caps painted drift
-      // across depth at 4.0 pts with the axis off (measured 3.16). With the axis ON the factor and
-      // M_deep compound and the worst event grows; the number below is the measurement, and the
-      // allowance is that measurement plus the ~15% margin I28 sized its own widening with. It is
-      // recorded HERE rather than by relaxing I23, because I23 sweeps the legacy lane and must keep
-      // asserting the legacy number until B1 flips the default.
-      const allowOn = fast ? 0.075 : 0.055;
+      // across depth with the axis off (measured 3.16). With the axis ON the factor and M_deep
+      // compound and the worst event grows; the number below is the measurement. It is recorded
+      // HERE rather than by relaxing I23, because I23 sweeps the legacy lane and must keep asserting
+      // the legacy number until B1 flips the default.
+      //
+      // MEASURED (P5) — RE-MEASURED, ONE PIN MOVES AND ONE STANDS. §3.5 asks P5 to re-measure every
+      // allowance re-pinned during P1-P4; this clause was already written to that discipline, so
+      // what P5 owes it is a check rather than a correction. Re-measured on the shipped model over
+      // this gate's own eight-depth sweep with the axis ON:
+      //
+      //     driftOn      4.787146 pts at rfi/BTN@90 d40   ceiling  5.5 STANDS (+14.9%)
+      //     minPainted  12.612060 pts at rfi/UTG@25 d40   floor   10.0 -> 10.70 (-15.2%)
+      //
+      // THE CEILING STANDS AND IS NOW THE ANCHOR FOR THE OTHER THREE. Its stated derivation was
+      // "that measurement plus I28's own ~15% margin" — the ~15% was right about THIS pin and wrong
+      // about I28, which ran at +19.3%. P5 resolved that by keeping the number and fixing the
+      // sentence: 5.5 against 4.787146 is +14.89%, the TIGHTEST margin any allowance in this
+      // repository runs at, and ./_shared.mjs's P5_MARGIN adopts exactly it — so I23(d), I28 and
+      // I30 have all been re-pinned ONTO the margin this clause was already keeping. The
+      // measurement is unchanged to six decimal places from the P1 reading, so nothing here is a
+      // finding.
+      //
+      // THE FLOOR MOVES, because it was the one borrowed number left in this clause: 10% was I12's,
+      // sized on I12's own reference-depth sweep and never divided by the measurement standing
+      // beside it. Re-pinned to 10.70 alongside I23(d)'s, which reads the same 12.612060 pts at the
+      // same cell — the axis LOOSENS UTG at 40 bb, so the narrowest painted range with it on is the
+      // narrowest with it off, and the two clauses can share one number honestly.
+      //
+      // The fast lane's 7.5 / 8.0 are NOT re-pinned, for the reason I23(d) and I28 give: they are
+      // noise allowances for a 10k-trial model, measured at P5 (3.72 pts drift, 12.73% narrowest)
+      // and left where they are rather than tightened onto a single Monte Carlo draw.
+      const allowOn = fast ? 0.075 : 0.055;      // 4.787146 pts measured; 5.5 STANDS at +14.89%, the P5 anchor
       if (driftOn > allowOn) bad.push(`painted drift ${(driftOn * 100).toFixed(2)} pts at ${driftAt} over the re-measured allowance ${(allowOn * 100).toFixed(1)}`);
-      const floorPainted = fast ? 0.08 : 0.10;
+      const floorPainted = fast ? 0.08 : 0.107;  // 12.612060 pts measured -> 10.70 (was I12's borrowed 10.0)
       if (minPainted < floorPainted) bad.push(`painted range collapses to ${(minPainted * 100).toFixed(1)}% at ${minAt}`);
 
       // (e) INERT WHEN OFF, bit for bit.
@@ -479,9 +505,17 @@ export function build(ctx) {
         `I16 and I21 both document). (d) the compounding allowance is RE-MEASURED, not authored (§6): with the ` +
         `axis ON the worst painted drift from the ${D.ref}bb value is ${(driftOn * 100).toFixed(2)} pts at ` +
         `${driftAt} against I23(d)'s 3.16 with it off, and the allowance is ${(allowOn * 100).toFixed(1)} — that ` +
-        `measurement plus I28's own ~15% margin. The painted range never falls below ` +
-        `${(minPainted * 100).toFixed(1)}% (${minAt}, I12's 10% floor). I23(d) keeps its legacy number because ` +
-        `I23 sweeps the legacy lane; the two are re-pinned together when B1 flips the default. (e) with the axis ` +
+        `measurement +${overPct(allowOn, driftOn).toFixed(1)}%, divided here rather than quoted. ` +
+        (fast ? 'The 10k-trial lane keeps its noise allowances and was NOT re-pinned at P5. '
+          : `RE-MEASURED AT P5 (V3-PLAN §3.5) AND THE CEILING STANDS: this margin is the TIGHTEST any ` +
+            `allowance in the repository runs at, so P5 adopted it as the shared idiom and re-pinned I23(d), ` +
+            `I28 and I30 ONTO it rather than moving this one — a re-pin may tighten and never widen. `) +
+        `The painted range never falls below ` +
+        `${(minPainted * 100).toFixed(1)}% (${minAt}, floor ${(floorPainted * 100).toFixed(2)}%` +
+        `${fast ? '' : `, RE-PINNED AT P5 from I12's borrowed 10% to that measurement ` +
+          `-${underPct(floorPainted, minPainted).toFixed(1)}% — the last authored number in this clause`}). ` +
+        `I23(d) keeps its own legacy sweep because I23 sweeps the legacy lane; the two now read the same ` +
+        `narrowest cell and carry the same floor. (e) with the axis ` +
         `OFF all ${offN} widths are bit-identical and the factor is exactly 1 — depth does not reach widthFor, ` +
         `which is the defect brief §5.1 names. (f) that defect is PUBLISHED and stays published: METHODOLOGY §10 ` +
         `limitation 17 ships as constants.limitations[1], renders in the Method view from the shipped data, and ` +

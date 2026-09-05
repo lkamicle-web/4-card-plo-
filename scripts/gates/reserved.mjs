@@ -21,6 +21,18 @@
 //               criteria that must hold and the named reason they cannot, so the day the reason
 //               stops being true the gate comes alive unchanged.
 //
+// THE VERDICT AND THE GATE ARE TWO DIFFERENT THINGS, and P5 is where that distinction had to be
+// made explicit. `status` describes THE GATE — is it enforced by a run of `verify.mjs`. A separate
+// field, `verdictUnpassable`, describes THE ANSWER the gate computes — can the thing being judged
+// ever come out 'pass'. I46 at P5 is the case that separates them: the gate is LIVE and GREEN
+// (the harness reproduces, the bar is the pre-registered one, the verdict was computed from it and
+// from nothing else, and the failure-closed path is armed), while its VERDICT is FAIL by
+// construction and stays that way until a conforming corpus exists. Reading the promotion as
+// bar-lowering is the misreading this comment exists to prevent: nothing in I46_CRITERIA moved,
+// and the gate would refuse a 'pass' stamped on today's data. An entry may therefore carry the
+// parking notice (`verdictUnpassable` + `blockedBy` + `blockedReason` + `consequence`) at ANY
+// status, and the import-time guard below requires the whole notice wherever the flag appears.
+//
 // RUNNER VALUES
 //   'verify'    runs inside scripts/verify.mjs's registry
 //   'harness'   runs outside it — §7.2's S-gates row, §9's browser harness. `smoke.mjs` is
@@ -288,9 +300,25 @@ export const CATALOG = [
     claim: 'squeeze stage: regeneration diff byte-identical outside new fields (the §9.12 diff '
       + 'idiom); frequency-banded MIX only; stream discipline asserted.',
     fails: 'a regeneration touching a byte outside the new stage.',
+    // THE CONDITIONAL WAS EVALUATED, and it resolved against the item. Recorded here rather than
+    // only in the documents, because a manifest that goes on reading "not yet enforced" after the
+    // decision has been taken is the deferral-outliving-its-reason failure this repository gates
+    // against everywhere else (cfr.mjs's SIXMAX carries the same note). The STATUS does not move:
+    // I45 is not `parked` — parked means unpassable by construction, and this claim is perfectly
+    // passable, it simply has nothing to assert because the stage it gates was not built.
+    cutAtP5: 'ITEM 11 CUT — both §4 reasons bite, measured, and both are recorded verbatim in '
+      + 'METHODOLOGY §10 limitation 19. (i) D6 after item 5 has 2,917 B free in `cells`, 4,117 B '
+      + 'on the pre-raise `core` reading and 6,360 B in `total`, against a 6,530 B minimum S3b '
+      + 'payload (one eqVs3bet-shaped field per live cell, measured three-way) — it fits nowhere, '
+      + 'and the caller-resolved version costs 13,060-19,590 B. (ii) the P3 tree IS the 3-bet pot '
+      + '(n2 the 3-bet, n3 the 4-bet decision, over the 3/9/27/81 bb ladder), so the half item 11 '
+      + 'reaches is already solved rather than authored; the multiway half is deferred by '
+      + 'measurement, not schedule — coverage 3 of 24 (pos, node) rows, and SIXMAX leg (ii) fails '
+      + 'with multiwayProbe supported on 0 of 144 requests. The item moves to v3.1 with solver '
+      + 'results in hand, and this gate comes alive there, unchanged, if the stage is ever built.',
   },
   {
-    id: 'I46', status: 'parked', runner: 'verify', phase: 'P5', plan: '§3.5, §5.4, §7.2',
+    id: 'I46', status: 'live', runner: 'verify', phase: 'P5', plan: '§3.5, §5.4, §7.2',
     claim: 'calibration: harness reproducibility; fitted-vs-shipped disagreements ship as '
       + 'calibration.disputed, rendered in the Method view; the primacy verdict computed ONLY from '
       + 'the Phase-0 pre-registered criteria in I46_CRITERIA above.',
@@ -298,15 +326,36 @@ export const CATALOG = [
       + 'a criterion that cannot be evaluated counted as anything other than FAIL (PC-0).',
     prediction: 'expected falsified: fitted q != 0.85 — both shipped.',
     criteria: 'I46_CRITERIA',
-    // ---- the parking notice -------------------------------------------------
-    unpassable: true,
+    note: 'LIVE AT P5 (scripts/gates/calibration.mjs), AND THE VERDICT IS STILL FAIL BY '
+      + 'CONSTRUCTION — those are two statements about two different things and the promotion is '
+      + 'only honest while both are said. THE GATE runs: the harness self-check reproduces (7 of '
+      + '7), the shipped block is REBUILT inside the gate and digest-compared so the verdict in '
+      + 'the data was computed by the gate\'s own call rather than typed, the bar is byte-equal to '
+      + 'I46_CRITERIA and its digest to CRITERIA_DIGEST, the failure-closed rule is ARMED against a '
+      + 'fabricated block that claims pass with a criterion still unevaluable, `disputed` ships '
+      + 'with its reason, the Method view is grep-gated for the fields it must render, and the '
+      + 'self-play figure is asserted to be potFrac/moneyValidated:false and to FAIL PC-4 when fed '
+      + 'to the verdict machine. THE VERDICT is FAIL: PC-1/2/3 are unevaluable for the reason '
+      + 'below, PC-0 is failure-closed, and `P.evPrimary(model)` is therefore false on the shipped '
+      + 'model. NOTHING IN THE BAR MOVED — a gate that passes on an honest FAIL is not a gate '
+      + 'written to pass, and the plan\'s §11 requires the id to appear in verify\'s output before '
+      + 'the phase whose feature it gates may close. What P5 could NOT do was stamp nothing: '
+      + 'METHODOLOGY limitation 18 requires the limitation to be rendered FROM SHIPPED DATA '
+      + '(`model.calibration`), so the FAIL is stamped and shown as loudly as a pass would have '
+      + 'been — the criteria\'s own REPORTING DUTY.',
+    // ---- the parking notice, kept verbatim on the LIVE entry -----------------
+    // It describes the VERDICT, not the gate. See the header comment: promoting the gate does not
+    // retire this notice, and the import guard below refuses the flag without the whole notice.
+    verdictUnpassable: true,
     blockedBy: ['PC-1', 'PC-2', 'PC-3'],
     blockedReason: 'S-C FAILED. No lawful, hero-visible, assigned 4-card PLO corpus exists at any '
       + 'volume, so PC-1 (admissible visibility), PC-2 (admissible provenance) and PC-3 '
       + '(assignment) are unsatisfiable today; PC-5 would need ~5M such hands. Under PC-0 a '
       + 'criterion that cannot be evaluated counts as FAIL, so the verdict is FAIL by '
-      + 'construction. THE BAR IS NOT LOWERED, IT IS PARKED: I46 comes alive unchanged the day a '
-      + 'conforming corpus exists. S-C\'s further finding is that no corpus size fixes PC-3 — you '
+      + 'construction. THE BAR IS NOT LOWERED, IT IS PARKED: the criteria come alive unchanged the '
+      + 'day a conforming corpus exists — and at P5 that sentence has to be read exactly, because '
+      + 'the GATE is live and green while the ANSWER is what stays parked. '
+      + 'S-C\'s further finding is that no corpus size fixes PC-3 — you '
       + 'cannot read the EV of an action nobody took — so the successor experiment is a '
       + 'prospective randomised A/B test on the marginal cells, out of scope for v3 and named '
       + 'rather than left implicit.',
@@ -315,10 +364,17 @@ export const CATALOG = [
       + 'money" ships as a standing METHODOLOGY §10 limitation rendered from shipped data.',
   },
   {
-    id: 'I47', status: 'reserved', runner: 'verify', phase: 'P5', plan: '§4 item 10, §7.2',
+    id: 'I47', status: 'live', runner: 'verify', phase: 'P5', plan: '§4 item 10, §7.2',
     claim: 'per-hand top-N: every number labeled estimate; no per-hand claim ever enters the '
       + 'percentile sort (§2.4\'s autopsy as a standing gate).',
     fails: 'a per-hand number reaching the sort — the exact regression §2.4 recorded.',
+    note: 'LIVE at P5 item 10 (scripts/gates/subcell.mjs). The autopsy clause is not a quotation '
+      + 'of §2.4 but a re-execution of it: the gate inserts the sub-cell rungs into the percentile '
+      + 'sort every run and MEASURES how many cells move and how many are split, so the reason the '
+      + 'page declines to do it cannot decay into folklore. The list itself ships zero constants — '
+      + 'its length is the cell\'s own shipped ex.length — and every row carries badge:\'estimate\' '
+      + 'as data. Two pre-existing per-hand surfaces (the hand panel margin box, the drill reveal '
+      + 'margin line) failed the labelling clause when it was written and were repaired.',
   },
   {
     id: 'D9', status: 'live', runner: 'verify', phase: 'P3', plan: '§5.3, §7.2',
@@ -407,8 +463,18 @@ export const RESERVED_IDS = CATALOG.filter((e) => e.status !== 'live').map((e) =
 /** ids the catalog claims are enforced today — must all be in EXPECTED_IDS */
 export const LIVE_IDS = CATALOG.filter((e) => e.status === 'live').map((e) => e.id);
 
-/** entries whose bar is fixed but cannot be met — parked, not lowered */
+/** entries whose GATE is not enforced because its bar cannot be met — parked, not lowered */
 export const PARKED = CATALOG.filter((e) => e.status === 'parked');
+
+/**
+ * Entries whose VERDICT cannot come out 'pass', whatever their gate's status.
+ *
+ * Distinct from `PARKED` on purpose, and P5 is why: I46's gate went live while its answer stayed
+ * FAIL by construction, so a single list could no longer say both things. This is the one a reader
+ * asking "what does this repository still not know?" wants; `PARKED` answers "what does it not yet
+ * run?". Today they are disjoint and this one has the single member.
+ */
+export const VERDICT_UNPASSABLE = CATALOG.filter((e) => e.verdictUnpassable);
 
 // Import-time self-consistency, so a hand-edit cannot leave the manifest incoherent.
 {
@@ -423,8 +489,16 @@ export const PARKED = CATALOG.filter((e) => e.status === 'parked');
       throw new Error(`gate catalog: ${e.id} has unknown runner ${JSON.stringify(e.runner)}`);
     }
     if (!e.claim || !e.fails) throw new Error(`gate catalog: ${e.id} is missing claim or fails`);
-    if (e.status === 'parked' && !(e.unpassable && e.blockedReason && e.blockedBy?.length)) {
+    if (e.status === 'parked' && !(e.verdictUnpassable && e.blockedReason && e.blockedBy?.length)) {
       throw new Error(`gate catalog: ${e.id} is parked but does not say why it cannot pass`);
+    }
+    /* THE PARKING NOTICE OUTLIVES THE PARKING. I46 is live at P5 and its VERDICT is still FAIL by
+       construction (see the header), so the flag has to survive promotion — and a flag that
+       survives without its reason is how "unpassable by construction" decays into a word. Required
+       at every status, not only at `parked`, which is the half the P5 promotion needed. */
+    if (e.verdictUnpassable && !(e.blockedReason && e.blockedBy?.length && e.consequence)) {
+      throw new Error(`gate catalog: ${e.id} claims its verdict is unpassable but does not carry `
+        + 'the whole notice (blockedBy, blockedReason, consequence)');
     }
   }
 }

@@ -28,14 +28,28 @@
 //   I29-30 straddle sweep                          I16 and I21 re-run with it ON
 //   I31    rake                                    the §3.2 haircut
 //   I41-44 v3 axes        gates/couplings.mjs      rake-depth, depth-width, profile-ON, 3-bet sizing
+//   I35    the solver      gates/solver.mjs        CFR+ quality, and the two disclosure clauses
 //
 //   D10-11 the dual build  gates/variants.mjs      the lite negative manifest, and per-variant
 //                                                  provenance, read off the artifacts on disk
+//   I36 D9 the baseline    gates/baseline.mjs      the equilibrium anchors and the full-only budget
+//   I38 I37 the skill axis gates/skill.mjs         the dial, and the divergence measured along it
+//   I34    the EV cut      gates/ev.mjs            the quarantine, the arithmetic, and what it moves
+//   I39-40
+//   I47    sub-cell top-N  gates/subcell.mjs       the rung table, and §2.4's autopsy re-measured
+//   I46    calibration     gates/calibration.mjs   the primacy verdict, against the phase-0 bar
 //
-// 52 gates in total — 46 through Phase 0, plus lane M's I41-I44 and lane I's D10/D11 at P1. D3 and
-// I17 went with the sub-bucket layer they asserted (the dual-key
-// partition, and the geometric-mean reconstruction of a cell's M_play from its buckets'). D1
-// already pins sum(cells) === 270,725, which is what is left of the partition claim.
+// 62 gates in total — 46 through Phase 0, plus lane M's I41-I44 and lane I's D10/D11 at P1, I35 at
+// P2, I36/D9 at P3, I38/I37 and I34/I39/I40 at P4, and I47/I46 at P5. I45 was RESERVED for the
+// squeeze stage and never went live — the stage was cut on two measurements (METHODOLOGY
+// limitation 19), so the id stays reserved rather than recycled. The six families below the
+// blank line are the ones whose inputs come from a step OUTSIDE this runner — built artifacts,
+// the solved payload, (I47) src/shell.html evaluated as a program, or (I46) a block this very run
+// stamped — which is why they are appended last and stay last. D3 and I17 went with the
+// sub-bucket layer they asserted (the dual-key partition, and
+// the geometric-mean reconstruction of a cell's M_play from its buckets'). D1 already pins
+// sum(cells) === 270,725, which is what is left of the partition claim — and I47(a) adds the one
+// sub-cell identity that CAN be honestly reconstructed, which is structural rather than measured.
 // V1/I5 and V2/V3/I4 are RANDOM-VILLAIN gates: the filtered-villain lattice is exempt from
 // conservation by construction (the scope comment now lives at the top of gates/engine.mjs, with
 // the blocks it describes — see METHODOLOGY, which names that file).
@@ -51,6 +65,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 
 import * as P from './lib/policy.mjs';
+import { buildCalibrationBlock } from './lib/calibration.mjs';
 import { solverBlock } from './lib/equilibrium.mjs';
 import { makePayoff } from './lib/payoff.mjs';
 import { evMixK } from './lib/ev-band.mjs';
@@ -192,6 +207,51 @@ export function stampConstants(model) {
   return { added, changed, kept: Object.keys(measured) };
 }
 
+// ---------------------------------------------------------------------------
+/**
+ * Stamp `model.calibration` — the primacy verdict, the pre-registered bar it was judged against,
+ * and everything the criteria's REPORTING DUTY says ships whatever the answer is.
+ *
+ * ON THE `evCut` PRECEDENT, AND FOR THE SAME REASON. This is RE-DERIVED on every run and never
+ * carried across: a verdict that survives a stamp is a verdict that can go stale, and going stale
+ * is the failure that actually happens here — the EV surface is regenerated and the calibration
+ * block is not. `generate-data.mjs` does not write it either, for the same reason `constants.evCut`
+ * is not written there: three hours of Monte Carlo for a value that contains no randomness at all,
+ * and the Method view renders `model.calibration` and nothing else, so between regenerations the
+ * page could not show the verdict the repository actually computed.
+ *
+ * THE VERDICT IS FAIL AND IT IS STAMPED ANYWAY. V3-PLAN §3.5's S-C annotation: "`model.calibration
+ * .verdict` **ships hard-failing**, with PC-0..PC-8 stored as shipped data and rendered by the
+ * Method view so the reason is *on screen* rather than in a doc"; METHODOLOGY limitation 18: "P5
+ * renders this limitation from shipped data in the Method view (`model.calibration`)". Stamping
+ * nothing would satisfy neither, and would leave the page unable to say why the decision layer is
+ * unfalsified — which is the one thing this phase has to say.
+ *
+ * NO CORPUS IS PASSED, deliberately. `buildCalibrationBlock(model)` with no `corpus` option records
+ * `corpus.present: false` and S-C's reason. The synthetic fixture the harness ships for its own
+ * self-check is NOT fed in here: it is stamped `synthetic` precisely so that PC-2 refuses it, and
+ * handing it to the shipped block would put a fabricated corpus on the page.
+ *
+ * ORDER INSIDE THE CLI IS LOAD-BEARING. After `stampConstants`, because the block's orderings and
+ * its self-play stream read the live constants; before `verifyModel`, because D6 measures the
+ * payload as it will be written; before the hash, because the block has to be inside `meta.hash`
+ * or the artifact and the file would disagree about what shipped. The solve memo is cleared
+ * afterwards so a gate asking for a memo-cold reference (I34(a), I47(b)) gets one.
+ *
+ * @returns {{verdict:string, bytes:number, unevaluable:string[], pc8:string}} for the CLI's report
+ */
+export function stampCalibration(model) {
+  const block = buildCalibrationBlock(model);
+  model.calibration = block;
+  P.clearSolveMemo();
+  return {
+    verdict: block.verdict,
+    bytes: Buffer.byteLength(JSON.stringify(block)),
+    unevaluable: block.unevaluable,
+    pc8: block.pc8.status,
+  };
+}
+
 /** the calibration table, printed under the gate list */
 export function formatBenchmarks(model) {
   const L = [];
@@ -285,6 +345,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // as it was read. Under --no-write nothing lands on disk and this is a preview of the size a
   // write would produce; the file itself is untouched either way.
   const cst = stampConstants(model);
+  // ...and then the calibration verdict, which is re-derived rather than carried for the same
+  // reason `constants.evCut` is (see stampCalibration). It runs AFTER the constants because it
+  // reads them, and BEFORE the gates because D6 measures the payload as it will be written and I46
+  // rebuilds this very block to check the verdict was computed here.
+  const cal = stampCalibration(model);
   const report = verifyModel(model);
   console.log(formatReport(report));
   console.log(formatBenchmarks(model));
@@ -293,6 +358,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       `added [${cst.added.join(', ') || 'none'}], updated [${cst.changed.join(', ') || 'none'}], ` +
       `${cst.kept.length} measured keys carried across unchanged`);
   }
+  console.log(`\n  calibration verdict ${cal.verdict.toUpperCase()} — stamped into model.calibration `
+    + `(${cal.bytes.toLocaleString()} B), rendered in the Method view, gated by I46. `
+    + `${cal.unevaluable.length} of 8 criteria unevaluable [${cal.unevaluable.join(', ')}]; `
+    + `PC-8 ${cal.pc8}. THE BAR DID NOT MOVE: a criterion that cannot be evaluated is a FAIL `
+    + `(PC-0), so the verdict is FAIL by construction and EV primacy stays unreachable.`);
   const wall = Date.now() - t;
   console.log(`  verified in ${(wall / 1000).toFixed(1)}s`);
   // Everything above this line is byte-for-byte the report this repository has always printed.

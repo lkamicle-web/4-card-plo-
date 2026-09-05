@@ -698,6 +698,68 @@ if (!evs.skill0) {
     evs.skillHalf.stat);
 }
 
+/* 8c — THE SUB-CELL TOP-N (V3-PLAN §4 item 10, gate I47).
+
+   WHAT NODE CANNOT SEE. Gate I47 asserts the rung table against the shipped model and the sort
+   against the layer; both are true of a page nobody ever renders. What is asserted here is what the
+   list PUTS ON SCREEN: that the estimate badge is on it, that the row count is the cell's own N
+   rather than a number, that a deep cell and a one-rung cell get different lists, that the vs-3-bet
+   node drops the magnitudes and says why, and — the one that matters — that opening the list moves
+   no tier. That last check is I47(b) seen from outside: the whole point of item 10 is that a
+   per-hand number never reaches the grid, and this is a user watching it not happen.
+
+   The row that is CLICKED is checked too. A representative that could not be loaded would be a
+   representative the page cannot name, and the whole list is representatives. */
+const sub = await page.evaluate(() => {
+  const R = window.__rundown, out = {};
+  const tiersOf = () => [...document.querySelectorAll('.cell:not(.void)')]
+    .map((c) => (c.className.match(/\bt\d\b/) || [''])[0]).join(',');
+  R.setPos('CO'); R.setNode('rfi'); R.setV(55); R.setMode('action');
+  out.tiersBefore = tiersOf();
+  /* a cell the model resolves finely, and one it does not */
+  const cellOf = (k) => { R.select(k); R.setItab('comp'); return R.topNState(); };
+  /* RUN3|DS resolves into 15 rungs against an N of 6 — the deepest cell in the grid, and the only
+     shape that exercises both the truncation and the floor row */
+  out.deep = cellOf('RUN3|DS');
+  out.deepRungs = R.MODEL.cells['RUN3|DS'].ex.length;
+  out.flat = cellOf('AA_BIGPAIR|RB');
+  out.tiersAfter = tiersOf();
+  /* the vs-3-bet node: ordering kept, magnitudes dropped */
+  R.setNode('3bet'); R.select('RUN3|DS'); R.setItab('comp');
+  out.vs3 = R.topNState();
+  R.setNode('rfi'); R.select('RUN3|DS'); R.setItab('comp');
+  /* and the representative loads */
+  const first = document.querySelector('#topn .diffrow');
+  out.clicked = first.textContent;
+  first.click();
+  out.afterClick = { itab: R.itab(), hand: !!R.S.hand };
+  R.setItab('comp'); R.setPos('UTG'); R.setV(55);
+  return out;
+});
+check(sub.deep && sub.deep.tag && /Top hands in this cell/.test(sub.deep.head),
+  'the sub-cell list renders on Composition wearing the estimate badge', sub.deep ? sub.deep.head : 'absent');
+check(sub.deep.rows.length === sub.deepRungs + 1 && sub.deep.rows.filter((r) => r.floor).length === 1,
+  'a deep cell shows the cell\'s own N rungs plus its floor, and flags the floor',
+  `${sub.deep.rows.length} rows for N=${sub.deepRungs}`);
+check(sub.deep.rows.every((r) => / pts/.test(r.text)) && sub.deep.rows.every((r) => /estimate/.test(r.title)),
+  'every row quotes points against the cell mean and says estimate in its own tooltip',
+  sub.deep.rows[0].text);
+check(sub.flat.rows.length === 1 && !sub.flat.rows[0].floor
+  && sub.flat.notes.some((n) => /finest unit/.test(n)),
+  'a one-rung cell shows one row and says the cell is the finest unit here',
+  `${sub.flat.rows.length} row(s)`);
+check(sub.deep.notes.some((n) => /never enters the percentile cut/.test(n)),
+  'the list says on screen that it is not a tier and never enters the cut',
+  sub.deep.notes[sub.deep.notes.length - 1]);
+check(sub.tiersBefore === sub.tiersAfter && sub.tiersBefore.length > 0,
+  'I47(b) IN THE BROWSER: opening the sub-cell list moves not one of the 123 tier classes',
+  `${sub.tiersBefore.split(',').length} cells identical`);
+check(sub.vs3.rows.every((r) => !/ pts/.test(r.text)) && sub.vs3.notes.some((n) => /eqVs3bet/.test(n)),
+  'at vs-3-bet the list keeps its ordering, drops its magnitudes, and names what the node cuts on',
+  sub.vs3.rows[0].text);
+check(sub.afterClick.itab === 'hand' && sub.afterClick.hand,
+  'a representative is a hand the page can actually load', sub.clicked);
+
 /* screenshots ------------------------------------------------------------ */
 if (SHOTS) {
   for (const [w, h] of [[1440, 900], [1024, 768], [390, 844]]) {

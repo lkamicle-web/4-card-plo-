@@ -43,7 +43,12 @@ function page(variant, over = {}) {
      passing artifact carries it too — `over.body` still isolates whatever defect a test is about,
      and the lite-LEGAL test below drives the page that OMITS it. */
   const core = over.omitBaseline ? '' : 'const M={baselineTiers:1};';
-  return `${banner}\n<html>${model.order.packed}\n${core}${over.body || ''}</html>`;
+  /* THE ON-SCREEN COPY (D11 clause (f), P5). The banner alone no longer satisfies D11: the page has
+     to make its claim where a reader of the PAGE sees it, so the minimal passing artifact carries
+     the sentence a second time in its body. `over.onlyBanner` drops it, which is that clause's own
+     failure branch. */
+  const screen = over.onlyBanner ? '' : `<p>This artifact is ${claim}.</p>`;
+  return `${banner}\n<html>${model.order.packed}\n${core}${screen}${over.body || ''}</html>`;
 }
 
 /** Run just this family and return its gates by id. */
@@ -169,6 +174,56 @@ test('D11 FAILS on an artifact with no source hash in its banner', () => {
   const g = run(base({ lite: { banner: `<!-- GENERATED FILE\n     VARIANT lite — ${VARIANTS.lite.claim}.\n-->` } }));
   assert.equal(g.D11.pass, false);
   assert.match(g.D11.detail, /carries no source hash/);
+});
+
+// --- clause (f), the on-screen copy, and clause (e), the document coupling (P5) ------------
+
+test('D11 FAILS when the claim lives only in the banner and never on the page', () => {
+  /* The clause exists because (b) is satisfied by the banner alone, and the banner is a comment
+     nobody reading the PAGE sees. This is the artifact §5.3 would otherwise accept. */
+  const g = run(base({ lite: { onlyBanner: true } }));
+  assert.equal(g.D11.pass, false);
+  assert.match(g.D11.detail, /ONLY in its provenance banner/);
+});
+
+test('D11 FAILS when METHODOLOGY §0 no longer quotes a claim verbatim', () => {
+  const doc = `## 0. Honesty statement\n\nindex.html and index-full.html.\n\n> ${VARIANTS.lite.claim}\n\n> ${VARIANTS.full.claim}\n\n## 1. Next\n`;
+  assert.equal(run({ ...base({ full: {} }), methodologyText: doc }).D11.pass, true);
+  // one word changed in the document copy — the drift this clause exists to catch
+  const drifted = doc.replace('quantized tiers', 'quantised tiers');
+  const g = run({ ...base({ full: {} }), methodologyText: drifted });
+  assert.equal(g.D11.pass, false);
+  assert.match(g.D11.detail, /METHODOLOGY §0 does not quote the lite claim verbatim/);
+});
+
+test('D11 FAILS when §0 quotes the sentences but names neither artifact', () => {
+  const doc = `## 0. Honesty statement\n\n> ${VARIANTS.lite.claim}\n\n> ${VARIANTS.full.claim}\n\n## 1. Next\n`;
+  const g = run({ ...base({ full: {} }), methodologyText: doc });
+  assert.equal(g.D11.pass, false);
+  assert.match(g.D11.detail, /never names index\.html/);
+});
+
+test('D11 FAILS when the quote sits OUTSIDE §0 — the couplings.mjs scoping lesson', () => {
+  /* The P1 red team's finding on the limitations register, transposed: a sentence found somewhere
+     in a 3,500-line document is not a sentence the section carries. */
+  const doc = `## 0. Honesty statement\n\nindex.html and index-full.html.\n\n> ${VARIANTS.full.claim}\n\n`
+    + `## 9. Elsewhere\n\n> ${VARIANTS.lite.claim}\n`;
+  const g = run({ ...base({ full: {} }), methodologyText: doc });
+  assert.equal(g.D11.pass, false);
+  assert.match(g.D11.detail, /does not quote the lite claim verbatim/);
+});
+
+test('D11 FAILS when there is no §0 at all to carry the claims', () => {
+  const g = run({ ...base({ full: {} }), methodologyText: '# METHODOLOGY\n\n## 1. Cards\n' });
+  assert.equal(g.D11.pass, false);
+  assert.match(g.D11.detail, /no §0 honesty statement/);
+});
+
+test('the two claim sentences are not substrings of one another', () => {
+  /* If they were, "carries its own and none of the other's" would be unsatisfiable and the gate
+     would be asserting something no pair of artifacts could ever pass. */
+  assert.ok(!VARIANTS.lite.claim.includes(VARIANTS.full.claim));
+  assert.ok(!VARIANTS.full.claim.includes(VARIANTS.lite.claim));
 });
 
 test('D11 checks BOTH artifacts when both exist, and names the absent one when one does not', () => {

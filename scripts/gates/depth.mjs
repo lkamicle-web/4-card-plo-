@@ -10,7 +10,7 @@
 
 import { ROW_ORDER, COL_ORDER } from '../lib/taxonomy.mjs';
 import * as P from '../lib/policy.mjs';
-import { TOTAL, VPIP_GRID, NODES } from './_shared.mjs';
+import { TOTAL, VPIP_GRID, NODES, overPct, underPct } from './_shared.mjs';
 
 export const family = 'depth';
 export const title = 'the depth axis (V2-PLAN §3.1) and its two endpoint re-runs';
@@ -93,9 +93,33 @@ export function build(ctx) {
       //
       //  (d) SURVIVED. Painted-width drift across the whole depth range, in the I21 dip-allowance
       //      pattern: worst measured 3.16 points (rfi/BTN at VPIP 70, 46.5% at 40-60 bb against
-      //      49.6% from 100 up — one cell crossing the cut), against I21's own 4.0-point allowance.
-      //      The painted range also never collapses: narrowest 12.6% at any depth (rfi/UTG, VPIP
-      //      25, 40 bb) against I12's 10% floor.
+      //      49.6% from 100 up — one cell crossing the cut). The painted range also never
+      //      collapses: narrowest 12.6% at any depth (rfi/UTG, VPIP 25, 40 bb).
+      //
+      //      MEASURED (P5) — RE-PINNED, per V3-PLAN §7.1's "I23(d)/I28/I30 re-pinned after I42
+      //      lands (re-measured allowances, not authored ones)" and §3.5's "re-measure every
+      //      allowance re-pinned during P1-P4". BOTH NUMBERS THIS CLAUSE CARRIED WERE BORROWED
+      //      RATHER THAN MEASURED — the ceiling was I21's 4.0 (sized on I21's OWN sweep, at the
+      //      reference depth, against a 3.2-point drawdown) and the floor was I12's 10% (sized on
+      //      I12's own sweep, likewise at the reference depth). Neither had ever been divided by
+      //      THIS clause's measurement, which is exactly the "authored, not re-measured" shape §7.1
+      //      names. Re-measured on the shipped model, on this gate's own six-depth sweep:
+      //
+      //          drift        3.164835 pts at rfi/BTN@70 d40    ceiling 4.0  -> 3.65  (+15.3%)
+      //          minPainted  12.612060 pts at rfi/UTG@25        floor  10.0  -> 10.70 (-15.2%)
+      //
+      //      Both re-pins TIGHTEN, which is the only direction _shared.mjs's P5 rule allows, and
+      //      the realised margins are PRINTED from the live measurement in the detail line below
+      //      rather than asserted in this comment — the same "derived from shipped data, never
+      //      prose" idiom (g) and I42(g) already use for their own claims. The two v1 numbers keep
+      //      their own gates: I21 still runs at 4.0 on its own sweep and I12 still runs at 10% on
+      //      its own, and this clause is now strictly stronger than both over the depth range they
+      //      do not sweep. THE FAST LANE IS NOT RE-PINNED and that is deliberate: its 6.0 / 8.0 are
+      //      noise allowances for a 10k-trial model, they were measured at P5 and hold with room
+      //      (drift 3.16, narrowest 12.73 on a fast draw), and re-pinning a noise allowance from a
+      //      SINGLE Monte Carlo draw would make it tighter than the noise it exists to absorb —
+      //      the fast draw puts I28's worst dip at an entirely different setting from the shipped
+      //      model's, which is the evidence for that and not a guess.
       //
       //  (e) And the model still holds together at the ends of the slider: I7, I8, I9, I13 and I19
       //      are re-run at 40 and 250 bb and all hold. Depth re-sorts the grid; it must not break
@@ -128,8 +152,12 @@ export function build(ctx) {
       const tolViol = fast ? 4 : 0;       // fast: 10k-trial equities move cells across cuts
       const tolGain = fast ? 2 : 4;       // measured 8
       const tolNet = fast ? 45 : 60;      // measured 75 / 75 and 70 / 75
-      const tolDrift = fast ? 0.06 : 0.04;
-      const tolFloor = fast ? 0.08 : 0.10;
+      // (d)'s two allowances, RE-PINNED AT P5 to this clause's own measurement (see (d) above and
+      // the P5_MARGIN block in ./_shared.mjs). Ceiling = measurement + 15%, rounded up to the next
+      // 0.05 pt; floor = measurement - 15%, rounded down to the next 0.05 pt. The fast pair is
+      // untouched: noise allowances for a 10k-trial model, measured at P5 and left where they are.
+      const tolDrift = fast ? 0.06 : 0.0365;   // 3.164835 pts measured -> 3.65 (was I21's 4.0)
+      const tolFloor = fast ? 0.08 : 0.107;    // 12.612060 pts measured -> 10.70 (was I12's 10.0)
 
       // (a) the AA72r class
       let aViol = 0, aGain = 0, aMoves = 0, aFirst = '';
@@ -340,10 +368,16 @@ export function build(ctx) {
         `mu promotes it; its ${bigDemotions} demotions are all lambda's (low nu), which is why §3.1's ` +
         `"J/T big pairs demoted via the mu term" is not asserted. The small-pair band, ` +
         `${bandMean('SMALLPAIR').toFixed(4)}, is the one mu punishes. (d) painted width drifts at most ` +
-        `${(drift * 100).toFixed(2)} pts from its 100bb value (${driftAt}, allowance ${(tolDrift * 100).toFixed(1)}` +
-        `${fast ? ', widened from I21\'s 4.0 for 10k-trial data' : ' — I21\'s'}) and never falls below ` +
-        `${(minPainted * 100).toFixed(1)}% (${minAt}, floor ${(tolFloor * 100).toFixed(0)}%` +
-        `${fast ? ', widened from I12\'s 10%' : ' — I12\'s'}). (e) I7/I8/I9/I13/I19 all hold at 40 and 250 bb. ` +
+        `${(drift * 100).toFixed(2)} pts from its 100bb value (${driftAt}, allowance ${(tolDrift * 100).toFixed(2)}` +
+        `${fast ? ', a 10k-trial noise allowance, NOT re-pinned at P5' : `, RE-PINNED AT P5 to this clause's own ` +
+          `measurement: the measurement +${overPct(tolDrift, drift).toFixed(1)}%, replacing I21's 4.0, which was ` +
+          `borrowed from a sweep at the reference depth and had never been divided by the number beside it`}) ` +
+        `and never falls below ` +
+        `${(minPainted * 100).toFixed(1)}% (${minAt}, floor ${(tolFloor * 100).toFixed(2)}%` +
+        `${fast ? ', a 10k-trial noise allowance, NOT re-pinned at P5' : `, RE-PINNED AT P5 the same way: the ` +
+          `measurement -${underPct(tolFloor, minPainted).toFixed(1)}%, replacing I12's borrowed 10%. Both re-pins ` +
+          `TIGHTEN — a P5 re-pin may tighten and never widen — and both margins are computed from the live ` +
+          `measurement rather than typed beside it`}). (e) I7/I8/I9/I13/I19 all hold at 40 and 250 bb. ` +
         `(f) the seats keep their order at 40/100/250 and the best-to-worst realization spread ` +
         `widens with depth: ${[P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max].map((d) => spreadAt(d).toFixed(4)).join(' -> ')}. ` +
         `(g) WHAT KIND OF RE-SORT THIS IS, asserted rather than described (V3-PLAN item 7, brief §5.2). Over ` +
@@ -401,12 +435,32 @@ export function build(ctx) {
       // `ACE_JUNK|SS` (3.16%) and `ACE_JUNK|FLAW` (2.29%) leave it — for a net drawdown of 5.45
       // points. Three cells is well inside I16's own 5-cell continuity allowance and the whole
       // event is smaller than the single largest cell in the taxonomy (`TRASH|SS`, 11.4%), so it is
-      // the granularity both I16 and I21 already document, not a trend. 6.5 leaves ~19% headroom on
-      // the measurement, the same margin I21 runs at. At 40 bb the worst dip is 2.1 points, i.e.
-      // BETTER than at the operating depth.
-      const dipAllow = fast ? 0.09 : 0.065;
+      // the granularity both I16 and I21 already document, not a trend. At 40 bb the worst dip is
+      // 2.1 points, i.e. BETTER than at the operating depth.
+      //
+      // MEASURED (P5) — RE-PINNED 6.5 -> 6.30, per V3-PLAN §7.1 and §3.5. This is the one allowance
+      // of the four that was already measurement-derived rather than borrowed, so what P5 changes
+      // here is smaller and more specific: the pin said "~19% headroom on the measurement, the same
+      // margin I21 runs at", and NEITHER half of that sentence survived being checked. 6.5 against
+      // a re-measured 5.450549 is +19.3%; I21's own 4.0 against its own 3.2 is +25.0%. Two numbers,
+      // one name. §7.1 asks for re-measured allowances rather than authored ones and the fix is the
+      // same one the other three get: the shared P5 idiom in ./_shared.mjs, which is the TIGHTEST
+      // margin already shipped anywhere in this repository, applied to this clause's own number.
+      //
+      //     dip  5.450549 pts at d250 rfi/BTN@82   ceiling 6.5 -> 6.30  (+15.6%)
+      //
+      // The measurement is UNCHANGED from the number this comment has carried since P1 — the
+      // three-cell exchange at rfi/BTN VPIP 82 is still the worst event on the shipped model, to
+      // six decimal places — so the re-pin is a margin change and not a finding. The fast lane's
+      // 9.0 stands: measured at P5 on a 10k-trial draw at 4.37 pts, and that draw puts the worst
+      // dip at d40 limps/SB@62 rather than d250 rfi/BTN@82, which is precisely the sampling spread
+      // a noise allowance exists to absorb and precisely why it must not be re-pinned from one draw.
+      const dipAllow = fast ? 0.09 : 0.063;   // 5.450549 pts measured -> 6.30 (was 6.5)
       const rows = [];
       let ok27 = true, ok28 = true;
+      // the worst dip over BOTH ends — the quantity the P5 re-pin was measured from, kept so the
+      // detail line can divide the allowance by the live measurement instead of quoting a ratio.
+      let dipMax = 0, dipMaxAt = '';
       const detail27 = [], detail28 = [], bad28 = [], cliffs = [];
       for (const d of [P.CONSTANTS.depth.min, P.CONSTANTS.depth.max]) {
         let worstCells = 0, worstAt = '', worstCombos = 0, worstDip = 0, worstDipAt = '';
@@ -439,6 +493,7 @@ export function build(ctx) {
           }
         }
         if (worstCells) ok27 = false;
+        if (worstDip > dipMax) { dipMax = worstDip; dipMaxAt = worstDipAt; }
         detail27.push(`d${d}: worst non-cliff step ${worstCells} cells${worstCells ? ` (${(worstCombos / TOTAL * 100).toFixed(1)}% of combos) at ${worstAt}` : ''}`);
         detail28.push(`d${d}: largest dip ${(worstDip * 100).toFixed(1)} pts at ${worstDipAt}`);
         rows.push(d);
@@ -452,10 +507,18 @@ export function build(ctx) {
       G('I28', ok28,
         `I21's painted widening holds at both ends of the depth slider (${rows.join(' and ')} bb): the ` +
         `range is wider at VPIP 90 than at 25 at all 15 (node, position) pairs — ${detail28.join('; ')}. ` +
-        `Dip allowance widened from I21's 4.0 to ${(dipAllow * 100).toFixed(1)} pts, because the worst ` +
+        `Dip allowance ${(dipAllow * 100).toFixed(2)} pts against I21's 4.0, because the worst ` +
         `event at 250 bb is a three-cell exchange (RUN3_DANGLER|SS in, ACE_JUNK|SS + ACE_JUNK|FLAW out, ` +
-        `net 5.45 pts at rfi/BTN VPIP 82), not the single-cell flicker I21 sized 4.0 against — inside ` +
-        `I16's own 5-cell allowance and smaller than the largest single cell (TRASH|SS, 11.4%)` +
+        `net ${(dipMax * 100).toFixed(2)} pts at ${dipMaxAt}), not the single-cell flicker I21 sized 4.0 ` +
+        `against — inside I16's own 5-cell allowance and smaller than the largest single cell ` +
+        `(TRASH|SS, 11.4%). ` +
+        (fast ? 'The 10k-trial lane keeps its noise allowance and was NOT re-pinned at P5: one Monte Carlo '
+          + 'draw puts the worst dip at a different setting entirely, which is what the allowance absorbs.'
+          : `RE-PINNED AT P5 from 6.5 (V3-PLAN §7.1, §3.5): the allowance is that live measurement ` +
+            `+${overPct(dipAllow, dipMax).toFixed(1)}%, and the ratio is DIVIDED HERE rather than quoted, ` +
+            `because the pin it replaces claimed "~19% headroom, the same margin I21 runs at" while running ` +
+            `at +19.3% against I21's own +25.0% — two numbers wearing one name. The measurement itself did ` +
+            `not move; only the margin did, onto the single tightest one shipped anywhere in the repository.`) +
         (bad28.length ? ` — FAILS: ${bad28.slice(0, 3).join('; ')}` : ''));
     }
     } },

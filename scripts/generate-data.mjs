@@ -13,12 +13,16 @@
 //   S2L lattice     the same, against VPIP-filtered villains at five lattice points
 //   S3 vs-3-bet     per cell x component: heads-up trials vs a rejection-sampled villain
 //   S5 derive+emit  rho, nu, mplay, cooler, lattice deltas, adjMean, waveD, benchmarks, assembly
-//   S6 verify       52 gates: D1-D8 (no D3), V1-V6, benchmarks, I1-I22 (no I17) + I24/I25 (the v2 measurement
+//   S6 verify       62 gates: D1-D8 (no D3), V1-V6, benchmarks, I1-I22 (no I17) + I24/I25 (the v2 measurement
 //                   shapes) + I23/I27/I28 (the depth axis, §3.1) + I26/I29/I30/I31 (the straddle
 //                   and the rake, §3.2/§3.3) + I32 (the v2 tier surface, frozen before v3 —
 //                   V3-PLAN §0.4) + I33 (the payoff contract) + I41-I44 (the v3 P1 axes:
 //                   rake-depth, depth->width, villain profile-ON, 3-bet sizing) + D10/D11 (the dual
-//                   build, read off the artifacts on disk — V3-PLAN §5.3), size budgets and
+//                   build, read off the artifacts on disk — V3-PLAN §5.3) + I35 (the solver) +
+//                   I36/D9 (P3's equilibrium baseline and full's byte budget) + I38/I37 (P4's
+//                   pool-skill dial) + I34/I39/I40 (P4's absolute-EV cut and its quarantine) +
+//                   I47 (P5's sub-cell top-N) + I46 (P5's primacy verdict; I45 stays RESERVED —
+//                   the squeeze stage was cut, METHODOLOGY limitation 19), size budgets and
 //                   the §2.5 payload ceiling; stamps MODEL.gates. The count is derived from
 //                   EXPECTED_IDS in scripts/gates/index.mjs, which is the frozen report order.
 //

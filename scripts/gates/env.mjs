@@ -11,7 +11,7 @@
 import { ROW_ORDER, COL_ORDER } from '../lib/taxonomy.mjs';
 import * as P from '../lib/policy.mjs';
 import { makePayoff } from '../lib/payoff.mjs';
-import { TOTAL, VPIP_GRID, NODES } from './_shared.mjs';
+import { TOTAL, VPIP_GRID, NODES, overPct, underPct } from './_shared.mjs';
 
 export const family = 'env';
 export const title = 'the straddle (V2-PLAN §3.3) and the rake (§3.2) — the environment axes';
@@ -327,14 +327,48 @@ export function build(ctx) {
       // EARLIER.
       //
       // The painted floor is the one place the straddle takes the model under a number it states
-      // elsewhere: at rfi/UTG, VPIP 25, the straddled range paints 8.96% against I12's 10% floor.
-      // That floor is a guard against the nut-gate range collapse I11/I21 document, and this is not
-      // that — the TARGET width itself fell 23% with the seat transform and the painted/target
-      // ratio is normal. So it gets its own floor at 8%, stated rather than borrowed.
-      const dipAllow = fast ? 0.05 : 0.04;      // I21's own 4.0; no widening needed
-      const floor = fast ? 0.075 : 0.08;
+      // elsewhere: at rfi/UTG the straddled range paints 8.96% against I12's 10% floor. That floor
+      // is a guard against the nut-gate range collapse I11/I21 document, and this is not that — the
+      // TARGET width itself fell 23% with the seat transform and the painted/target ratio is
+      // normal. So it gets its own floor at 8%, stated rather than borrowed.
+      //
+      // MEASURED (P5) — one re-pin and one deliberate NON-re-pin, per V3-PLAN §7.1's
+      // "I23(d)/I28/I30 re-pinned after I42 lands (re-measured allowances, not authored ones)" and
+      // §3.5's "re-measure every allowance re-pinned during P1-P4". Re-measured on the shipped
+      // model, over this gate's own three-depth straddled sweep:
+      //
+      //     dip         2.858990 pts at d250 rfi/HJ@34    ceiling 4.0 -> 3.30  (+15.4%)   RE-PINNED
+      //     minPainted  8.964078 pts at d40 rfi/UTG@27    floor    8.0  STANDS (-10.8%)
+      //
+      // THE DIP CEILING WAS THE LAST BORROWED ONE. "I21's own 4.0; no widening needed" was true and
+      // was never a measurement: 4.0 against 2.86 is +39.9% headroom, the loosest margin any dip
+      // allowance in the repository ran at, and it was loosest precisely BECAUSE it had been
+      // borrowed from a gate whose own measurement is larger. The claim the old comment made — that
+      // the straddled model needs no widening — is not weakened by the re-pin, it is STRENGTHENED:
+      // 3.30 is below I21's 4.0, so "smaller than the unstraddled model's" is now asserted by the
+      // number rather than merely stated beside it.
+      //
+      // THE FLOOR STANDS, and that is the P5 rule working rather than an omission. The idiom would
+      // put it at 8.964078 - 15% = 7.62, which is LOOSER than the 8.0 already shipped; a re-pin may
+      // tighten and never widen (./_shared.mjs), so 8.0 keeps its place and the gate prints its own
+      // realised clearance of -10.8% instead. This floor was the one number in the set that had
+      // been measured on its own sweep from the start.
+      //
+      // ONE STALE READING FIXED WHILE RE-MEASURING, and it is worth naming because it is the exact
+      // failure mode P5 exists to catch: the old comment said the floor event is "at rfi/UTG, VPIP
+      // 25". It is not, and has not been — the narrowest painted range is 8.9641% at d40 rfi/UTG
+      // VPIP **27**; VPIP 25 at d100 reads 9.0084%. The 8.96 figure was right, the setting beside
+      // it was wrong, and nothing read the setting. The detail line has always PRINTED the true
+      // location from the live sweep, so the gate was never asserting the wrong thing — only the
+      // prose was. The sentence below is now composed from the same live reading.
+      const dipAllow = fast ? 0.05 : 0.033;     // 2.858990 pts measured -> 3.30 (was I21's borrowed 4.0)
+      const floor = fast ? 0.075 : 0.08;        // 8.964078 pts measured; 8.0 STANDS, already tighter than the idiom
       const DS = [P.CONSTANTS.depth.min, P.CONSTANTS.depth.ref, P.CONSTANTS.depth.max];
       let ok29 = true, ok30 = true;
+      // the worst dip and the narrowest painted range over ALL THREE depths — the two quantities
+      // the P5 re-pin was measured from, kept so the detail line divides the allowance by the live
+      // measurement instead of quoting a ratio, and names the setting instead of remembering one.
+      let dipMax = 0, dipMaxAt = '', paintMin = 1, paintMinAt = '';
       const d29 = [], d30 = [], bad30 = [], cliffOn = [], cliffOff = [];
       let nBad = 0, nChecked = 0;
       for (const node of ['rfi', 'limps', 'raise']) {
@@ -381,6 +415,8 @@ export function build(ctx) {
           }
         }
         if (worstCells) ok29 = false;
+        if (worstDip > dipMax) { dipMax = worstDip; dipMaxAt = worstDipAt; }
+        if (minPainted < paintMin) { paintMin = minPainted; paintMinAt = minAt; }
         if (minPainted < floor) { ok30 = false; bad30.push(`painted ${(minPainted * 100).toFixed(2)}% at ${minAt}`); }
         d29.push(`d${d}: worst non-cliff step ${worstCells} cells${worstCells ? ` (${(worstCombos / TOTAL * 100).toFixed(1)}%) at ${worstAt}` : ''}`);
         d30.push(`d${d}: largest dip ${(worstDip * 100).toFixed(2)} pts at ${worstDipAt}, narrowest painted ${(minPainted * 100).toFixed(2)}% at ${minAt}`);
@@ -410,12 +446,22 @@ export function build(ctx) {
         (nBad ? ` — FAILS: N_eff is not strictly larger at ${nBad} settings; the field half is not firing` : ''));
       G('I30', ok30,
         `I21's painted widening holds with the straddle ON at ${DS.join(' / ')} bb: the range is wider at ` +
-        `VPIP 90 than at 25 at all 15 (node, position) pairs — ${d30.join('; ')}. No widening of I21's own ` +
-        `${(dipAllow * 100).toFixed(1)}-pt dip allowance was needed (unlike I28's): the straddled model's worst dip is ` +
-        `SMALLER than the 3.16 pts the unstraddled model runs at, because a narrower target width has ` +
-        `fewer cells straddling the cut. The painted floor is its own, at ${(floor * 100).toFixed(1)}% rather than ` +
-        `I12's 10%: at rfi/UTG VPIP 25 a straddled UTG opens 8.96% of hands, which is the seat transform ` +
-        `doing its job (the target itself fell 23%) and not the nut-gate collapse I12 guards against` +
+        `VPIP 90 than at 25 at all 15 (node, position) pairs — ${d30.join('; ')}. The dip allowance is ` +
+        `${(dipAllow * 100).toFixed(2)} pts, BELOW I21's own 4.0 rather than a widening of it (unlike I28's): the ` +
+        `straddled model's worst dip is ${(dipMax * 100).toFixed(2)} pts at ${dipMaxAt}, SMALLER than the 3.16 the ` +
+        `unstraddled model runs at, because a narrower target width has fewer cells straddling the cut. ` +
+        (fast ? 'The 10k-trial lane keeps its noise allowances and was NOT re-pinned at P5.'
+          : `RE-PINNED AT P5 from I21's borrowed 4.0 (V3-PLAN §7.1, §3.5): the allowance is that live ` +
+            `measurement +${overPct(dipAllow, dipMax).toFixed(1)}%, which STRENGTHENS the "no widening needed" ` +
+            `claim rather than weakening it — the claim is now made by the number instead of beside it.`) +
+        ` The painted floor is its own, at ${(floor * 100).toFixed(1)}% rather than ` +
+        `I12's 10%: the narrowest straddled range is ${(paintMin * 100).toFixed(2)}% at ${paintMinAt}, which is the ` +
+        `seat transform doing its job (the target itself fell 23%) and not the nut-gate collapse I12 guards ` +
+        `against. ` +
+        (fast ? '' : `THAT FLOOR STANDS UNCHANGED AT P5 and the reason is the rule, not an omission: the ` +
+          `re-pin idiom would put it at ${(paintMin * 0.85 * 100).toFixed(2)}%, LOOSER than the 8.0 already ` +
+          `shipped, and a P5 re-pin may tighten and never widen — so it keeps its place at a realised ` +
+          `-${underPct(floor, paintMin).toFixed(1)}% clearance, which was already inside the idiom. `) +
         (bad30.length ? ` — FAILS: ${bad30.slice(0, 3).join('; ')}` : ''));
     }
 

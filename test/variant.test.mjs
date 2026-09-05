@@ -43,23 +43,45 @@ test('INERTNESS — a source with no markers is identical under every variant', 
   assert.deepEqual([census.kept, census.dropped, census.blocks.length], [0, 0, 0]);
 });
 
-test("the shell's own @only blocks are exactly the full-only equilibrium seam (§5.3)", () => {
-  /* THE CENSUS, pinned. P3 is the first phase to use the `@only:` seam in the shipped shell, and
-     §3.3's own instruction is that the equilibrium seam and one Method-view row are the ONLY edits
-     that step makes to src/shell.html — p3-ui owns the rest. A count is how that stays true: a
-     third block appearing here is either the UI step landing early or a block nobody diffed. */
+test("the shell's own @only blocks are the equilibrium seam and the per-variant claim (§5.3, §5.2)", () => {
+  /* THE CENSUS, pinned. P3 is the first phase to use the `@only:` seam in the shipped shell, and a
+     count is how "only the blocks this repository decided on" stays true: a block appearing here
+     that nobody diffed is exactly what this test is for.
+
+     P5 TAKES IT FROM TWO TO FOUR, deliberately and once. The two new ones are the per-variant
+     honesty sentence (§5.2's "each artifact carries only its own claim", METHODOLOGY §0): one
+     `@only:lite` block and one `@only:full` block declaring `ARTIFACT`, which is the FIRST use of
+     the seam in the lite direction and the reason the census now checks both variants' block lists
+     rather than one. It has to ride the seam because `model.json` is shared byte-for-byte between
+     the artifacts and therefore cannot carry a per-variant string. */
   const shipped = readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8');
   const lite = stripOnlyBlocks(shipped, 'lite');
   const full = stripOnlyBlocks(shipped, 'full');
-  assert.equal(lite.blocks.length, 2, 'the shell carries exactly two @only blocks');
-  assert.deepEqual(lite.blocks.map((b) => b.variant), ['full', 'full']);
-  assert.deepEqual([lite.kept, lite.dropped], [0, 2], 'lite keeps neither');
-  assert.deepEqual([full.kept, full.dropped], [2, 0], 'full keeps both');
-  /* ...and what they contain: the injected region, and the window bridge that makes it reachable
-     from the page. Both are refused in lite by D10's negative manifest, from the other side. */
-  assert.match(full.blocks[0].body, /@inject:eq/);
-  assert.match(full.blocks[1].body, /window\.EQUILIBRIUM = EQUILIBRIUM/);
+  assert.equal(lite.blocks.length, 4, 'the shell carries exactly four @only blocks');
+  /* Source order, which is the shell's own: the full-only equilibrium region and its window bridge
+     come first (they sit with the injected script blocks near the top), then the two claim blocks
+     where the page's capability flags are declared. */
+  assert.deepEqual(lite.blocks.map((b) => b.variant), ['full', 'full', 'lite', 'full']);
+  assert.deepEqual([lite.kept, lite.dropped], [1, 3], 'lite keeps only its own claim block');
+  assert.deepEqual([full.kept, full.dropped], [3, 1], 'full keeps its claim block and the eq seam');
+  /* ...and what they contain: each variant's claim sentence, then the injected region and the
+     window bridge that makes it reachable from the page. The last two are refused in lite by D10's
+     negative manifest, from the other side. */
+  const byVariant = (bs, v) => bs.filter((b) => b.variant === v);
+  assert.match(byVariant(lite.blocks, 'lite')[0].body, /ARTIFACT/);
+  assert.ok(byVariant(lite.blocks, 'lite')[0].body.includes(VARIANTS.lite.claim),
+    'the lite block must carry the lite claim VERBATIM — D11(b)/(f) grep the built page for it');
+  const fullBlocks = byVariant(full.blocks, 'full');
+  assert.match(fullBlocks[0].body, /@inject:eq/);
+  assert.match(fullBlocks[1].body, /window\.EQUILIBRIUM = EQUILIBRIUM/);
+  assert.ok(fullBlocks[2].body.includes(VARIANTS.full.claim),
+    'the full block must carry the full claim verbatim');
   assert.ok(!/@inject:eq/.test(lite.text), 'the lite source must not even see the region marker');
+  /* THE ONE-DIRECTION-EACH RULE, which is what makes D11's "and none of the others'" achievable in
+     the source rather than only in the artifact: neither variant's kept text may contain the other
+     variant's claim. */
+  assert.ok(!lite.text.includes(VARIANTS.full.claim));
+  assert.ok(!full.text.includes(VARIANTS.lite.claim));
 });
 
 test('INERTNESS holds for the degenerate inputs too', () => {
@@ -211,9 +233,28 @@ test('lite carries the METHODOLOGY §9.11 budgets, and full\'s are D9\'s — set
      inside the ceiling P3 already paid for. `appCore` is unchanged at 360 KB and the reading under
      it FELL, 359.4 -> 357.9 KB, because deleting the page's own duplicate pot arithmetic returned
      more unmarked bytes than the shared edits added — a shrink-first that actually shrank. */
+  /* AND `app` 388 -> 392 KB AT P5 ITEM 10, with `blocks.topn` at 5 KB. THE RAISE IS FORCED BY THE
+     CAP RULE BELOW RATHER THAN BY THE ARTIFACT, which is the rule doing its job rather than a
+     loophole in it: the page measures 387.6 KB and would have fitted under 388, but the four
+     per-block caps must together fit inside `app - appCore`, and 11+12+4+5 = 32 KB needs a 32 KB
+     raise. A feature that hides inside `core`'s leftover headroom is a feature nothing bounds.
+     392 KB is measured + 1.1%, far under the +5% this rule would allow (407 KB). `appCore` is NOT
+     raised: every byte of the FEATURE is inside `@block:topn`, and the 358.0 -> 358.3 KB the
+     reading moved is the I47(d) repair — two per-hand surfaces that predate this phase finally
+     carrying the word `estimate`. */
+  /* AND `app` 392 -> 398 KB AT P5's CALIBRATION STEP, with `blocks.calib` at 6 KB — the third raise
+     the cap rule has forced and the third time that is the rule working rather than a way round it.
+     The Method view's calibration section measures 5,313 B compiled; 6 KB is measured+5% (5,579 B)
+     rounded up to the whole KB, and 11+12+4+5+6 = 38 KB of caps needs `app - appCore` to be 38 KB.
+     398 KB was measured + 1.3% against a page at 392.7 KB when this step landed, and is measured
+     + 1.1% against the 393.7 KB the page reads NOW — the methodology rewrite below spent 1.0 KB of
+     core after this note was written, and a comment quoting only its own moment beside a live
+     ceiling is the defect the P3 red team caught in the manifest string (docs/refutations/P5.md,
+     refuter 2). Either reading is far under the +5% the rule would allow (413 KB). `appCore` is NOT raised AND DID NOT MOVE — 358.3 KB before the section and 358.3 KB
+     after it — which is the whole evidence that the raise bought this feature and nothing else. */
   assert.deepEqual(VARIANTS.lite.budgets,
-    { total: 600 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024,
-      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024 } });
+    { total: 600 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024,
+      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024 } });
   assert.ok(VARIANTS.lite.budgets.app > VARIANTS.lite.budgets.appCore,
     'the raise is a raise: app must exceed the pre-raise ceiling core is still held to');
   assert.match(VARIANTS.lite.budgetSource, /vs-GTO/, 'the raise names what it bought');
@@ -251,8 +292,17 @@ test('lite carries the METHODOLOGY §9.11 budgets, and full\'s are D9\'s — set
      tighter than its own rule is the conservative direction. The P4 UI grew the full page into
      that declined headroom (623.2 -> 636.3 KB), so the raise is a figure this repository had
      already priced rather than one invented to fit, and it stays below the CURRENT measured+5%. */
-  assert.equal(B.total, 646 * 1024, 'the P4 total raise is the 646 KB the P3 repair priced and declined');
-  assert.match(VARIANTS.full.budgetSource, /646/, 'and the raise says so in the source note');
+  /* AND THE P5 `total` RAISE, 646 -> 660 KB — the first D9 total raise that had to be MEASURED
+     rather than taken off a shelf, because there was no previously-priced number left to take. The
+     calibration verdict costs the full page 11.4 KB in two separately-budgeted pieces: 6.4 KB of
+     shared model payload (`model.calibration`, D6's fifth reserved sub-budget) and 5.2 KB of
+     Method-view section (@block:calib). Measured 668,417 B = 652.8 KB; 660 KB = 675,840 B is 1.1%
+     above it, deliberately far below the 686 KB a fresh measured+5% would give, on the reading this
+     row settled at P3 and re-applied at P4 — a ceiling tighter than its own rule is the
+     conservative direction. */
+  assert.equal(B.total, 660 * 1024, 'the P5 total raise is measured+1.1%, not measured+5%');
+  assert.match(VARIANTS.full.budgetSource, /660/, 'and the raise says so in the source note');
+  assert.match(VARIANTS.full.budgetSource, /646/, 'without losing the raise it replaces');
   assert.ok(B.eq > 0, 'the equilibrium payload has its own tripwire (§5.3)');
   assert.ok(!/UNANCHORED/.test(VARIANTS.full.budgetSource), 'the unanchored note must go with the null');
   assert.match(VARIANTS.full.budgetSource, /measured/i);
@@ -267,6 +317,17 @@ test('each variant has its own claim sentence — no two artifacts make the same
   const claims = VARIANT_NAMES.map((v) => VARIANTS[v].claim);
   assert.equal(new Set(claims).size, claims.length);
   for (const c of claims) assert.ok(c.length > 20);
+  /* P5: the sentences are final rather than placeholders, and three properties they now have to
+     keep, because the banner line, the grep gate and the document quote all depend on them.
+       - ONE LINE. D11 parses the banner with /^\s*VARIANT (\S+) — (.+?)\.$/m.
+       - NO TRAILING PERIOD. build.mjs appends one; a second would end the line early.
+       - NEITHER A SUBSTRING OF THE OTHER, or "its own and none of the other's" is unsatisfiable. */
+  for (const c of claims) {
+    assert.ok(!/[\r\n]/.test(c), 'a claim must be one line — the banner line is one line');
+    assert.ok(!c.endsWith('.'), 'the build appends the full stop');
+  }
+  assert.ok(!VARIANTS.lite.claim.includes(VARIANTS.full.claim));
+  assert.ok(!VARIANTS.full.claim.includes(VARIANTS.lite.claim));
 });
 
 // ---------------------------------------------------------------------------
@@ -372,16 +433,17 @@ test('the names are independent: cutting one block leaves another alone', () => 
   assert.equal(stripMarkedBlocks(src, 'other').text, '/* @block:gto */g/* @end:block */\n');
 });
 
-test('the shell carries three marked features, and each cut is the feature rather than a marker census', () => {
+test('the shell carries five marked features, and each cut is the feature rather than a marker census', () => {
   const shell = readFileSync(resolve(ROOT, 'src', 'shell.html'), 'utf8');
-  /* THREE MARKED BLOCKS SINCE THE P4 UI: the vs-GTO colour mode (P3), the EV surface and its three
-     presentations, and the pool-skill dial. Each is the subject of one line in `budgets.blocks`, so
-     each has to be a real region rather than a name sprinkled over the file.
+  /* FIVE MARKED BLOCKS SINCE P5's CALIBRATION STEP: the vs-GTO colour mode (P3), the EV surface and
+     its three presentations, the pool-skill dial, the sub-cell top-N, and the calibration verdict
+     section in the Method view. Each is the subject of one line in
+     `budgets.blocks`, so each has to be a real region rather than a name sprinkled over the file.
      THE MARKER ASSERTION IS SCOPED PER BLOCK, which it could not be while there was only one: a cut
      consumes ITS OWN markers, and the other two features' markers legitimately survive it. Asserting
      `!/@end:block/` over the whole remainder was true by accident of there being one block, and it
      is the assertion that failed the day a second one landed. */
-  const MARKED = { gto: [10, 5000], ev: [8, 4000], skill: [5, 1500] };
+  const MARKED = { gto: [10, 5000], ev: [8, 4000], skill: [5, 1500], topn: [3, 3000], calib: [3, 6000] };
   for (const [name, [minBlocks, minBytes]] of Object.entries(MARKED)) {
     const r = stripMarkedBlocks(shell, name);
     assert.ok(r.blocks >= minBlocks,
@@ -394,9 +456,10 @@ test('the shell carries three marked features, and each cut is the feature rathe
       assert.ok(stripMarkedBlocks(only, name).blocks >= minBlocks, `${v} carries the whole of @block:${name}`);
     }
   }
-  /* Cutting all three consumes every marker in the file — which is the whole-remainder claim the
-     old single-block assertion was really making, said in a way that survives a fourth block. */
+  /* Cutting all of them consumes every marker in the file — which is the whole-remainder claim the
+     old single-block assertion was really making, said in a way that survived a fourth block, then
+     a fifth, and will survive a sixth. */
   let left = shell;
   for (const name of Object.keys(MARKED)) left = stripMarkedBlocks(left, name).text;
-  assert.ok(!/@block:|@end:block/.test(left), 'between them the three cuts consume every marked region');
+  assert.ok(!/@block:|@end:block/.test(left), 'between them the cuts consume every marked region');
 });

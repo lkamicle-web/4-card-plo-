@@ -50,3 +50,47 @@ export const CAT_COUNTS = [1302540, 1098240, 123552, 54912, 10200, 5108, 3744, 6
 
 export const VPIP_GRID = [25, 40, 55, 70, 90];
 export const NODES = ['rfi', 'limps', 'raise', '3bet'];
+
+// ---------------------------------------------------------------------------
+// THE P5 ALLOWANCE MARGIN (V3-PLAN §3.5, §7.1).
+//
+// §7.1 disposes of I23(d) / I28 / I30 as "re-pinned after I42 lands (re-measured allowances, not
+// authored ones)", and §7.2's I42 row asks its own compounding allowance to be "re-measured". P5
+// is where that happens, and this constant is the one number the four re-pins share.
+//
+// WHAT WAS WRONG WITH THE OLD PINS, stated plainly, because it is the reason this exists. Three
+// dip/drift allowances shipped describing the SAME margin and running at three different ones:
+//
+//     gate      allowance   measurement   realised   the prose said
+//     I21        4.0 pts      3.2 pts      +25.0%    "half the largest single cell" (a STRUCTURAL anchor)
+//     I23(d)     4.0 pts      3.16 pts     +26.4%    "I21's" (borrowed, never measured on its own sweep)
+//     I28        6.5 pts      5.45 pts     +19.3%    "~19% headroom on the measurement, the same margin I21 runs at"
+//     I30        4.0 pts      2.86 pts     +39.9%    "I21's own; no widening needed" (borrowed)
+//     I42(d)     5.5 pts      4.79 pts     +14.9%    "that measurement plus I28's own ~15% margin"
+//
+// I28 calls I21's margin 19%, I42 calls I28's margin 15%, and the two borrowed pins had never been
+// divided by their own measurements at all. Nothing was FALSE — every gate passed and every number
+// it printed was real — but "the margin" was four different numbers wearing one name.
+//
+// THE ANCHOR: 15% is the TIGHTEST margin any allowance in this repository already runs at (I42(d)'s
+// 5.5 against a measured 4.787 = +14.89%, rounded to the nearest whole percent). It is chosen
+// BECAUSE it is the tightest of the shipped set and for no other reason: adopting the tightest
+// number already in evidence is the only choice that cannot weaken a gate, and it invents nothing.
+// This is not a shipped constant — no gate tolerance in this repository is — so it needs no
+// `constants` entry, no badge and no flag; it needs an anchor, and that is the anchor.
+//
+// THE RULE, which is the half that matters more than the number: A RE-PIN MAY TIGHTEN, NEVER WIDEN.
+// Where the idiom would loosen an allowance the gate already carries (I30's floor at 8.0%, I42(d)'s
+// ceiling at 5.5), the existing pin STANDS and the gate prints its own realised margin instead. So
+// the effect of P5 on every allowance is monotone in one direction, and "re-measure" can never be
+// the sentence that precedes a weaker gate.
+//
+// CEILINGS round UP to the next 0.05 pt, FLOORS round DOWN to the next 0.05 pt, so a printed
+// allowance stays a number a human can read and neither rounding can land inside the margin.
+export const P5_MARGIN = 0.15;
+
+/** headroom of a CEILING over the measurement it was pinned from, as a % of that measurement */
+export const overPct = (allow, measured) => ((allow - measured) / measured) * 100;
+
+/** clearance of a FLOOR below the measurement it was pinned from, as a % of that measurement */
+export const underPct = (floor, measured) => ((measured - floor) / measured) * 100;

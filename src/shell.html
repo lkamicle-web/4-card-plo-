@@ -2198,6 +2198,39 @@ function posDisabledReason(pos, node) {
 }
 function seatsBefore(pos) { return POSITIONS.slice(0, POSITIONS.indexOf(pos)); }
 
+/* ------------------------------------------------- WHICH ARTIFACT AM I? (V3-PLAN §5.2, §5.3)
+   The one page-level fact that CANNOT come from `model.json`, and the reason is the whole of the
+   dual build: model.json is the SHARED artifact, injected byte-identically into both pages, so a
+   per-variant claim read out of it would be the same claim in both — exactly the failure D11's
+   "and none of the others'" clause exists to catch. It therefore rides the variant seam
+   (the `only` blocks below), which is the only per-variant channel there is.
+
+   The sentence is `scripts/lib/variant.mjs`'s own `claim` for this variant, copied verbatim, and
+   the copy is safe because it is GATED rather than trusted: D11(b) greps the built artifact for the
+   manifest's string, so a drifted copy fails the build, and D11(f) requires this second occurrence
+   to exist OUTSIDE the provenance banner — a claim only a `head -6` reader sees is not a claim the
+   page makes. METHODOLOGY §0 quotes both sentences and D11(e) byte-compares them against the same
+   manifest, so the document, the banner and the screen are three copies of one string with two
+   gates between them. */
+/* @only:lite */
+var ARTIFACT = {
+  name: 'lite', file: 'index.html', other: 'index-full.html',
+  /* ONE unbroken literal, deliberately over the file's line width: jsmin preserves literals but
+     does not fold concatenation, so a sentence split across two of them reaches the artifact with
+     a quote and a plus inside it and the grep gate stops seeing it. */
+  claim: 'a self-contained offline page: the measured model, the scored grid, and the equilibrium baseline as quantized tiers with none of the strategies they came from',
+  missing: 'the CFR+ strategies and the pairwise checkdown matrix (data/equilibrium.json)'
+};
+/* @end:only */
+/* @only:full */
+var ARTIFACT = {
+  name: 'full', file: 'index-full.html', other: 'index.html',
+  /* one unbroken literal, for the reason stated in the lite block above */
+  claim: 'a self-contained offline page: the measured model, the scored grid, the same quantized baseline tiers, and in data/equilibrium.json the solved strategies behind them',
+  missing: ''
+};
+/* @end:only */
+
 /* ------------------------------------------------- the table environment (V2-PLAN §3)
    Depth, rake and straddle are scoring-layer dials shipped in `constants`. A v1 dataset does not
    carry them and a v1 policy would ignore them, so the page asks the DATA whether the axes exist
@@ -4906,6 +4939,121 @@ function adjScore(cards, ev) {
   return { rec: rec, f: f, score: base * (1 + (f.adjRaw - rec.d.adjMean) / 100), base: base, cls: cls };
 }
 
+/* @block:topn */
+/* @subcell — THE SUB-CELL RUNG TABLE (V3-PLAN §4 item 10, §7.2's I47 row).
+
+   WHAT THIS IS, AND WHY IT IS NOT THE LAYER §2.4 CUT. The removed sub-bucket layer gave every hand
+   a SECOND KEY and priced each bucket AS-IF STANDALONE against a grid that was never re-cut, so a
+   bucket verdict was a hypothetical about a picture nobody was looking at. This block makes no
+   verdict at all. It answers one narrower question — inside the cell the grid IS painting, which
+   hands are the good ones — and the only claim it makes is an ORDERING, on §8's `adjRaw`
+   interpolation, labelled `estimate` on every row it returns.
+
+   THE RUNGS ARE THE HONEST UNIT, not the hands. `adjRaw = 2·(#ranks ≥ J) − 3·danglers + 4·[nut
+   suited]` is a small integer, so a cell's hands do not form a ranking at all: they form at most
+   fifteen RUNGS, and every hand on a rung scores identically. A "top 6 hands" list that hid that
+   would be inventing resolution the model does not have, so each row carries its rung's combo count
+   and its share of the cell, and the representative hand is named as a representative.
+
+   THE ENUMERATION IS EXACT AND COSTS NOTHING TO SHIP. `rowOf` reads only ranks, so the 270,725
+   combos factor into 1,820 rank multisets × their legal suit assignments: the row pass is 1,820
+   classify calls (cached once for the page's life), and a cell then walks only the multisets in its
+   own row. No new bytes in `model.json`, no second key on any hand, and the reconstruction is
+   checkable — Σ of a cell's rung combos must equal the shipped `combos`, and the combo-weighted
+   mean of its rungs must equal the shipped `adjMean`. Gate I47 asserts both over all 123 cells.
+
+   THE TAXONOMY ARRIVES AS AN ARGUMENT. Everything here is a pure function of a `tx` adapter
+   ({classify, features, colOf, nutSuited}), so the block is self-contained and `test/subcell.test.mjs`
+   can slice it out of the shipped shell and drive it with `scripts/lib/taxonomy.mjs` against a
+   brute-force enumeration of all 270,725 hands. The page passes its own `TX` — the same code the
+   data was built with, injected or builtin — so the page and the gate cannot rank different hands.
+
+   N IS READ, NOT CHOSEN. The list length is the length of the cell's own shipped `ex` array — the
+   same N the Example hands grid already renders — so the top-N acquires no constant of its own and
+   §6 has nothing to anchor. There is deliberately no numeric literal for it in this block.        */
+var SUBCELL = (function () {
+  /* the 1,820 rank multisets r0 ≥ r1 ≥ r2 ≥ r3, walked DESCENDING so the first hand found at a rung
+     is the rank-highest one — which is what makes a representative deterministic rather than
+     whichever hand the loop happened to reach first. */
+  var MS = [], a, b, c, d;
+  for (a = 12; a >= 0; a--) for (b = a; b >= 0; b--) for (c = b; c >= 0; c--) for (d = c; d >= 0; d--) MS.push([a, b, c, d]);
+  /* one legal hand per multiset: repeated ranks take successive suits, so the cards stay distinct */
+  function rep(r) {
+    var out = [], n = 0, i;
+    for (i = 0; i < 4; i++) { n = (i && r[i] === r[i - 1]) ? n + 1 : 0; out.push(r[i] * 4 + n); }
+    return out;
+  }
+  var ROWS = null, ROWTX = null, MEMO = {}, MEMOTX = null;
+  function rowsFor(tx) {
+    if (ROWS && ROWTX === tx) return ROWS;
+    ROWS = new Array(MS.length); ROWTX = tx;
+    for (var i = 0; i < MS.length; i++) ROWS[i] = tx.classify(rep(MS[i])).row;
+    return ROWS;
+  }
+  /** every rung of one cell, strongest first: [{adj, combos, ex:[c,c,c,c]}] */
+  function rungs(tx, rowKey, colKey) {
+    if (MEMOTX !== tx) { MEMO = {}; MEMOTX = tx; }
+    var ck = rowKey + '|' + colKey;
+    if (MEMO[ck]) return MEMO[ck];
+    var rows = rowsFor(tx), out = [], byAdj = {}, h = [0, 0, 0, 0], m, s0, s1, s2, s3;
+    for (m = 0; m < MS.length; m++) {
+      if (rows[m] !== rowKey) continue;
+      var r = MS[m], f = tx.features(rep(r)), base = f.adjRaw - (f.nutSuited ? 4 : 0);
+      for (s0 = 0; s0 < 4; s0++) {
+        h[0] = r[0] * 4 + s0;
+        for (s1 = (r[1] === r[0] ? s0 + 1 : 0); s1 < 4; s1++) {
+          h[1] = r[1] * 4 + s1;
+          for (s2 = (r[2] === r[1] ? s1 + 1 : 0); s2 < 4; s2++) {
+            h[2] = r[2] * 4 + s2;
+            for (s3 = (r[3] === r[2] ? s2 + 1 : 0); s3 < 4; s3++) {
+              h[3] = r[3] * 4 + s3;
+              if (tx.colOf(h) !== colKey) continue;
+              var adj = base + (tx.nutSuited(h) ? 4 : 0), e = byAdj[adj];
+              if (!e) { e = byAdj[adj] = { adj: adj, combos: 0, ex: h.slice() }; out.push(e); }
+              e.combos++;
+            }
+          }
+        }
+      }
+    }
+    out.sort(function (x, y) { return y.adj - x.adj; });
+    MEMO[ck] = out;
+    return out;
+  }
+  /** the list length, read off the cell's own shipped examples rather than chosen here */
+  function want(cell) { return (cell.ex && cell.ex.length) || 0; }
+  /** the three percentile nodes score the cell; vs-3-bet cuts on `eqVs3bet` and this cannot enter it */
+  function scored(node) { return node !== '3bet'; }
+  var REASON = 'this node cuts on eqVs3bet — measured per cell against a face-up mix, and carrying '
+    + 'no within-cell resolution — so the ordering below is the model’s, not this node’s';
+  /** §8’s within-cell adjustment, the same expression `handAdjust` is in scripts/lib/policy.mjs */
+  function adjust(sc, adjRawValue, adjMean) { return sc * (1 + (adjRawValue - adjMean) / 100); }
+  /**
+   * The rendered list. Returns rows in display order, each carrying its own `estimate` badge as
+   * DATA — a row that reached a surface without one would be a row this function did not build.
+   * `base` is the cell’s score at the current state, or null where `scored()` says the node does
+   * not use it; `delta` is then null and the caller renders the reason instead of a number.
+   */
+  function rows(tx, rec, base) {
+    var rs = rungs(tx, rec.rowKey, rec.colKey), n = want(rec.cell), i, tot = 0;
+    for (i = 0; i < rs.length; i++) tot += rs[i].combos;
+    var out = [], take = rs.slice(0, n);
+    for (i = 0; i < take.length; i++) out.push(row(take[i], i + 1, rec, base, false));
+    if (rs.length > take.length) out.push(row(rs[rs.length - 1], rs.length, rec, base, true));
+    return { rows: out, rungs: rs.length, combos: tot, exact: tot === rec.cell.combos, badge: 'estimate' };
+  }
+  function row(g, rank, rec, base, floor) {
+    return { adj: g.adj, combos: g.combos, ex: g.ex, rank: rank, floor: floor,
+      share: g.combos / rec.cell.combos,
+      delta: base == null ? null : adjust(base, g.adj, rec.cell.adjMean) - base,
+      badge: 'estimate' };
+  }
+  return { rungs: rungs, rows: rows, want: want, scored: scored, adjust: adjust, reason: REASON,
+    multisets: MS.length };
+})();
+/* @end:subcell */
+/* @end:block */
+
 /* =========================================================== INSPECTOR */
 /* THE INSPECTOR'S INFORMATION ARCHITECTURE (V3-PLAN §8 item 14, first pass).
    Four tabs, not three, and the split is by QUESTION rather than by size:
@@ -5428,7 +5576,65 @@ function renderComposition(host, rec) {
   s3.appendChild(el('div', 't-sm dim', 'combo-weighted ν of the ' + NODEBY[S.node].aggShort + ' range. The ν ' +
     'reference (the M_nut pivot) is ' + NUBAR + '; the measured mean over all combos is ' + f2(measuredNuBar()) +
     ' — the reference is an anchor, not an average.'));
+  /* @block:topn */
+  renderTopN(host, rec, ev);
+  /* @end:block */
 }
+/* @block:topn */
+/* THE ADAPTER `@subcell` READS THE TAXONOMY THROUGH. `TX` supplies the two functions an injected
+   module overrides — so the page ranks hands with the code the data was built with — and the
+   suit-topology pair is the page's own. The two halves could in principle disagree about which
+   cell a hand is in, and `t.exact` below is what refuses the list rather than printing a wrong
+   partition: Σ of the rungs' combos must be the cell's shipped `combos`. */
+var TXSUB = { classify: TX.classify, features: TX.features, colOf: colOf, nutSuited: nutSuitedOf };
+/**
+ * V3-PLAN §4 item 10 — the sub-cell top-N, built on §8's adjRaw machinery and labelled `estimate`
+ * on every row. It renders under Composition because that is the tab that already answers "what is
+ * in this cell"; what it adds is the only finer answer this model can give without inventing one.
+ *
+ * THE THING IT DELIBERATELY DOES NOT DO is give a hand a tier. §2.4's autopsy is that a sub-cell
+ * verdict was a hypothetical about a grid nobody was painting; the two closing lines say what this
+ * list is instead, and gate I47 asserts the same claim from the other side — that no per-hand
+ * number ever reaches the percentile sort.
+ */
+function renderTopN(host, rec, ev) {
+  var d = rec.d;
+  if (!SUBCELL.want(d)) return;
+  var scored = SUBCELL.scored(S.node);
+  var t = SUBCELL.rows(TXSUB, { rowKey: rec.row.key, colKey: rec.col.key, cell: d },
+    scored ? ev.sc[rec.i] : null);
+  var right = el('span', 't-micro dim');
+  right.innerHTML = t.rungs + ' rung' + (t.rungs === 1 ? '' : 's') + '<span class="tag-m tag-e">estimate</span>';
+  var s = sec(host, 'Top hands in this cell', right);
+  s.id = 'topn';
+  if (!t.exact) {
+    s.appendChild(el('div', 't-sm dim', 'the enumeration reconstructs ' + commas(t.combos) + ' of this cell’s ' +
+      commas(d.combos) + ' combos, so the list is withheld rather than shown wrong'));
+    return;
+  }
+  if (!scored) s.appendChild(el('div', 't-sm dim', SUBCELL.reason));
+  var list = el('div', 'difflist'); list.style.marginTop = '6px';
+  t.rows.forEach(function (r) {
+    var b = el('button', 'diffrow' + (r.floor ? ' left' : ''));
+    b.innerHTML = '<span class="nm">' + handHTML(r.ex) + '</span>' +
+      (r.delta == null ? '<span class="n">adjRaw ' + signed(r.adj, 0) + '</span>'
+        : '<span class="n ' + (r.delta >= 0 ? 'good' : 'bad') + '">' + signed(r.delta) + ' pts</span>') +
+      '<span class="n">' + pct(r.share, 1) + ' · ' + commas(r.combos) + '</span>';
+    b.title = (r.floor ? 'the cell’s weakest rung' : 'rung ' + r.rank + ' of ' + t.rungs) +
+      ' · adjRaw ' + r.adj + ' against this cell’s mean ' + d.adjMean + ' · ' + commas(r.combos) +
+      ' combos share this rung and every one of them scores the same — ' + r.badge;
+    b.onclick = function () { loadHand(r.ex.map(cardName).join('')); };
+    list.appendChild(b);
+  });
+  s.appendChild(list);
+  s.appendChild(el('div', 't-sm dim', t.rungs === 1
+    ? 'one rung: every hand in this cell carries the same adjustment, and the cell is the finest unit the model resolves here.'
+    : 'representatives, not a ranking of hands — every hand on a rung scores identically. Ranked by an ' +
+      'interpolation, not a measurement: the ranking is reliable, the magnitudes are approximate.'));
+  s.appendChild(el('div', 't-sm dim', 'A rung is not a tier. This ordering lives inside the cell and never enters ' +
+    'the percentile cut: the grid paints ' + tierShort(ev.tier[rec.i], S.node) + ' for every hand here.'));
+}
+/* @end:block */
 function renderInversion(host) {
   var s = el('section', 'isec');
   var box = el('div');
@@ -5507,12 +5713,17 @@ function renderHandPanel(host) {
   bar.title = 'tier boundary at the centre line · this hand ' + signed(margin) + ' points from it';
   mm.appendChild(bar);
   var mtxt = el('div');
-  mtxt.innerHTML = '<div class="t-metric ' + (margin >= 0 ? 'good' : 'bad') + '">' + signed(margin) + ' pts</div>' +
+  /* BOTH NUMBERS IN THIS BOX ARE PER-HAND, so both wear the badge (V3-PLAN §7.2, gate I47). The
+     margin carries the within-cell adjustment at the three percentile nodes, and the second line is
+     that adjustment on its own; neither is a measurement of this hand, and until item 10 neither
+     said so — the counterfactual lane below wore the word and these two did not. */
+  mtxt.innerHTML = '<div class="t-metric ' + (margin >= 0 ? 'good' : 'bad') + '">' + signed(margin) +
+    ' pts<span class="tag-m tag-e">estimate</span></div>' +
     '<div class="t-sm dim">' + (Math.abs(margin) < C.closeMargin
       ? 'coin-flip between ' + tierShort(t) + ' and its neighbour — either is defensible'
       : (margin < 0 ? 'short of ' : 'clear of ') + ((hpEntry && hpEntry.marginOf) || 'the nearest tier boundary')) + '</div>' +
     '<div class="t-sm ' + (a.score >= a.base ? 'good' : 'bad') + '" style="margin-top:4px">' + signed(a.score - a.base) +
-    ' pts vs its class mean</div>';
+    ' pts vs its class mean<span class="tag-m tag-e">estimate</span></div>';
   mm.appendChild(mtxt);
   p.appendChild(mm);
   if (Math.abs(margin) < C.closeMargin) { var cc = el('div'); cc.style.marginTop = '8px'; cc.appendChild(el('span', 'closechip', 'CLOSE')); p.appendChild(cc); }
@@ -8052,6 +8263,14 @@ function revealBlock() {
       : 'WRONG — ' + tierLabel(sp.tier, sp.node) + ', by ' + f1(Math.abs(sp.margin)) + ' points';
   head.style.color = g === 'right' ? 'var(--pos-good)' : g === 'close' ? 'var(--pos-warn)' : 'var(--pos-bad)';
   box.appendChild(head);
+  /* the drill's margin is `nextSpot`'s, which adds this hand's within-cell adjustment at the three
+     percentile nodes — a per-hand number, and gate I47 wants every one of them badged */
+  if (g !== 'right') {
+    var pm = el('div', 't-micro dim');
+    pm.innerHTML = '<span class="tag-m tag-e">estimate</span> the margin includes this hand’s ' +
+      'within-cell adjustment — an interpolation over the cell, not a measurement of the hand';
+    box.appendChild(pm);
+  }
   box.appendChild(el('div', 't-sm sec', sp.rec.row.label + ' × ' + sp.rec.col.label + ' · ' + commas(sp.rec.combos) + ' combos · 1 in ' + commas(sp.rec.d.oneIn)));
   var saveNode = S.node, savePos = S.pos, saveV = S.v, saveL = S.L, saveEv = lastEv;
   S.node = sp.node; S.pos = sp.pos; S.v = sp.v; S.L = sp.L; lastEv = sp.ev;
@@ -8410,6 +8629,84 @@ function extrapReach() {
   }
   return { fires: fires, total: total, max: max, at: at };
 }
+/* @block:calib ============================== THE CALIBRATION VERDICT (V3-PLAN §3.5, §5.4, §7.2)
+   The one section of this page that reports a FAILURE as its headline, because the alternative is
+   worse. `model.calibration` is the primacy verdict — does ordering hands by EV make more money
+   than ordering them by the score — judged against criteria PC-0..PC-8 that were written at Phase 0
+   before any EV number existed. It cannot be answered: no lawful, hero-visible, assigned 4-card PLO
+   corpus exists at any volume, and the first criterion says a criterion that cannot be evaluated
+   counts as a FAIL. So the answer ships, hard-failing, with every row of the bar on screen.
+
+   EVERYTHING HERE IS READ FROM `MODEL.calibration` AND NOTHING IS TYPED. The verdict, the eight
+   rows, PC-8's numbers, the reason the disputed list is empty, the limitation sentence and the
+   named successor experiment are all shipped data, re-derived by `scripts/verify.mjs` on every run
+   and gated by I46 — which rebuilds the block and digest-compares it, so a sentence here cannot
+   outlive the measurement behind it. A retyped verdict is exactly the failure this arrangement
+   exists to prevent, and it is why the limitation below renders through the model rather than as
+   prose in this file. */
+function calibHTML() {
+  var C0 = MODEL.calibration;
+  if (!C0) return '';
+  var esc = function (x) { return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+  var cap = function (x) { return esc(x).replace(/^./, function (c) { return c.toUpperCase(); }); };
+  var sp = C0.selfPlay || {}, p8 = C0.pc8 || {}, cp = C0.corpus || {};
+  var ok = C0.verdict === 'pass';
+  var h = '<h3>Calibration &mdash; the decision layer against money</h3>' +
+    '<p class="' + (ok ? 'good' : 'bad') + '"><b>PRIMACY VERDICT: ' + esc(C0.verdict).toUpperCase() + '.</b> ' +
+    (ok ? 'The pre-registered test cleared every criterion.'
+        : 'The pre-registered test that would decide whether the EV ordering wins more money than ' +
+          'the score ordering <b>cannot be run</b> &mdash; and under its own first rule that is a ' +
+          'verdict, not a gap. So the EV surface stays display-only and the score keeps cutting the ' +
+          'tiers: not a preference, a consequence.') + '</p>' +
+    '<p class="t-sm dim">The bar was fixed ' + esc(C0.preRegisteredAt) + ' &mdash; digest <code>' +
+    esc(C0.criteriaDigest) + '</code>, byte-compared against the spike memo, so neither copy can be ' +
+    'edited alone. Nothing in it was narrowed to something today&rsquo;s data could clear.</p>';
+  h += '<table class="tbl"><tr><th>criterion</th><th>status</th><th>what it found</th></tr>' +
+    (C0.evaluated || []).map(function (c) {
+      var cl = c.status === 'pass' ? 'good' : c.status === 'fail' ? 'bad' : 'warn';
+      return '<tr><td>' + esc(c.id) + '</td><td class="' + cl + '">' + esc(c.status) +
+        '</td><td style="text-align:left;white-space:normal">' + esc(c.detail) + '</td></tr>';
+    }).join('') + '</table>' +
+    '<p class="t-sm dim"><b>' + (C0.unevaluable || []).length + ' of ' + (C0.evaluated || []).length +
+    ' criteria are unevaluable</b> (' + esc((C0.unevaluable || []).join(', ')) + '). PC-0 is ' +
+    'conjunctive and failure-closed: no partial credit, and a criterion nobody can evaluate is a FAIL.</p>';
+  h += '<p><b>The corpus.</b> ' + (cp.present
+    ? commas(cp.rows) + ' rows, ' + commas(cp.heroRows) + ' hero-visible, ' + commas(cp.showdownRows) + ' showdown.'
+    : '<b>None.</b> ' + esc(cp.reason) + '. No corpus size fixes this: you cannot read the EV of an ' +
+      'action nobody took.') + ' The paired statistic PC-4 asks for (D in bb/100, its standard error, ' +
+    'both half-estimates) is therefore <b>' + (C0.statistic ? 'reported above' : 'not computed') + '</b>.</p>';
+  h += '<p><b>One number the bar can produce without a corpus: PC-8.</b> Of the ' + commas(p8.transposed || 0) +
+    ' cell pairs the EV ordering transposes relative to the score ordering, <b>' + commas(p8.substantive || 0) +
+    '</b> (' + pct(p8.fraction || 0, 1) + ') sit further apart than ' + (p8.threshold || 0).toFixed(2) +
+    ' equity points &mdash; twice the shipped cell standard error. Where the two orderings disagree they ' +
+    'disagree across real distance rather than inside the error bars. That is a fact about the ' +
+    '<i>re-ordering</i>, not about whether it wins.</p>';
+  h += '<p><b>What did run: a self-play consistency check, and it is not a result.</b> ' +
+    commas(sp.hands || 0) + ' hands at seed ' + sp.seed + ' (sampling parameters, not model constants), ' +
+    'over the ' + pct(sp.disagreementMass || 0, 1) + ' of combo mass where the two orderings disagree at ' +
+    'all &mdash; ' + (sp.disagreementCells || 0) + ' cells. D = ' + (sp.D || 0).toFixed(5) + ' <b>' +
+    esc(sp.unit) + '</b>, SE ' + (sp.se || 0).toFixed(5) + ', payoff source <code>' + esc(sp.payoffSource) +
+    '</code>. The unit is pot fractions against a checkdown payoff, <b>not bb/100 and not money</b>: the ' +
+    'block stamps <code>moneyValidated: ' + String(sp.moneyValidated) + '</code>, and feeding this figure ' +
+    'to the verdict machine fails PC-4 by name. A number that looks like a result is the one way this ' +
+    'limitation could quietly stop being true.</p>';
+  h += '<p><b>Fitted vs shipped.</b> ' + ((C0.disputed || []).length
+    ? 'Every disagreement between a fitted constant and the shipped one, published rather than adopted:'
+    : cap(C0.disputedReason) + '. The plan predicted one disagreement in particular &mdash; a fitted ' +
+      'villain discipline <i>q</i> other than the shipped 0.85 &mdash; and that prediction is ' +
+      '<b>untested</b> here: neither falsified nor confirmed, because there is nothing to fit against.') +
+    '</p>' + ((C0.disputed || []).length
+    ? '<table class="tbl"><tr><th>constant</th><th>shipped</th><th>fitted</th><th>&Delta;</th><th>z</th></tr>' +
+      C0.disputed.map(function (d) {
+        return '<tr><td>' + esc(d.name) + '</td><td>' + esc(d.shipped) + '</td><td>' + esc(d.fitted) +
+          '</td><td class="bad">' + esc(d.delta) + '</td><td>' + (d.z == null ? '&mdash;' : f2(d.z)) + '</td></tr>';
+      }).join('') + '</table>' : '');
+  h += '<p><b>The standing limitation, and the experiment that would close it.</b> <b>' +
+    cap(C0.limitation) + '.</b> The named successor experiment: ' + esc(C0.successor) +
+    '</p><p class="t-sm dim">Gate: ' + esc(C0.gate) + '</p>';
+  return h;
+}
+/* @end:block */
 function renderMethod() {
   var b = $('#methodbody'), m = MODEL.meta;
   var html = '<h3>What this is</h3>' +
@@ -8420,6 +8717,15 @@ function renderMethod() {
     'The tier cuts are percentile cuts ' +
     'on that score at a width chosen per position and table looseness. Nothing here is GTO. The constants below are ' +
     'opinions calibrated against measurement, and the T4 tier is the model declaring where it is not confident.</p>' +
+    /* THE PER-VARIANT HONESTY SENTENCE, ON SCREEN (V3-PLAN §5.2/§5.3, METHODOLOGY §0). It sits
+       here, immediately under "nothing here is GTO", because that claim is the one the two
+       artifacts qualify differently: the full build carries a solved object and the lite build
+       does not, and a reader is owed which of the two they are holding without opening the
+       banner. D11(f) asserts this copy exists. */
+    '<p><b>This artifact.</b> <code>' + ARTIFACT.file + '</code> is ' + ARTIFACT.claim + '. ' +
+    (ARTIFACT.missing ? 'Not in it: ' + ARTIFACT.missing + ', which is <code>' + ARTIFACT.other + '</code> only. ' : '') +
+    'The same sentence is in this file\'s banner and in METHODOLOGY &sect;0; gate <b>D11</b> checks ' +
+    'all three against one manifest, and that neither artifact wears the claim of the other.</p>' +
     (HAS_ENV ? '<p class="t-sm dim">The depth, rake and straddle controls are <b>live</b>, and that is an architectural ' +
       'fact rather than a performance one: all-in equity does not change with the stacks, so every <code>eq[N]</code> ' +
       'here is depth-independent and there is nothing to re-simulate. What those dials move is realization and price — ' +
@@ -8618,6 +8924,9 @@ function renderMethod() {
   var eB25 = evaluate(0.25, 'BB', 'limps', 2, 'CO', S.mix), eB90 = evaluate(0.90, 'BB', 'limps', 2, 'CO', S.mix);
   var wUTG25 = eU25.aggFreq, wUTG90 = eU90.aggFreq, nsUTG25 = eU25.nutShare, nsUTG90 = eU90.nutShare;
   var wBB25 = eB25.aggFreq, wBB90 = eB90.aggFreq;
+  /* @block:calib */
+  html += calibHTML();
+  /* @end:block */
   html += '<h3>Known weaknesses</h3><ul>' + [
     'Equities are measured against <b>random</b> opponents, not VPIP-filtered ranges. The approximation is best at high VPIP, and it is the reason the model is honest about loose lobbies specifically.',
     'Every displayed number is a <b>cell mean</b>. RUN2 spans QJ97 to 6432; the within-cell adjustment used for single hands is an interpolation labelled <i>estimate</i>.',
@@ -8657,6 +8966,27 @@ function renderMethod() {
         'spots at a loose table over many limpers, and the badge names them on the cell rather than hiding the clamp.';
     })(),
     'The constants are opinions. They are calibrated against measurement, but the width schedule, the nut gate and the realization ladder are authored judgements.',
+    /* METHODOLOGY §10's limitations 16 and 17, rendered FROM `constants.limitations` rather than
+       retyped — the same argument as the calibration entry below. The notes are byte-compared
+       against docs/METHODOLOGY.md by gates I41 and I42, so these two lines and the document are one
+       string apiece; retyping them here would be the second copy those gates exist to prevent.
+       They cost the app block only the code, because the strings are already in the data. */
+    ((C.limitations || []).map(function (L) {
+      var of = String(L.of); of = of.charAt(0).toUpperCase() + of.slice(1);
+      return '<b>' + of + ' (limitation ' + L.n + ').</b> ' + L.note + ' <i>What would fix it: ' + L.fix + '.</i>';
+    }).join('</li><li>') || null),
+    /* @block:calib */
+    /* Limitation 18, rendered FROM the shipped verdict rather than retyped here. The sentence and
+       the reason both come out of `MODEL.calibration`, so if the verdict ever changes this entry
+       changes with it instead of outliving it — which is the whole argument for stamping the block
+       at all. Gate I46 clause (e) greps this file for exactly this read. */
+    (MODEL.calibration ? '<b>' + MODEL.calibration.limitation.replace(/^./, function (c) { return c.toUpperCase(); }) +
+      '.</b> Everything the grid measures is measured; everything it <i>decides</i> — realization, the score, ' +
+      'the tier cuts, the depth and rake curves — is opinion that has never been checked against a result. ' +
+      'The pre-registered test that would check it returns <b>' + MODEL.calibration.verdict.toUpperCase() +
+      '</b>, because ' + MODEL.calibration.unevaluable.length + ' of its criteria cannot be evaluated at all ' +
+      'and the first one counts that as a failure rather than an exemption. Calibration above has every row.' : null),
+    /* @end:block */
     'The villain 3-bet mix is hand-authored (60/25/10/5). It is editable, and the blend is exact given the components.',
     'Positional nesting (UTG &sube; HJ &sube; CO &sube; BTN) is <b>enforced</b> as a post-pass, not produced by the score function.',
     'MIX is a band around a <b>ranking</b>, not around an equity: the model cannot separate the cell from the ' +
@@ -9171,6 +9501,19 @@ function init() {
     },
     payoff: PAY, payoffWhy: function () { return PAYWHY; },
     itab: function () { return S.itab; }, setItab: function (k) { S.itab = k; renderInspector(); },
+    /* @block:topn */
+    /* V3-PLAN §4 item 10 — what the sub-cell list actually PUT ON SCREEN, read back off the DOM
+       rather than recomputed, so the harness measures the surface instead of the block twice. */
+    topNState: function () {
+      var s = $('#topn');
+      if (!s) return null;
+      return { tag: !!s.querySelector('.tag-e'), head: s.querySelector('.isec-h').textContent,
+        rows: [].map.call(s.querySelectorAll('.diffrow'), function (b) {
+          return { text: b.textContent, title: b.title, floor: b.classList.contains('left') };
+        }),
+        notes: [].map.call(s.querySelectorAll('.t-sm'), function (d) { return d.textContent; }) };
+    },
+    /* @end:block */
     /* V2-PLAN §4 surface, for the harnesses */
     hasVP: HAS_VP, SIMUI: SIMUI, setProfile: setProfile, setQ: setQ,
     vpTrigger: vpTrigger, emodel: emodel, vpKey: vpKey, startSim: startSim,

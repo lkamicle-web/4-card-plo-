@@ -125,8 +125,8 @@ export const VARIANTS = {
     name: 'lite',
     out: 'index.html',
     regions: ['data', 'taxonomy', 'policy', 'engine'],
-    budgets: { total: 600 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024,
-      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024 } },
+    budgets: { total: 600 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024,
+      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024 } },
     budgetSource: 'METHODOLOGY §9.11, measured + ~5% at the v2 phase-4 end; app raised to 388K at '
       + 'P3 to pay for the vs-GTO colour mode (measured 377,993 B = 369.1K + 5% = 387.6K, rounded '
       + 'up to the whole KB, 4.9% headroom), with appCore holding everything else to the 360K the '
@@ -139,18 +139,61 @@ export const VARIANTS = {
       + 'own duplicate pot arithmetic returned more unmarked bytes than the shared edits added. '
       + 'What is new is `blocks`: a per-block ceiling at measured+5%, gto 11K (10,198 B), ev 12K '
       + '(11,403 B), skill 4K (3,532 B) — the P3 red team\'s finding that @block:gto had no cap of '
-      + 'its own, so an app raise bounded a NAME rather than a feature (docs/refutations/P3.md)',
+      + 'its own, so an app raise bounded a NAME rather than a feature (docs/refutations/P3.md). '
+      + 'P5 item 10: app RAISED 388 -> 392K and `blocks` gains topn 5K (4,844 B + 5% = 5,087 B, '
+      + 'rounded up to the whole KB) for the sub-cell top-N. THE RAISE IS FORCED BY THE CAP RULE '
+      + 'RATHER THAN BY THE ARTIFACT, and that is the rule working: the page measures 387.6K and '
+      + 'would have fitted under 388K, but the block caps must together fit inside app - appCore, '
+      + 'and 11+12+4+5 = 32K needs a 32K raise. So the four marked features are bounded by their '
+      + 'own sum rather than by whatever `core` happens to leave lying about — which is exactly '
+      + 'what the caps were added for. 392K is measured + 1.1%, far under the +5% this rule would '
+      + 'allow (407K), on the standing reading that a ceiling tighter than its own rule is the '
+      + 'conservative direction. appCore is NOT raised: every byte of the FEATURE is inside '
+      + '@block:topn and its reading moved 358.0 -> 358.3K only for the I47(d) repair, which is '
+      + 'two pre-existing per-hand surfaces finally saying `estimate`. '
+      + 'P5 CALIBRATION: app RAISED 392 -> 398K and `blocks` gains calib 6K (measured 5,313 B + 5% '
+      + '= 5,579 B, rounded up to the whole KB) for the Method view\'s calibration verdict section. '
+      + 'THE RAISE IS FORCED BY THE CAP RULE AGAIN, and for the third time that is the rule working '
+      + 'rather than a loophole in it: the page measures 392.7K and is over 392K by 0.7K, but what '
+      + 'actually sets the number is that 11+12+4+5+6 = 38K of block caps must fit inside '
+      + 'app - appCore. 398K is measured + 1.1%, far under the +5% this rule would allow (413K). '
+      + 'appCore is NOT raised, and the calibration section did not move it at all: every '
+      + 'byte of that section is inside @block:calib, which is what makes the raise a payment for '
+      + 'a feature rather than a grant to whatever grows next. '
+      + 'P5 FINAL, THE METHODOLOGY REWRITE — THE ONE P5 STEP THAT SPENT CORE, stated because the '
+      + 'three readings above were taken before it, and a manifest quoting a superseded '
+      + 'measurement is the exact defect the P3 red team caught in this same string. D11 clause '
+      + '(f) requires each page to make its own claim ON SCREEN and not only in its banner, so '
+      + '`ARTIFACT` and the Method view\'s "This artifact" paragraph are CORE code — outside all '
+      + 'five @block regions, because both artifacts carry them. That cost 1.0K, and every '
+      + 'reading above moves with it: appCore 358.3 -> 359.3K (0.7K under its 360K ceiling), app '
+      + '392.7 -> 393.7K, total 596,861 -> 597,942 B = 583.9K against 600K, 2.7% of headroom '
+      + 'left. NO CEILING IS RAISED FOR IT — least of all appCore, which is the whole point of '
+      + 'the paid-raise clause: the claim block is a cost core absorbs out of its own headroom, '
+      + 'or it does not ship',
     /* The per-variant honesty sentence D11 grep-gates. One artifact, one claim: the lite page must
-       not carry the full page's, and vice versa. Text is P5's to write (§5.2, §10); these are
-       shaped placeholders carrying the load-bearing clause each variant owes the reader. */
-    claim: 'a self-contained offline page: the shipped measurement, and nothing that needed a solver',
+       not carry the full page's, and vice versa.
+
+       FINAL WORDING, WRITTEN AT P5 (§5.2, §10; METHODOLOGY §0, which quotes both sentences and is
+       byte-compared against this manifest by D11 clause (e)). The placeholders these replace said
+       "nothing that needed a solver", which was already false when they were written: lite ships
+       `model.baselineTiers`, and those tiers ARE solver output — quantized, tier-level, and paid
+       for as a named D6 sub-budget precisely so lite keeps a vs-GTO colour mode (§5.3). What lite
+       does not carry is the strategies they were quantized from, which is the true difference and
+       the one D10's negative manifest asserts. Each sentence therefore names what the artifact HAS
+       and what it does NOT, so a reader can check it against the file in front of them rather than
+       against a claim about a build they cannot see. Both are carried twice — in the provenance
+       banner and again on screen in Method -> What this is — and D11 clause (f) requires the second
+       copy, because a claim only a `head -6` reader ever sees is not a claim the page makes. */
+    claim: 'a self-contained offline page: the measured model, the scored grid, and the equilibrium '
+      + 'baseline as quantized tiers with none of the strategies they came from',
   },
   full: {
     name: 'full',
     out: 'index-full.html',
     regions: ['data', 'taxonomy', 'policy', 'engine', 'eq'],
-    budgets: { total: 646 * 1024, app: 388 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024, eq: 73 * 1024,
-      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024 } },
+    budgets: { total: 660 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024, eq: 73 * 1024,
+      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024 } },
     budgetSource: 'D9, P3, both HELD BELOW measured+5% rather than re-derived up to it (the P3 red '
       + 'team found total quoting a measurement taken before the vs-GTO block landed — '
       + 'docs/refutations/P3.md): total 634K bounds a page measured at 629,312 B (614.6K), 3.2% of '
@@ -169,8 +212,30 @@ export const VARIANTS = {
       + 'declined headroom, so the raise is a number this repository had already priced rather than '
       + 'one invented to fit. It is still held below the CURRENT measured+5%, which would give 669K: '
       + '646K = 661,504 B is 1.5% above the artifact. `blocks` is shared with lite and is the same '
-      + 'code in both artifacts',
-    claim: 'a self-contained offline page carrying the solved baseline as well as the measurement',
+      + 'code in both artifacts. P5 item 10: `app` follows lite to 392K and `blocks` gains topn 5K '
+      + 'for the same reason and by the same rule, and `total` is NOT raised — the sub-cell top-N '
+      + 'grew the full page 636.2 -> 641.3K (656,682 B), inside the 646K the P4 UI already priced. '
+      + 'P5 CALIBRATION: `app` follows lite to 398K with `blocks.calib` at 6K, and `total` IS raised '
+      + '646 -> 660K, which is the first D9 total raise this repository has had to MEASURE rather '
+      + 'than take off a shelf. The verdict block costs the full page 11.4K in two pieces that are '
+      + 'budgeted separately and stated separately: 6.4K of shared model payload (`model.calibration`, '
+      + 'D6\'s fifth reserved sub-budget, and lite pays it too) and 5.2K of Method-view section '
+      + '(@block:calib, capped at 6K). Measured 668,417 B = 652.8K; 660K = 675,840 B is 1.1% above '
+      + 'the artifact, DELIBERATELY far below the 686K a fresh measured+5% would give, on the '
+      + 'standing reading this row settled at P3 and re-applied at P4 — a ceiling tighter than its '
+      + 'own rule is the conservative direction. `eq` is untouched at 73K: data/equilibrium.json did '
+      + 'not change this phase (69.6K, 4.9% under). '
+      + 'RE-MEASURED AT THE P5 METHODOLOGY REWRITE, which spent 1.0K of CORE on the on-screen '
+      + 'per-variant claim D11 clause (f) requires — see lite\'s note, and the cost is SHARED '
+      + 'because the claim block is the same code in both artifacts: the full page now reads '
+      + '669,362 B = 653.7K, so 660K = 675,840 B is 1.0% above the artifact and the ceiling '
+      + 'STANDS UNRAISED. Lite\'s `total` is NOT raised either: 597,942 B = 583.9K against 600K, '
+      + '2.7% of headroom left',
+    /* Full's half of the pair (see lite's note above). It names the payload by PATH, because
+       `data/equilibrium.json` is the whole of the difference between the two artifacts and a
+       reader who wants to check the claim needs to know what to look for. */
+    claim: 'a self-contained offline page: the measured model, the scored grid, the same quantized '
+      + 'baseline tiers, and in data/equilibrium.json the solved strategies behind them',
   },
 };
 
