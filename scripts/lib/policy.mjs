@@ -1586,16 +1586,27 @@ function aggressiveSetUncached(model, pos, node, v, opts) {
 /**
  * Is the EV surface allowed to CUT the tiers rather than merely be shown beside them?
  *
- * §5.4: gated on `model.calibration.verdict === 'pass'`, which only the P5 ceremony may stamp, and
- * which S-C's phase-0 verdict means can only ever be stamped FAIL (criteria PC-0..PC-8 are parked
- * at full strength in `scripts/gates/reserved.mjs`; PC-0 is failure-closed). No shipped model
- * carries a `calibration` block at all, so this reads FALSE by absence as well as by value — and
- * the path behind it still has to EXIST, or the gate would be guarding a comment. I34(d) asserts
- * both halves: false on the shipped model, and a fabricated distinct-hash twin cutting real tiers.
+ * §5.4: gated on `model.calibration.verdict === 'pass'`, which only the P5 ceremony may stamp
+ * (criteria PC-0..PC-8 live at full strength as `I46_CRITERIA` in `scripts/gates/reserved.mjs`;
+ * PC-0 is conjunctive and failure-closed). SINCE P5 THE SHIPPED MODEL CARRIES THE BLOCK:
+ * `stampCalibration` in `scripts/verify.mjs` writes it into `data/model.json`, and it reads
+ * `verdict: 'fail'` — PC-1..PC-7 listed under `unevaluable`, `corpus.present: false` — because
+ * S-C found no lawful, hero-visible, assigned 4-card PLO corpus exists at any volume. So this reads
+ * FALSE BY VALUE, not by absence: the block exists, its verdict is not `'pass'`, and absence
+ * stopped being available as evidence the moment V3-PLAN §3.5 required the verdict to ship as data
+ * whatever it says. The path behind the flag still has to EXIST, or the gate would be guarding a
+ * comment. I34(d) in `scripts/gates/ev.mjs` asserts every piece of that: the shipped model carries
+ * a block, its verdict is `'fail'` (neither `'pass'` nor any third answer), this returns false on
+ * it, and a fabricated distinct-hash twin stamped `'pass'` reaches the EV-primary path and cuts
+ * real tiers. I46 is the separate gate on whether the stamped verdict agrees with the
+ * pre-registered bar; it is GREEN over that FAIL, and the two facts must not be collapsed into one
+ * (docs/METHODOLOGY.md, the I46 row).
  *
- * The comparison is `=== 'pass'` and nothing looser. A truthy check would let `verdict: 'passed'`,
- * `verdict: 1` or `verdict: true` through, and the whole point of the flag is that only one exact
- * ceremony can flip it.
+ * THE ONLY THING THAT FLIPS THIS is a future `verdict: 'pass'`, which under PC-0 means all eight
+ * criteria passing together on a present, pre-declared corpus — and stamping it is the §5.1
+ * re-freeze ceremony, not an edit. The comparison is `=== 'pass'` and nothing looser. A truthy
+ * check would let `verdict: 'passed'`, `verdict: 1` or `verdict: true` through, and the whole
+ * point of the flag is that only one exact ceremony can flip it.
  */
 export function evPrimary(model) {
   return !!model && !!model.calibration && model.calibration.verdict === 'pass';
