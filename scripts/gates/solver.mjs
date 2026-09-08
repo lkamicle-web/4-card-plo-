@@ -35,9 +35,9 @@
 // family earlier in the run (V3-PLAN §3.3's `Adjudicated (P3 relaunch)` block).
 
 import {
-  EPSILON_BB, ITER_CAP, TWO_SEED_TOL_POT, PREFLOP_POT_BB, BLINDS, CAPS, CONSTANTS, SIXMAX,
+  EPSILON_BB, ITER_CAP, TWO_SEED_TOL_POT, PREFLOP_POT_BB, BLINDS, CAPS, CONSTANTS, MULTIWAY_DEFERRAL,
   solveHU, buildTree, potLimitLadder, liveCells, multiwayProbe, simplexBound, mirrorBound,
-  capListProblems, labelProblems, constantsBlockProblems, sixmaxDeferralProblems, labelFor,
+  capListProblems, labelProblems, constantsBlockProblems, multiwayDeferralProblems, labelFor,
   clearMatrixCache,
 } from '../lib/cfr.mjs';
 import * as CFR from '../lib/cfr.mjs';
@@ -336,42 +336,42 @@ export function build(ctx) {
         // makes multiway supported and constant-sum, the decision is forced back open instead of
         // being inherited. The module exporting no 6-max solver is the other half of the same claim.
         const hasSolver = typeof CFR.solveSixMax === 'function' || typeof CFR.mccfr === 'function';
-        for (const why of sixmaxDeferralProblems(probe, hasSolver)) bad.push(`(d) ${why}`);
+        for (const why of multiwayDeferralProblems(probe, hasSolver)) bad.push(`(d) ${why}`);
         // ...and on the route P3 actually solves, because the deferral is about the payoff's DOMAIN
         // and a new payoff source is exactly the thing that could re-open it. It does not: the
         // matrix is PAIRWISE, so a multiway request still falls to the accessor's flagged exit.
-        for (const why of sixmaxDeferralProblems(probeM, hasSolver)) bad.push(`(d/matrix) ${why}`);
-        if (SIXMAX.status !== 'deferred') {
-          bad.push(`(d) SIXMAX.status is '${SIXMAX.status}' — this clause only knows how to check a deferral`);
+        for (const why of multiwayDeferralProblems(probeM, hasSolver)) bad.push(`(d/matrix) ${why}`);
+        if (MULTIWAY_DEFERRAL.status !== 'deferred') {
+          bad.push(`(d) MULTIWAY_DEFERRAL.status is '${MULTIWAY_DEFERRAL.status}' — this clause only knows how to check a deferral`);
         }
-        if (!/fixed-point-only/.test(SIXMAX.claimScope)) {
-          bad.push('(d) SIXMAX no longer scopes its claims to fixed-point-only, which is the one thing '
+        if (!/fixed-point-only/.test(MULTIWAY_DEFERRAL.claimScope)) {
+          bad.push('(d) MULTIWAY_DEFERRAL no longer scopes its claims to fixed-point-only, which is the one thing '
             + '§7.2 requires of anything multiway');
         }
         /* THE RE-OPENING RULE (V3-PLAN §3.3's Adjudicated block, decision 8), evaluated once by
-           measurement at B2 and frozen in `SIXMAX.reopenRule`. What this clause checks is that the
+           measurement at B2 and frozen in `MULTIWAY_DEFERRAL.reopenRule`. What this clause checks is that the
            frozen record still says what the live measurement says — a rule recorded once and never
-           re-read is a rule that outlives its evidence, which is the failure `SIXMAX` itself exists
+           re-read is a rule that outlives its evidence, which is the failure `MULTIWAY_DEFERRAL` itself exists
            to prevent. Leg (ii) is the one that fails, and it must keep failing for the deferral to
-           stand: `sixmaxDeferralProblems` clearing on the matrix route IS leg (ii) failing. */
-        const legs = Array.isArray(SIXMAX.reopenRule) ? SIXMAX.reopenRule : [];
+           stand: `multiwayDeferralProblems` clearing on the matrix route IS leg (ii) failing. */
+        const legs = Array.isArray(MULTIWAY_DEFERRAL.reopenRule) ? MULTIWAY_DEFERRAL.reopenRule : [];
         const legOf = (id) => legs.find((l) => l.leg === id);
         if (legs.length !== 4 || !['i', 'ii', 'iii', 'iv'].every((id) => legOf(id))) {
-          bad.push(`(d) SIXMAX.reopenRule records ${legs.length} legs, not the four V3-PLAN §3.3 names`);
+          bad.push(`(d) MULTIWAY_DEFERRAL.reopenRule records ${legs.length} legs, not the four V3-PLAN §3.3 names`);
         } else if (!/^FAILS/.test(legOf('ii').verdict)) {
-          bad.push(`(d) SIXMAX.reopenRule leg (ii) is recorded as '${legOf('ii').verdict}' while the `
+          bad.push(`(d) MULTIWAY_DEFERRAL.reopenRule leg (ii) is recorded as '${legOf('ii').verdict}' while the `
             + 'deferral still stands — if a measured k-way sampler now passes I33(b) and I33(h), the '
             + '6-max decision is re-made rather than inherited');
         }
-        if (!/NOT MEASURABLE in the HU domain/.test(SIXMAX.reopenVerdict || '')) {
-          bad.push('(d) SIXMAX.reopenVerdict no longer records that I36\'s positional-nesting clause is '
+        if (!/NOT MEASURABLE in the HU domain/.test(MULTIWAY_DEFERRAL.reopenVerdict || '')) {
+          bad.push('(d) MULTIWAY_DEFERRAL.reopenVerdict no longer records that I36\'s positional-nesting clause is '
             + 'not measurable in the HU domain — the sentence P3\'s baseline phase quotes');
         }
         // ARMED: a source that answers multiway as supported and constant-sum must break the deferral.
-        const dFires = sixmaxDeferralProblems(
+        const dFires = multiwayDeferralProblems(
           multiwayProbe(multiwaySupported(payoff), live), false).length > 0;
-        const dClears = sixmaxDeferralProblems(probe, false).length === 0;
-        const dSolver = sixmaxDeferralProblems(probe, true).length > 0;
+        const dClears = multiwayDeferralProblems(probe, false).length === 0;
+        const dSolver = multiwayDeferralProblems(probe, true).length > 0;
         if (!(dFires && dClears && dSolver)) {
           bad.push(`(d) the deferral clause is not armed: supported-multiway source flagged ${dFires}, `
             + `today's payoff cleared ${dClears}, a present solver flagged ${dSolver}`);
@@ -676,7 +676,7 @@ export function build(ctx) {
             + `hero's share ${probeM.opponentInvariant ? 'still opponent-INVARIANT' : 'now opponent-dependent'} `
             + `— the matrix is PAIRWISE, so multiway still falls to the accessor's flagged exit. THE `
             + `RE-OPENING RULE (V3-PLAN §3.3's Adjudicated block) is evaluated ONCE and frozen in `
-            + `SIXMAX.reopenRule: ${SIXMAX.reopenRule.map((l) => `(${l.leg}) ${l.verdict.split(';')[0]}`).join(', ')} `
+            + `MULTIWAY_DEFERRAL.reopenRule: ${MULTIWAY_DEFERRAL.reopenRule.map((l) => `(${l.leg}) ${l.verdict.split(';')[0]}`).join(', ')} `
             + `— leg (ii) fails, so the deferral stands and I36's positional-nesting clause is NOT `
             + `MEASURABLE in the HU domain (the I15 precedent). `
             + `(e) the ladder is RE-DERIVED from the pot-limit rule, not read back: T100 ${EXPECT.ladder100.join('/')} `

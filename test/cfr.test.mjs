@@ -356,12 +356,12 @@ test('a narrower payoff domain narrows the abstraction instead of being extrapol
 // six-max: the deferral and the measurement behind it
 // ---------------------------------------------------------------------------
 
-test('the module exports no 6-max solver, and SIXMAX records why', () => {
+test('the module exports no 6-max solver, and MULTIWAY_DEFERRAL records why', () => {
   assert.equal(typeof CFR.solveSixMax, 'undefined');
   assert.equal(typeof CFR.mccfr, 'undefined');
-  assert.equal(CFR.SIXMAX.status, 'deferred');
-  assert.match(CFR.SIXMAX.budgetCriterion, /met/i, 'budget is NOT the reason — S-A cleared it by 5,400x');
-  assert.match(CFR.SIXMAX.claimScope, /fixed-point-only/);
+  assert.equal(CFR.MULTIWAY_DEFERRAL.status, 'deferred');
+  assert.match(CFR.MULTIWAY_DEFERRAL.budgetCriterion, /met/i, 'budget is NOT the reason — S-A cleared it by 5,400x');
+  assert.match(CFR.MULTIWAY_DEFERRAL.claimScope, /fixed-point-only/);
 });
 
 test("the deferral's three measured facts hold on the shipped payoff", () => {
@@ -370,7 +370,7 @@ test("the deferral's three measured facts hold on the shipped payoff", () => {
   assert.equal(p.supportedCount, 0, 'every multiway request is supported:false');
   assert.ok(p.worstShareDev > 0.1, `the six shares miss 1 by ${p.worstShareDev} — not constant-sum`);
   assert.equal(p.opponentInvariant, true, "hero's share does not depend on the opponents' cells");
-  assert.deepEqual(CFR.sixmaxDeferralProblems(p, false), []);
+  assert.deepEqual(CFR.multiwayDeferralProblems(p, false), []);
 });
 
 test('the deferral fails the moment its reason stops holding', () => {
@@ -384,11 +384,11 @@ test('the deferral fails the moment its reason stops holding', () => {
   };
   shared.modelHash = 'shared';
   const p = CFR.multiwayProbe(shared, LIVE);
-  const problems = CFR.sixmaxDeferralProblems(p, false);
+  const problems = CFR.multiwayDeferralProblems(p, false);
   assert.ok(problems.length > 0, 'a supported multiway domain must reopen the 6-max decision');
   assert.ok(problems.some((s) => /supported:true/.test(s)));
   // and a solver appearing while the record still says deferred is its own failure
-  assert.ok(CFR.sixmaxDeferralProblems(p, true).length > 0);
+  assert.ok(CFR.multiwayDeferralProblems(p, true).length > 0);
 });
 
 // ---------------------------------------------------------------------------

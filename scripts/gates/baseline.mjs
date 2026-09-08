@@ -33,10 +33,10 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 
-import { TIER_RANK, solve, POSITIONS } from '../lib/policy.mjs';
-import { SIXMAX } from '../lib/cfr.mjs';
+import { TIER_RANK, solve, NODES, seatsFor } from '../lib/policy.mjs';
+import { MULTIWAY_DEFERRAL } from '../lib/cfr.mjs';
 import {
-  ARTIFACT, NOT_HU_REASON, BASELINE_QUANT, domainLabelFor,
+  ARTIFACT, NOT_HU_REASON, BASELINE_QUANT, domainLabelFor, coverageMap,
   anchorProblems, nestingReadiness, postPassFindings, postPassRecordProblems, readingAt,
   quantProblems, quantReadings, pageEquilibrium, pageModel,
 } from '../lib/equilibrium.mjs';
@@ -148,7 +148,7 @@ export function build(ctx) {
     // §7.2 predicts "nesting fails at some seat pair" and marks the prediction expected-falsified.
     // It is NOT TESTABLE this milestone. The reason is not this gate's to invent: V3-PLAN §3.3's
     // Adjudicated block evaluated the 6-max re-opening rule ONCE by measurement, leg (ii) failed,
-    // and the consequence was frozen verbatim in cfr.mjs's SIXMAX.reopenVerdict. This clause quotes
+    // and the consequence was frozen verbatim in cfr.mjs's MULTIWAY_DEFERRAL.reopenVerdict. This clause quotes
     // that record rather than restating it, and FAILS if either half stops holding — if the record
     // disappears, or if a payload ever covers two seats of the nesting chain, in which case the
     // clause is owed a real measurement instead of this note.
@@ -159,8 +159,8 @@ export function build(ctx) {
         + 'and the clause is owed a measurement rather than this note (V3-PLAN §7.2\'s prediction '
         + 'becomes testable at that point)');
     }
-    if (!/NOT\s+MEASURABLE/i.test(String(SIXMAX.reopenVerdict))) {
-      bad.push('(b) cfr.mjs\'s SIXMAX.reopenVerdict no longer records the not-measurable verdict '
+    if (!/NOT\s+MEASURABLE/i.test(String(MULTIWAY_DEFERRAL.reopenVerdict))) {
+      bad.push('(b) cfr.mjs\'s MULTIWAY_DEFERRAL.reopenVerdict no longer records the not-measurable verdict '
         + 'this clause quotes — the reason a clause is scoped must outlive the scoping');
     }
     /* ARMED: a payload whose coverage claims a third seat must flip `measurable`. Without this the
@@ -220,13 +220,52 @@ export function build(ctx) {
     const cov = block.coverage || [];
     const uncovered = cov.filter((r) => !r.covered);
     const unreasoned = uncovered.filter((r) => r.reason !== NOT_HU_REASON);
-    if (cov.length !== 24) bad.push(`(d) the shipped coverage map has ${cov.length} rows, not the page's 6 positions x 4 nodes`);
+    const want6 = seatsFor(6).length * NODES.length;
+    if (cov.length !== want6) {
+      bad.push(`(d) the shipped coverage map has ${cov.length} rows, not the page's `
+        + `${seatsFor(6).length} positions x ${NODES.length} nodes`);
+    }
     if (unreasoned.length) {
       bad.push(`(d) ${unreasoned.length} uncovered (pos, node) pairs carry no named reason `
         + `(${unreasoned.slice(0, 3).map((r) => `${r.pos}|${r.node}`).join(', ')}) — "${NOT_HU_REASON}" `
         + 'must be a shipped datum, not a sentence the page supplies');
     }
     if (!cov.some((r) => r.covered)) bad.push('(d) the coverage map claims nothing is covered');
+
+    /* THE SAME CLAUSE AT NINE SEATS — the domain change V4-PLAN §5.1 books against I36, and the
+       only one it books: the CLAIM is unchanged ("every uncovered pair names its reason"), the
+       DOMAIN it is read over is not. The denominator is ALL pos x node and not the legal subset,
+       which is what makes it 3 of 36 and 33 rather than 3 of 33 and 30 — the same reading
+       METHODOLOGY takes at six seats, where 3 of 24 leaves 21 and not 18.
+
+       The nine-seat table is not shipped and must not be: §0.2 ships no multiway baseline, the
+       block's 12 KB sub-budget is bought for tiers, and every row the ladder adds is uncovered by
+       construction (the solved tree is heads-up at every table size). So what is asserted here is
+       that the MACHINERY answers at nine seats and that its answer is the one the page is going to
+       render from `notCovered` — never that a nine-seat map ships. */
+    const cov9 = coverageMap(9);
+    const want9 = seatsFor(9).length * NODES.length;
+    const un9 = cov9.filter((r) => !r.covered);
+    if (cov9.length !== want9) {
+      bad.push(`(d) coverageMap(9) has ${cov9.length} rows, not ${seatsFor(9).length} positions x ${NODES.length} nodes`);
+    }
+    if (un9.some((r) => r.reason !== NOT_HU_REASON)) {
+      bad.push(`(d) ${un9.filter((r) => r.reason !== NOT_HU_REASON).length} of the nine-seat `
+        + `uncovered pairs carry no named reason — the 12 pairs the ladder adds must join the ${uncovered.length} `
+        + `already uncovered through the same machinery, not through a sentence the page supplies`);
+    }
+    const covKeys = (rows) => rows.filter((r) => r.covered).map((r) => `${r.pos}|${r.node}`).sort().join(' ');
+    if (covKeys(cov9) !== covKeys(cov)) {
+      bad.push(`(d) the covered set moved with the table size — six seats cover [${covKeys(cov)}], `
+        + `nine cover [${covKeys(cov9)}]; the solved tree is the same heads-up tree at both sizes, `
+        + 'so a seat the ladder ADDS cannot become covered by it');
+    }
+    /* INERTNESS, asserted where it is cheapest to break: the six-seat map is what SHIPS, so
+       `coverageMap()` must still be the shipped rows exactly (V4-PLAN §0.4). */
+    if (JSON.stringify(coverageMap()) !== JSON.stringify(cov)) {
+      bad.push('(d) coverageMap() no longer reproduces the SHIPPED coverage rows — the seat axis '
+        + 'has moved the six-seat surface, which §0.4 forbids');
+    }
 
     /* §5.7's labeling split, checked as a DERIVATION rather than as a string. "HU is GTO; anything
        multiway is a self-play fixed point" is a rule about how many seats were solved, so the label
@@ -243,10 +282,19 @@ export function build(ctx) {
           + 'list, never typed beside it');
       }
     }
-    /* ARMED: six seats must not read "GTO". */
-    const dArmed = domainLabelFor(POSITIONS) === 'self-play fixed point'
+    /* ARMED: a full table must not read "GTO", AT EITHER TABLE SIZE. The labels follow the ladder
+       rather than a seat list typed here (V4-PLAN §2.1) — `domainLabelFor` keys off how many seats
+       were solved, so nine has to be armed as explicitly as six or the arming would be a claim
+       about the six-seat surface only, on a run whose whole subject is the other one. */
+    const dArmed = seatsFor(6).length > 2 && seatsFor(9).length > 2
+      && domainLabelFor(seatsFor(6)) === 'self-play fixed point'
+      && domainLabelFor(seatsFor(9)) === 'self-play fixed point'
       && domainLabelFor(['SB', 'BB']) === 'GTO';
-    if (!dArmed) bad.push('(d) the domain-label derivation is not armed: a six-seat surface does not read as a self-play fixed point');
+    if (!dArmed) {
+      bad.push('(d) the domain-label derivation is not armed: a full table does not read as a '
+        + `self-play fixed point at ${seatsFor(6).length} seats (${JSON.stringify(domainLabelFor(seatsFor(6)))}) `
+        + `or at ${seatsFor(9).length} (${JSON.stringify(domainLabelFor(seatsFor(9)))})`);
+    }
 
     // ================================================================================
     // (e) baselineQuant — THE ANCHOR TABLE MADE BINDING, AND THE FLAG'S THREE LEGS
@@ -332,7 +380,7 @@ export function build(ctx) {
       + `of the UTG/HJ/CO/BTN chain, ${nest.present.length} are covered. §7.2's prediction — "nesting `
       + `fails at some seat pair" — is therefore NOT TESTABLE this milestone; it is not reported as `
       + `holding and it is not reported as failing. The reason is quoted from cfr.mjs's `
-      + `SIXMAX.reopenVerdict, which I35(d) re-checks every run, and this clause FAILS the day a `
+      + `MULTIWAY_DEFERRAL.reopenVerdict, which I35(d) re-checks every run, and this clause FAILS the day a `
       + `payload covers two seats of the chain — at which point the prediction is owed a measurement. `
       + `(c) THE COMPARAND IS RAW MODEL TIERS (policy.mjs's \`preDisplay\`), and the post-passes are `
       + `MEASURED ON THE EQUILIBRIUM RATHER THAN ENFORCED ON IT. **SUIT MONOTONICITY IS VIOLATED: `
@@ -348,9 +396,15 @@ export function build(ctx) {
       + `about the BASELINE. (d) COVERAGE IS HU: ${cov.filter((r) => r.covered).length} of `
       + `${cov.length} (pos, node) pairs are solved and the other ${uncovered.length} carry the `
       + `named reason "${NOT_HU_REASON}" as a SHIPPED DATUM — the page renders it, it does not `
-      + `supply it. §5.7's split is a DERIVATION here rather than a string: ${nest.seats.length} `
+      + `supply it. AT NINE SEATS THE SAME MACHINERY READS ${cov9.filter((r) => r.covered).length} of `
+      + `${cov9.length}, so ${un9.length} pairs carry it — the denominator is ALL pos x node and not the `
+      + `legal subset, which is why it is 33 and never 30, and the covered three do not move because `
+      + `the solved tree is the same heads-up tree at both sizes. The nine-seat map is NOT shipped `
+      + `(§0.2 ships no multiway baseline); the six-seat rows that do ship reproduce byte-identically. `
+      + `§5.7's split is a DERIVATION here rather than a string: ${nest.seats.length} `
       + `seats solved -> label ${JSON.stringify(block.domainLabel)}, and a six-seat surface would `
-      + `read ${JSON.stringify(domainLabelFor(POSITIONS))} instead — so `
+      + `read ${JSON.stringify(domainLabelFor(seatsFor(6)))} instead, and a nine-seat one the same `
+      + `(${JSON.stringify(domainLabelFor(seatsFor(9)))}) — so `
       + `no multiway surface can be labelled "GTO" by omission, and none exists to be, because `
       + `nothing multiway was solved. `
       + `(e) baselineQuant ${block.quant}${block.quant === BASELINE_QUANT ? '' : ' (NOT the module default)'} `
