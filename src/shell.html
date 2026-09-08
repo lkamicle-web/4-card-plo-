@@ -104,6 +104,10 @@ svg{display:block}
 .seg button[aria-pressed=true]{color:var(--t1-ink)}
 .seg .thumb{position:absolute;top:2px;height:36px;border-radius:var(--r-pill);background:var(--accent);
   transition:transform var(--dur-base) var(--ease-out),width var(--dur-base) var(--ease-out);z-index:0}
+/* @block:ring — the nine-seat rail. Nine chips at 48px each overflow the topbar's left group, so
+   the ladder gets its own narrower chip. 9-max-ONLY bytes: at six seats the class is never set. */
+.seg-wide button{min-width:36px;padding:0 var(--sp-2);font-size:11px;letter-spacing:.02em}
+/* @end:block */
 .tabs{display:flex;gap:var(--sp-2);align-items:center;height:56px}
 .tabs button{position:relative;height:56px;padding:0 var(--sp-5);color:var(--text-tertiary);white-space:nowrap;
   font:600 13px/16px var(--font-ui);transition:color var(--dur-fast) var(--ease-standard)}
@@ -969,6 +973,21 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
                  standing on it. -->
             <button class="btn btn-sm" id="v1point" type="button">v1 point</button>
           </div>
+          <!-- @block:ring — THE TABLE-SIZE CONTROL (V4-PLAN §2.6). An environment axis beside depth,
+               rake and straddle, because it is one: it moves N_eff, the opening bases and the
+               realization ladder, and it is in `envKey` and in the permalink with them. Two buttons
+               rather than a toggle chip, because `{6, 9}` is a SET and not an on/off — §0.2 keeps a
+               later `{6, 7, 9}` a data change, and a chip would have to be re-drawn for it. No new
+               CSS: `.btn-sm[aria-pressed=true]` is the rake presets' own pressed state.
+               9-max is DISABLED WITH ITS REASON, never hidden, on a build with no ring payload —
+               the same disablement idiom lite's second solved depth uses (§8 item 15). -->
+          <div class="ctlrow2" id="seatsrow" hidden>
+            <span class="t-micro" style="color:var(--text-tertiary)">table</span>
+            <button class="btn btn-sm" id="seats6" type="button" aria-pressed="true">6-max</button>
+            <button class="btn btn-sm" id="seats9" type="button" aria-pressed="false">9-max</button>
+          </div>
+          <div class="ctlnote" id="seatsnote" hidden></div>
+          <!-- @end:block -->
           <div class="ctlnote" id="tablenote"></div>
           </div>
         </section>
@@ -2958,6 +2977,12 @@ var S = {
   /* METHODOLOGY §5.2: `rake.preset` is the UI's default (5% — the lobby this tool is for) while the
      SCORING function's default stays 0, which is what keeps gate I22's v1 identity checkable. */
   d: DEPTH.ref, rake: HAS_ENV ? RAKE.preset : 0, rakeCap: RAKE.capBB, straddle: false,
+  /* THE TABLE-SIZE AXIS (V4-PLAN §2.6). A member of `env`, not a view setting: it moves N_eff, the
+     opening bases and the realization ladder, so it is in `envKey` below and in the permalink. 6 is
+     the DEFAULT and the identity — `policy.envOf` reads anything that is not 9 as 6, and at 6 the
+     whole axis is inert (§0.4). The control that moves it is in the marked ring block; this is shared
+     because every state bag below carries it whether the block ships or not. */
+  seats: 6,
   cbPatterns: false, monoSuits: false, rain: 8, reduce: false, itab: 'verdict', preview: null,
   /* @block:ev */
   /* WHICH OF §5.4's THREE PRESENTATIONS the page quotes its numbers in. 'score' is the DEFAULT and
@@ -2986,12 +3011,21 @@ var S = {
    one the user opened themselves. */
 var SRCH = { active: false, level: null, row: null, cellKey: null,
   ownedHand: false, canon: '' };
+/* The ring payload (V4-PLAN §2.4): the N = 8 and 9 equity columns `cells[*].eq` deliberately does
+   NOT carry. Declared here and populated by the marked ring block, so the state bags can name it in
+   both variants and in a build with the block cut — where it stays null and `policy.rhoAtSeats`
+   never looks at it, because nothing can set `seats` to 9 without that block either. */
+var RING = null;
 /* The four axes `policy.envOf` reads, in one place. Spread into every state bag handed to the
    policy — a solve that does not carry them silently scores at 100bb / rake 0 / no straddle. */
-function envKey() { return S.d + '|' + S.rake + '|' + S.rakeCap + '|' + (S.straddle ? 1 : 0); }
+function envKey() { return S.d + '|' + S.rake + '|' + S.rakeCap + '|' + (S.straddle ? 1 : 0) + '|' + S.seats; }
+/* SHRINK-FIRST, v4 (§2.7 rule R6): the env half is `envArg()`'s object rather than a second copy
+   of the same five fields, so the seat axis was added to the env bag ONCE and `stateOf`,
+   `solveState` and every direct `envArg()` caller got it together. */
 function stateOf(o) {
-  var s = { pos: S.pos, node: S.node, v: S.v / 100, limpers: S.L, raiserPos: S.raiser || defaultRaiser(),
-    d: S.d, rakePct: S.rake, rakeCapBB: S.rakeCap, straddle: S.straddle };
+  var s = envArg();
+  s.pos = S.pos; s.node = S.node; s.v = S.v / 100; s.limpers = S.L;
+  s.raiserPos = S.raiser || defaultRaiser(); s.ring = RING;
   if (o) for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) s[k] = o[k];
   return s;
 }
@@ -3530,13 +3564,17 @@ function withVP(p, fn) {
 }
 function vpArg() { return { on: !!(HAS_VP && S.vp), q: S.q }; }
 
+/* SHRINK-FIRST, v4 (V4-PLAN §2.7 rule R6): this used to spell the env bag out a second time, and
+   the seat axis would have made that copy a THIRD place a new env field has to be remembered. It is
+   `stateOf` with the solve's own five overrides now — one literal, so an axis added to `stateOf`
+   cannot reach `evaluate` and miss `solve`. */
 function solveState(v01, pos, node, L, raiser, mix) {
-  return POL.solve(emodel(), { pos: pos, node: node, v: v01, limpers: L, raiserPos: raiser, mix: mixW(mix),
-    d: S.d, rakePct: S.rake, rakeCapBB: S.rakeCap, straddle: S.straddle });
+  return POL.solve(emodel(), stateOf({ pos: pos, node: node, v: v01, limpers: L, mix: mixW(mix),
+    raiserPos: raiser || defaultRaiser() }));
 }
 /* The env bag every env-aware policy entry point takes as its trailing argument. `envOf` accepts a
    raw state, so one literal serves them all; on a v1 policy the extra argument is ignored. */
-function envArg() { return { d: S.d, rakePct: S.rake, rakeCapBB: S.rakeCap, straddle: S.straddle }; }
+function envArg() { return { d: S.d, rakePct: S.rake, rakeCapBB: S.rakeCap, straddle: S.straddle, seats: S.seats }; }
 if (POL) {
   POLICY_SOURCE = 'injected policy.mjs';
   rhoAt = function (d, N) { return POL.rhoAt(d.rho, N); };
@@ -3624,14 +3662,27 @@ function tierShort(t, node) { return String(tierLabel(t, node)).replace(/\s*\(.*
 
 /* =============================================================== TOPBAR */
 var posthumb = $('#posthumb'), posseg = $('#posseg');
-function buildTopbar() {
+/* THE POSITION RAIL, REBUILT FROM THE LADDER RATHER THAN BUILT ONCE (V4-PLAN §2.6). It renders
+   `seatsFor(seats)` — six chips at six, nine at nine — so the table-size control has one thing to
+   call and no second copy of the chip markup exists for it to drift from. The thumb is re-appended
+   rather than re-created: it is the only child that is not a seat. */
+function buildPosSeg() {
+  posseg.innerHTML = '';
+  posseg.appendChild(posthumb);
+  /* The chip's DISPLAY name. The ladder's KEYS are what everything else is keyed by, here and in
+     every gate; the map that turns two of them into the forms a player says out loud is policy's,
+     never this page's, and at six seats it names nothing so `m[p] || p` is the identity. */
+  var m = (POL && POL.SEAT_DISPLAY) || {};
   POSITIONS.forEach(function (p) {
     var b = el('button');
     b.dataset.pos = p;
-    b.innerHTML = '<span>' + p + '</span><span class="sub" data-w>—</span>';
+    b.innerHTML = '<span>' + (m[p] || p) + '</span><span class="sub" data-w>—</span>';
     b.onclick = function () { if (b.getAttribute('aria-disabled') === 'true') return; setPos(p); };
     posseg.appendChild(b);
   });
+}
+function buildTopbar() {
+  buildPosSeg();
   var tabs = $('#facingtabs');
   NODES.forEach(function (n, i) {
     var b = el('button', null, n.tabs);
@@ -6960,6 +7011,9 @@ function syncTableCtl() {
       'range you 3-bet with, and it does not restructure who is allowed to act (BB still cannot open here).';
   }
   $('#tablenote').innerHTML = note;
+  /* @block:ring */
+  syncSeatsCtl();
+  /* @end:block */
 }
 function wireTableCtl() {
   if (!HAS_ENV) { var s0 = $('#tablesec'); if (s0) s0.hidden = true; return; }
@@ -7022,6 +7076,9 @@ function wireTableCtl() {
     announce('v1 identity point — ' + DEPTH.ref + ' big blinds, no rake, no straddle, random villains. Gate I22 ' +
       'asserts every score here equals v1\'s, bit for bit.');
   };
+  /* @block:ring */
+  wireSeatsCtl();
+  /* @end:block */
   /* the detent ticks: 40 / 100 / 200 are V2-PLAN §3.1's, and 250 is the end of the dial */
   var tk = $('#depthticks');
   det.forEach(function (t) {
@@ -7031,6 +7088,139 @@ function wireTableCtl() {
     tk.appendChild(n);
   });
 }
+
+/* @block:ring ================================== V4-PLAN §2.6 — THE TABLE-SIZE AXIS AND ITS RAIL
+   EVERYTHING NINE-SEAT LIVES HERE, and that is a byte rule rather than a filing convention (§2.7):
+   `appCore` — the ceiling every shared line is charged to — had 544 B of headroom in lite and 394 B
+   in full when this landed, so a feature that only exists at one setting of one axis is bracketed
+   and capped as a block instead of eating the shared page's last kilobyte. What is NOT in here is
+   the four-field env plumbing (`S.seats`, `envKey`, `stateOf`, `envArg`): those are read at six
+   seats too, they cost ~90 B, and pretending otherwise would be filing shared code under a name.
+
+   WHY THE 9-max BUTTON CAN BE DISABLED. Nine seats moves the N_eff clamp from 7 to 9 (§2.2) and
+   327 of the 6,336 nine-seat settings — 5.16 %, every one of them at the iso node — read N_eff
+   above 7, where `cells[*].eq` stops. Those columns are `data/ring.json` (§2.4), a separate
+   artifact, and `policy.rhoAtSeats` FAILS CLOSED without it rather than clamping to the N = 7
+   column and painting a tier off the wrong number. So a build that does not carry the ring cannot
+   offer nine seats, and it says so on the control instead of throwing at one setting in twenty.
+   The reason is rendered, never invented: it names the file the build is missing.
+
+   THE FALLBACK PATH IS NOT PART OF THIS (§10 Q3, answered by measurement in docs/spikes/V4-ui.md):
+   `HAS_SEATS` requires the injected policy, so a page with no `window.POLICY` never shows the
+   control and the six-seat literal at the top of this file stays exactly what it says it is. */
+var RING_WHY = '';
+/** the seat's display name, for the surfaces in this block; `SEAT_DISPLAY` is policy's map. */
+function seatLabel(p) { var m = POL && POL.SEAT_DISPLAY; return (m && m[p]) || p; }
+var HAS_SEATS = !!(POL && POL.seatsFor && POL.nMax && POL.positionDisabled && POL.behindNonBlind
+  && POL.rhoAtSeats && C.ladder && C.ladder.ladder9);
+if (HAS_SEATS) {
+  /* The payload, read from the build's own injected region first and from the shared model second,
+     so whichever seam the ring lands on the page finds it. Shape-checked, not trusted: a `cells`
+     map is what `rhoAtSeats` indexes and a `meta` is what the Method view renders. */
+  var rg = (window.RING && window.RING.cells) ? window.RING
+    : (MODEL.ring && MODEL.ring.cells) ? MODEL.ring : null;
+  RING = (rg && rg.meta) ? rg : null;
+  if (!RING) {
+    RING_WHY = 'this build carries no ring payload (data/ring.json): the N_eff 8 and 9 equity '
+      + 'columns nine seats reaches at the iso node are not in it, and reading the seven-opponent '
+      + 'column instead would be a measurement this file does not have.';
+  }
+}
+/* The cell key `policy.rhoAtSeats` needs to find a ring row, tagged onto the cell data the first
+   time a nine-seat read asks for one. NON-ENUMERABLE and lazy — `policy.hydrate`'s own idiom — so
+   `JSON.stringify(MODEL)` is untouched and a page that never leaves six seats never runs this. */
+var RKEYED = false;
+function ringKeyOf(d) {
+  if (!RKEYED) {
+    RKEYED = true;
+    for (var i = 0; i < CELLS.length; i++) {
+      try { Object.defineProperty(CELLS[i].d0, '__rk', { value: CELLS[i].key, configurable: true }); }
+      catch (e) { /* a frozen model: the accessor then throws by name rather than reading cells */ }
+    }
+  }
+  return d && d.__rk;
+}
+if (HAS_SEATS) {
+  /* THE ACCESSOR SWAP. These four are the page's display and scoring reads of a cell, and above
+     N = 7 at nine seats each must come through the ring rather than off the end of `cells`. At six
+     seats `rhoAtSeats` / `eqAtSeats` delegate on their first branch to the very functions that were
+     assigned here before, so the six-seat page is the same code path, not a re-derivation of it. */
+  rhoAt = function (d, N) { return POL.rhoAtSeats(d, N, S.seats, RING, ringKeyOf(d)); };
+  eqAt = function (d, N) { return POL.eqAtSeats(d, N, S.seats, RING, ringKeyOf(d)); };
+  scoreOf = function (d, pos, N, shift) { return POL.scoreCell(d, pos, N, shift, envArg(), RING, ringKeyOf(d)).S; };
+  realization = function (pos, N, nu) { return POL.realization(pos, N, nu, dEff(), S.seats); };
+  /* THE LADDER-AWARE HALVES OF THE TWO SEAT FUNCTIONS the shell declares above with six baked in.
+     Reassigned rather than edited in place because those declarations are stage S1's territory and
+     a nine-seat argument on them is nine-seat code: it belongs in this block with the rest of it.
+     `legalPos(node, seats)` gains its second argument here too, which is what lets `extrapReach(9)`
+     census a size the page is not standing on. */
+  posDisabledReason = function (pos, node, seats) {
+    return POL.positionDisabled(pos, node, seats == null ? S.seats : seats) || '';
+  };
+  legalPos = function (node, seats) {
+    var L = POL.seatsFor(seats == null ? S.seats : seats), o = {}, i;
+    for (i = 0; i < L.length; i++) o[L[i]] = posDisabledReason(L[i], node, seats) ? 0 : 1;
+    return o;
+  };
+}
+/* Rebind the page's ladder-derived globals to a table size. NOTHING TYPES A SEAT NAME (§2.1): the
+   list is `seatsFor`'s and the two behind-counts are policy's own structural functions, so the
+   fallback tables cannot disagree with the model about who is behind whom. */
+function applySeats(n) {
+  S.seats = n === 9 ? 9 : 6;
+  POSITIONS = POL.seatsFor(S.seats);
+  NP = POSITIONS.length;
+  POSITIONS.forEach(function (p) { NNB[p] = POL.behindNonBlind(p, S.seats); NBL[p] = POL.blindBehind(p, S.seats); });
+  posseg.className = NP > 6 ? 'seg seg-wide' : 'seg';
+}
+/**
+ * Change the table size.
+ *
+ * THE SEAT IS KEPT BY ITS DISTANCE FROM THE BUTTON, not by its name: 9-max LJ is 6-max UTG and the
+ * two blinds are the two blinds, which is the same structural counterpart map `ladderConstants`
+ * builds the nine-seat constants through. So 6 -> 9 -> 6 is a round trip, and coming DOWN from one
+ * of the three seats six-max does not have lands on UTG rather than on nothing.
+ */
+function setSeats(n) {
+  n = n === 9 ? 9 : 6;
+  if (!HAS_SEATS || n === S.seats || (n === 9 && !RING)) return;
+  simCancelOnChange('the table size');
+  var behind = POSITIONS.length - 1 - POSITIONS.indexOf(S.pos);
+  applySeats(n);
+  S.pos = POSITIONS[Math.max(0, NP - 1 - behind)];
+  if (!legalPos(S.node)[S.pos]) {
+    var i = 0;
+    while (i < NP && !legalPos(S.node)[POSITIONS[i]]) i++;
+    S.pos = POSITIONS[Math.min(i, NP - 1)];
+  }
+  if (S.raiser && seatsBefore(S.pos).indexOf(S.raiser) < 0) S.raiser = null;
+  buildPosSeg();
+  commitEnv(false);
+  announce('Table size ' + n + '-max — ' + NP + ' seats, the clamp on N_eff moves to '
+    + nEffMax() + ', and you are at ' + seatLabel(S.pos) + '.');
+}
+function syncSeatsCtl() {
+  var row = $('#seatsrow'), note = $('#seatsnote');
+  if (!row) return;
+  row.hidden = !HAS_SEATS;
+  note.hidden = !(HAS_SEATS && RING_WHY);
+  if (!HAS_SEATS) return;
+  note.innerHTML = RING_WHY ? '<b>9-max unavailable</b> &mdash; ' + RING_WHY : '';
+  [6, 9].forEach(function (n) {
+    var b = $('#seats' + n), off = n === 9 && !RING;
+    b.setAttribute('aria-pressed', S.seats === n ? 'true' : 'false');
+    b.disabled = off;
+    b.title = off ? RING_WHY : n + '-max — ' + POL.seatsFor(n).length + ' seats, N_eff clamped at ' + POL.nMax(n);
+  });
+  var tag = $('#tabletag');
+  if (tag && S.seats === 9) tag.textContent = '9-MAX · ' + tag.textContent;
+}
+function wireSeatsCtl() {
+  if (!HAS_SEATS) return;
+  $('#seats6').onclick = function () { setSeats(6); };
+  $('#seats9').onclick = function () { setSeats(9); };
+}
+/* @end:block */
 
 /* ==================================== V2-PLAN §4 — THE VILLAIN PROFILE UI AND THE SIMULATE BUTTON
    THE TRIGGER, exactly as specified. The page always loads instantly on precomputed + interpolated
@@ -8091,6 +8281,10 @@ function buildHash() {
     if (S.rakeCap !== RAKE.capBB) h += '&cap=' + S.rakeCap;
     if (S.straddle) h += '&str=1';
   }
+  /* @block:ring — the table size is an env axis and a link without it reopens on a different
+     table. Omitted at 6, its default, so every six-max link is the length it was. */
+  if (S.seats !== 6) h += '&seats=' + S.seats;
+  /* @end:block */
   /* the villain profile moves every equity on the page, so a link without it reopens on a different
      field. Both omitted at their defaults, which keeps the common link the length it was.
      `vp` is written in BOTH directions since the B1 flip: the default is now ON, so a bare `&vp=1`
@@ -8121,6 +8315,12 @@ function readHash() {
   });
   /* 0 is a legal VPIP-key value (it clamps to the floor); '' and 'abc' are not. */
   function num(v) { if (v == null || v === '') return null; var n = +v; return isFinite(n) ? n : null; }
+  /* @block:ring — the table size comes FIRST, before every other read, because `pos` and `raiser`
+     are validated against the ladder and a nine-seat link would otherwise have its seat rejected by
+     the six-seat list and land on UTG. Refused when the build carries no ring payload: a link that
+     cannot be honoured opens where it can be, not on a size the page would then throw at. */
+  if (q.seats === '9' && HAS_SEATS && RING) applySeats(9);
+  /* @end:block */
   /* order matters: pos and node first, because raiser, sel and pin are all validated against them */
   if (POSITIONS.indexOf(q.pos) >= 0) S.pos = q.pos;
   if (NODEBY[q.facing]) S.node = q.facing;
@@ -8637,7 +8837,11 @@ var SOLVER_CONST = { solver: 1 };
    red team said so in five separate memos (docs/refutations/P1.md). Keyed by DOTTED PATH because
    every one of them is a nested field, and asserted from the other side by I41(g)/I44(f), which
    read this map out of the source: a flagged constant missing from it fails the build. */
-var UNANCHORED = { 'rake.potScale': 1, 'sizing.min': 1, 'sizing.premiumCalibratedAt': 1, 'sizing.detents': 1, 'baselineQuant': 1, 'skill.blend': 1, 'skill.playsBetter': 1, 'skill.min': 1, 'skill.ref': 1, 'skill.max': 1 };
+var UNANCHORED = { 'rake.potScale': 1, 'sizing.min': 1, 'sizing.premiumCalibratedAt': 1, 'sizing.detents': 1, 'baselineQuant': 1, 'skill.blend': 1, 'skill.playsBetter': 1, 'skill.min': 1, 'skill.ref': 1, 'skill.max': 1,
+  /* V4-PLAN §4: the six early-seat numbers are EXTRAPOLATED from the six-seat ladder by a named
+     rule and no nine-handed measurement stands behind them. They ship gated (I51(a)) and flagged
+     (`constants.ladder.flag`), which is what the badge says out loud. */
+  'ladder.derived': 1 };
 /* v2 put four nested blocks into `constants`; JSON.stringify rendered them as one-line blobs */
 function constHTML(v, p) {
   if (v == null || typeof v !== 'object') return String(v);
@@ -8653,24 +8857,37 @@ function constHTML(v, p) {
 /* Live, not transcribed: how far past the clamp this page can actually be driven. The domain is
    exactly the settings the UI exposes — 4 nodes × legal seats × every integer VPIP × 1–4 limpers at
    the iso node × straddle off/on. Depth is NOT an axis: N_eff does not read it (measured, 0 of the
-   settings differ between 40bb and 250bb), so including it would only inflate the denominator. */
-function extrapReach() {
-  var fires = 0, total = 0, max = 0, at = '';
+   settings differ between 40bb and 250bb), so including it would only inflate the denominator.
+
+   RE-KEYED BY TABLE SIZE AT v4 (§2.6, rule R3). `seats` defaults to the size the page is standing
+   on, so the call the Known-weaknesses paragraph makes is the call it always made; the Table size
+   section passes 9 explicitly to census a size the reader is not currently on. The per-(pos, node)
+   breakdown `by` is accumulated here rather than in a second sweep, because two enumerations of
+   one domain is how the two counts come to disagree. */
+function extrapReach(seats) {
+  seats = seats || S.seats;
+  var fires = 0, total = 0, max = 0, at = '', by = {};
+  var LAD = POL && POL.seatsFor ? POL.seatsFor(seats) : POSITIONS;
+  var clamp9 = POL && POL.nMax ? POL.nMax(seats) : 7;
   var raw0 = (POL && POL.nEff)
     ? function (st) { return POL.nEff(st).raw; }
     : function (st) { return nEffRaw(st.v, st.pos, st.node, st.limpers); };
   var strs = HAS_ENV ? [false, true] : [false];
   for (var ni = 0; ni < NODES.length; ni++) {
-    var node = NODES[ni].key, lp = legalPos(node);
-    for (var pi = 0; pi < POSITIONS.length; pi++) {
-      var pos = POSITIONS[pi];
+    var node = NODES[ni].key, lp = legalPos(node, seats);
+    for (var pi = 0; pi < LAD.length; pi++) {
+      var pos = LAD[pi];
       if (!lp[pos]) continue;
       var Ls = node === 'limps' ? [1, 2, 3, 4] : [2];
+      /* [fires, of, worst raw] — a triple rather than three named fields, because this array is
+         allocated once per (pos, node) and read in exactly one place (the Table size section). */
+      var row = by[pos + '|' + node] = [0, 0, 0];
       for (var si = 0; si < strs.length; si++) for (var li = 0; li < Ls.length; li++) {
         for (var v = VMIN; v <= VMAX; v++) {
-          var raw = raw0({ pos: pos, node: node, v: v / 100, limpers: Ls[li], straddle: strs[si] });
-          total++;
-          if (raw > nEffMax() + 0.0001) fires++;
+          var raw = raw0({ pos: pos, node: node, v: v / 100, limpers: Ls[li], straddle: strs[si], seats: seats });
+          total++; row[1]++;
+          if (raw > clamp9 + 0.0001) { fires++; row[0]++; }
+          if (raw > row[2]) row[2] = raw;
           if (raw > max) {
             max = raw;
             at = NODEBY[node].label + ' / ' + pos + ' / VPIP ' + v +
@@ -8680,7 +8897,7 @@ function extrapReach() {
       }
     }
   }
-  return { fires: fires, total: total, max: max, at: at };
+  return { fires: fires, total: total, max: max, at: at, by: by, clamp: clamp9 };
 }
 /* @block:calib ============================== THE CALIBRATION VERDICT (V3-PLAN §3.5, §5.4, §7.2)
    The one section of this page that reports a FAILURE as its headline, because the alternative is
@@ -8856,6 +9073,121 @@ function renderMethod() {
       'pot is exactly ' + (RAKE.capBB / (RAKE.potBB || 60) * 100).toFixed(0) + '%, so every setting above it is identical. ' +
       'The straddle is a transform, not a new measurement — its scope is in Known weaknesses below.</p>';
   }
+  /* @block:ring — THE TABLE SIZE SECTION (V4-PLAN §2.6 step 4, rule R3).
+     EVERY NUMBER HERE IS COMPUTED, NOT TYPED. The ladders come from `seatsFor`, the four counts
+     from the structural functions themselves, the rule and its anchor off `constants.ladder`, the
+     ring's provenance off the payload's own `meta`, and the census from a live sweep of the same
+     `extrapReach` the Known weaknesses paragraph runs — one enumeration, two readers, so the two
+     counts cannot disagree. This section is also where R3's per-(pos, node) breakdown lives: there
+     is no per-pair `extrapolated` chip on the rail and there is not going to be one, because the
+     N_eff readout under the VPIP slider already badges the setting you are standing on and a chip
+     would put new markup and CSS into the page's tightest shared ceiling to say it twice. */
+  if (HAS_SEATS) {
+    var LD = C.ladder, sf = POL.seatsFor, sizes = [6, 9];
+    var lrow = function (label, fn) {
+      return '<tr><td>' + label + '</td>' + sizes.map(function (n) {
+        return '<td>' + fn(n) + '</td>';
+      }).join('') + '</tr>';
+    };
+    var names = function (n) { return sf(n).map(seatLabel).join(' · '); };
+    var perSeat = function (n, f) { return sf(n).map(f).join(' '); };
+    var cx = extrapReach(9), c6 = extrapReach(6);
+    /* THE DENOMINATOR EXCLUDES THE vs-3-BET NODE, and that is the domain the record counts, not a
+       convenient subset: `nEff` returns the constant 2 there — the node is heads-up by construction
+       and N_eff does not tier it — so those rows can never clamp and including them would only
+       dilute the share. Taken from the sweep's OWN per-pair counts rather than re-enumerated, which
+       is what keeps this figure and the Known-weaknesses paragraph's one measurement. */
+    var dom = function (r) {
+      var t = 0, k;
+      for (k in r.by) if (k.slice(k.indexOf('|') + 1) !== '3bet') t += r.by[k][1];
+      return t;
+    };
+    var d9 = dom(cx), d6 = dom(c6);
+    html += '<h3>Table size &mdash; the seat ladder</h3>' +
+      '<p>One array, two views. <code>seatsFor(seats)</code> is the whole of the axis and the set is ' +
+      '<b>{' + (LD.seats || []).join(', ') + '}</b> &mdash; a set, not an integer: every additional size ' +
+      'is a fixture, a skill re-measurement and a UI surface of its own, so nothing here builds a ' +
+      'ladder generator that pretends otherwise. Six is the default and the identity: at six seats ' +
+      '<code>seatsFor(6)</code> is the very array this page has always used, by reference.</p>' +
+      '<table class="tbl"><tr><th></th><th>6-max</th><th>9-max</th></tr>' +
+      lrow('ladder', names) +
+      lrow('non-blind seats behind', function (n) { return perSeat(n, function (p) { return POL.behindNonBlind(p, n); }); }) +
+      lrow('blind seats behind', function (n) { return perSeat(n, function (p) { return POL.blindBehind(p, n); }); }) +
+      lrow('nesting chain at RFI', function (n) { return POL.nestChain('rfi', n).map(seatLabel).join(' &rarr; '); }) +
+      lrow('nesting chain at iso / vs raise', function (n) { return POL.nestChain('limps', n).map(seatLabel).join(' &rarr; '); }) +
+      lrow('structurally illegal (position, node)', function (n) {
+        var out = [];
+        sf(n).forEach(function (p) {
+          NODES.forEach(function (nd) {
+            if (POL.positionDisabled(p, nd.key, n)) out.push(seatLabel(p) + '&thinsp;&times;&thinsp;' + nd.label);
+          });
+        });
+        return out.join(', ');
+      }) +
+      lrow('legal (position, node) pairs', function (n) {
+        var k = 0;
+        sf(n).forEach(function (p) { NODES.forEach(function (nd) { if (!POL.positionDisabled(p, nd.key, n)) k++; }); });
+        return k + ' of ' + (sf(n).length * NODES.length);
+      }) +
+      lrow('N_eff clamp', function (n) { return POL.nMax(n); }) +
+      '</table>' +
+      '<h4>The early-seat constants, and why they wear a badge</h4>' +
+      '<p class="t-sm dim">The six legacy <code>baseRaise</code> and <code>baseR</code> values are ' +
+      'unchanged, bit for bit. The three seats the ladder gains are <b>derived by a named rule</b> ' +
+      'rather than typed: <code>baseRaise</code> is <b>' + LD.baseRaiseRule + '</b>, one factor of ' +
+      '<code>ladder.earlyStep</code> = ' + LD.earlyStep + ' per seat off the anchor seat, and ' +
+      '<code>baseR</code> is <b>' + LD.baseRRule + '</b>. The step is not a new number: ' + LD.anchor +
+      '. There is no nine-handed measurement behind the six values below, which is what the ' +
+      '<span class="tag-m tag-e">estimate</span> badge on <code>ladder.derived</code> in the ' +
+      'constants block says, and what <code>ladder.flag</code> names the gate for: ' + LD.flag + '</p>' +
+      '<table class="tbl"><tr><th>seat</th><th>baseRaise</th><th>baseR</th></tr>' +
+      Object.keys(LD.derived.baseRaise).map(function (p) {
+        return '<tr><td>' + seatLabel(p) + '</td><td>' + LD.derived.baseRaise[p] + '</td><td>' +
+          LD.derived.baseR[p] + '</td></tr>';
+      }).join('') + '</table>' +
+      '<h4>The ring &mdash; where the equity curve stops</h4>' +
+      '<p class="t-sm dim">The Monte Carlo measured N = 1&hellip;' + NMAX + ' and <code>cells[*].eq</code> ' +
+      'is byte-identical to what it always was. Nine seats reaches past it, so the N = 8 and 9 columns ' +
+      'are a <b>separate artifact</b>, read through <code>eqAtSeats</code> and never spliced into the ' +
+      'shipped arrays. ' +
+      (RING ? 'This build carries it: nMax <b>' + RING.meta.nMax + '</b>, ' +
+        (RING.meta.trials != null ? RING.meta.trials.toLocaleString() + ' trials per cell, ' : '') +
+        (RING.meta.se && RING.meta.se.cell != null ? '&plusmn;' + RING.meta.se.cell + ' pt, ' : '') +
+        (RING.meta.seeds ? [].concat(RING.meta.seeds).length + ' seeds, ' : '') +
+        'generator <code>' + String(RING.meta.generatorHash).slice(0, 8) + '</code>, content <code>' +
+        String(RING.meta.contentHash).slice(0, 8) + '</code>.'
+        : '<b>This build does not carry it</b> &mdash; ' + RING_WHY + ' The 9-max control is ' +
+          'disabled by name rather than hidden, and the accessor fails closed rather than reading ' +
+          'the seven-opponent column.') + '</p>' +
+      '<h4>Where the clamp bites &mdash; the extrapolated census, per (position, node)</h4>' +
+      '<p class="t-sm dim">Swept live over the settings this page can be driven to at each size &mdash; ' +
+      'four nodes &times; legal seats &times; every integer VPIP &times; one to four limpers at the iso ' +
+      'node' + (HAS_ENV ? ' &times; straddle off and on' : '') + ', depth excluded because N_eff does not ' +
+      'read it, and vs 3-Bet excluded because N_eff is the constant 2 there. At six seats the clamp is ' +
+      c6.clamp + ' and the badge fires at <b>' + c6.fires + '</b> of ' +
+      commas(d6) + ' (' + (c6.fires / d6 * 100).toFixed(2) + '%). At nine the clamp <i>moves</i> ' +
+      'to ' + cx.clamp + ' rather than lifting, and the clamped share <b>falls</b> to <b>' + cx.fires + '</b> of ' +
+      commas(d9) + ' (' + (cx.fires / d9 * 100).toFixed(2) + '%) &mdash; worst raw N_eff ' +
+      f2(cx.max) + ' at ' + cx.at + '. Every pair that clamps at all, at either size:</p>' +
+      '<table class="tbl"><tr><th>seat &times; node</th><th>6-max</th><th>9-max</th><th>worst raw (9-max)</th></tr>' +
+      (function () {
+        var keys = {}, k;
+        for (k in cx.by) if (cx.by[k][0]) keys[k] = 1;
+        for (k in c6.by) if (c6.by[k][0]) keys[k] = 1;
+        var ks = Object.keys(keys);
+        if (!ks.length) return '<tr><td colspan="4">no setting at either size clamps</td></tr>';
+        return ks.map(function (kk) {
+          var a = c6.by[kk], b = cx.by[kk], p = kk.split('|');
+          return '<tr><td>' + seatLabel(p[0]) + ' &times; ' + NODEBY[p[1]].label + '</td><td>' +
+            (a ? a[0] + ' / ' + a[1] : '&mdash;') + '</td><td>' +
+            (b ? b[0] + ' / ' + b[1] : '&mdash;') + '</td><td>' + (b ? f2(b[2]) : '&mdash;') + '</td></tr>';
+        }).join('');
+      })() + '</table>' +
+      '<p class="t-sm dim">The badge lives on the N_eff readout beside the VPIP slider, for the ' +
+      'setting you are on. It is deliberately <b>not</b> a per-seat chip on the rail: this table is ' +
+      'where the reach is counted, and METHODOLOGY limitation 20 is where it is written down.</p>';
+  }
+  /* @end:block */
   html += '<h3>Constants (rendered from the shipped data)</h3>' +
     '<p class="t-sm dim">Everything the model knows, in one object. <b>Opinion unless tagged</b> — the untagged rows are ' +
     'authored constants whose source of truth is <code>policy.mjs</code>; the ' +
@@ -8904,10 +9236,16 @@ function renderMethod() {
       covd.map(function (c) {
         return '<tr><td>' + c.pos + '</td><td>' + NODEBY[c.node].label + '</td><td>' + c.what + '</td></tr>';
       }).join('') + '</table>' +
-      '<p class="t-sm dim">' + covd.length + ' of ' + cov2.length + ' (position, node) pairs. The other ' +
-      (cov2.length - covd.length) + ' carry the reason <b>&ldquo;' + bb2.notCovered + '&rdquo;</b> in the shipped ' +
+      /* THE DENOMINATOR IS ALL pos × node AT THE LIVE TABLE SIZE, not the legal subset and not the
+         shipped map's row count (V4-PLAN §0.2, §2.6). At six seats `POSITIONS.length * NODES.length`
+         IS `cov2.length` — 24, the same reading I36(d) and METHODOLOGY §3405 record — so this is
+         structural rather than a second number; at nine it reads 3 of 36 and the uncovered count
+         rises to 33 without the shipped block changing by one byte, because the three seats the
+         ladder gained are three seats the heads-up solve was never going to reach. */
+      '<p class="t-sm dim">' + covd.length + ' of ' + (POSITIONS.length * NODES.length) + ' (position, node) pairs. The other ' +
+      (POSITIONS.length * NODES.length - covd.length) + ' carry the reason <b>&ldquo;' + bb2.notCovered + '&rdquo;</b> in the shipped ' +
       'block, and the colour mode reads it from there rather than saying it here: the baseline is heads-up, ' +
-      'six-max is deferred on the payoff&rsquo;s domain, and the mode disables itself by name at every seat the ' +
+      'the multiway domain is deferred on the payoff&rsquo;s, and the mode disables itself by name at every seat the ' +
       'solve does not reach.</p>' +
       /* baselineQuant renders BADGED, off the same UNANCHORED map the constants table uses: the P3
          red team returned it 6-of-6 unanchorable, so it ships flagged (V3-PLAN §6) and the page
@@ -9489,6 +9827,16 @@ function init() {
     RAIL: RAIL, MODES: MODES,
     railState: function () { return RAILST; }, toggleSec: toggleSec, syncRail: syncRail,
     colorMode: function () { return { want: S.colorBy, active: activeMode(), caps: modeCaps() }; },
+    /* @block:ring — the seat axis, for smoke.mjs and browsers.mjs. `setSeats` is the SAME entry
+       point the two buttons call, so a harness row measures the control a user clicks; `seatsState`
+       reports what the page is actually standing on, which is how the row can tell a repaint from
+       a no-op on a build whose 9-max button is disabled. */
+    setSeats: setSeats,
+    seatsState: function () {
+      return { seats: S.seats, has: HAS_SEATS, ring: !!RING, why: RING_WHY, nMax: nEffMax(),
+        rail: POSITIONS.slice(), pos: S.pos };
+    },
+    /* @end:block */
     /* @block:gto */
     gtoState: function () {
       if (!BASE) return null;

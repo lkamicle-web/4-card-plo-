@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- GENERATED FILE — do not edit. Built by scripts/build.mjs from:
-       src/shell.html   sha256 75ef9c4fd05a8d01
+       src/shell.html   sha256 1f317b16d18e6166
        data/model.json   1.0.0 · 0b563af107d9d223
        data/equilibrium.json   69.6 KB · sha256 e192f6a1e6a07b9c
        scripts/lib/policy.mjs + scripts/lib/taxonomy.mjs (inlined)
@@ -114,6 +114,10 @@ svg{display:block}
 .seg button[aria-pressed=true]{color:var(--t1-ink)}
 .seg .thumb{position:absolute;top:2px;height:36px;border-radius:var(--r-pill);background:var(--accent);
   transition:transform var(--dur-base) var(--ease-out),width var(--dur-base) var(--ease-out);z-index:0}
+/* @block:ring — the nine-seat rail. Nine chips at 48px each overflow the topbar's left group, so
+   the ladder gets its own narrower chip. 9-max-ONLY bytes: at six seats the class is never set. */
+.seg-wide button{min-width:36px;padding:0 var(--sp-2);font-size:11px;letter-spacing:.02em}
+/* @end:block */
 .tabs{display:flex;gap:var(--sp-2);align-items:center;height:56px}
 .tabs button{position:relative;height:56px;padding:0 var(--sp-5);color:var(--text-tertiary);white-space:nowrap;
   font:600 13px/16px var(--font-ui);transition:color var(--dur-fast) var(--ease-standard)}
@@ -979,6 +983,21 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
                  standing on it. -->
             <button class="btn btn-sm" id="v1point" type="button">v1 point</button>
           </div>
+          <!-- @block:ring — THE TABLE-SIZE CONTROL (V4-PLAN §2.6). An environment axis beside depth,
+               rake and straddle, because it is one: it moves N_eff, the opening bases and the
+               realization ladder, and it is in `envKey` and in the permalink with them. Two buttons
+               rather than a toggle chip, because `{6, 9}` is a SET and not an on/off — §0.2 keeps a
+               later `{6, 7, 9}` a data change, and a chip would have to be re-drawn for it. No new
+               CSS: `.btn-sm[aria-pressed=true]` is the rake presets' own pressed state.
+               9-max is DISABLED WITH ITS REASON, never hidden, on a build with no ring payload —
+               the same disablement idiom lite's second solved depth uses (§8 item 15). -->
+          <div class="ctlrow2" id="seatsrow" hidden>
+            <span class="t-micro" style="color:var(--text-tertiary)">table</span>
+            <button class="btn btn-sm" id="seats6" type="button" aria-pressed="true">6-max</button>
+            <button class="btn btn-sm" id="seats9" type="button" aria-pressed="false">9-max</button>
+          </div>
+          <div class="ctlnote" id="seatsnote" hidden></div>
+          <!-- @end:block -->
           <div class="ctlnote" id="tablenote"></div>
           </div>
         </section>
@@ -2592,7 +2611,7 @@ return { POSITIONS, LADDER9, SEAT_DISPLAY, seatsFor, NODES, TIERS, TIER_RANK, TI
 </script>
 <script>
 /* @inject:engine */
-const SIM_KERNEL_SRC = "'use strict';\nvar PLO_EVAL5=(function(){\n'use strict';\nconst RANK_CHARS='23456789TJQKA';\nconst SUIT_CHARS='shdc';\nconst rankOf=(c)=>c>>2;\nconst suitOf=(c)=>c&3;\nfunction parseCard(str){\nconst r=RANK_CHARS.indexOf(str[0].toUpperCase());\nconst s=SUIT_CHARS.indexOf(str[1].toLowerCase());\nif(r<0||s<0)throw new Error(`bad card \"${str}\"`);\nreturn r*4+s;\n}\nfunction parseHand(str){\nconst clean=str.replace(/[\\s,]/g,'');\nif(clean.length%2)throw new Error(`bad hand \"${str}\"`);\nconst out=[];\nfor(let i=0;i<clean.length;i+=2)out.push(parseCard(clean.slice(i,i+2)));\nreturn out;\n}\nfunction cardStr(c){return RANK_CHARS[rankOf(c)]+SUIT_CHARS[suitOf(c)];}\nfunction handStr(cards){return cards.map(cardStr).join('');}\nconst STRAIGHT_HI=(()=>{\nconst t=new Int8Array(8192).fill(-1);\nt[(1<<12)|(1<<3)|(1<<2)|(1<<1)|1]=3;\nfor(let hi=4;hi<=12;hi++){\nlet m=0;\nfor(let k=0;k<5;k++)m|=1<<(hi-k);\nt[m]=hi;\n}\nreturn t;\n})();\nconst PC=(()=>{\nconst t=new Uint8Array(8192);\nfor(let i=1;i<8192;i++)t[i]=t[i>>1]+(i&1);\nreturn t;\n})();\nconst CAT=1<<26;\nfunction scoreMasks(Q,P,T,F,flush){\nconst st=STRAIGHT_HI[Q];\nif(st>=0){\nif(flush)return 8*CAT+st;\nif(F===0&&P===0){\nreturn 4*CAT+st;\n}\n}\nif(F!==0)return 7*CAT+((F<<13)|(Q^F));\nif(T!==0){\nif(P!==T)return 6*CAT+((T<<13)|(P^T));\nif(flush)return 5*CAT+Q;\nreturn 3*CAT+((T<<13)|(Q^T));\n}\nif(flush)return 5*CAT+Q;\nif(P!==0){\nconst np=PC[P];\nif(np===2)return 2*CAT+((P<<13)|(Q^P));\nreturn 1*CAT+((P<<13)|(Q^P));\n}\nreturn 0*CAT+Q;\n}\nfunction eval5(a,b,c,d,e){\nlet Q=0,P=0,T=0,F=0;\nconst s0=a&3;\nconst flush=((b&3)===s0)&&((c&3)===s0)&&((d&3)===s0)&&((e&3)===s0);\nconst cards=[a,b,c,d,e];\nfor(let i=0;i<5;i++){\nconst bit=1<<(cards[i]>>2);\nif(Q&bit){if(P&bit){if(T&bit)F|=bit;else T|=bit;}else P|=bit;}else Q|=bit;\n}\nreturn scoreMasks(Q,P,T,F,flush);\n}\nconst H2A=new Int8Array([0,0,0,1,1,2]);\nconst H2B=new Int8Array([1,2,3,2,3,3]);\nconst B3=[[0,1,2],[0,1,3],[0,1,4],[0,2,3],[0,2,4],[0,3,4],[1,2,3],[1,2,4],[1,3,4],[2,3,4]];\nfunction makeTriplePartials(){\nreturn{Q:new Int32Array(10),P:new Int32Array(10),T:new Int32Array(10),M:new Int8Array(10)};\n}\nfunction fillTriplePartials(board,tp){\nconst{Q,P,T,M}=tp;\nfor(let j=0;j<10;j++){\nconst b=B3[j];\nlet q=0,p=0,t=0;\nfor(let k=0;k<3;k++){\nconst bit=1<<(board[b[k]]>>2);\nif(q&bit){if(p&bit)t|=bit;else p|=bit;}else q|=bit;\n}\nQ[j]=q;P[j]=p;T[j]=t;\nconst s=board[b[0]]&3;\nM[j]=((board[b[1]]&3)===s&&(board[b[2]]&3)===s)?s:-1;\n}\n}\nfunction bestOmaha(h0,h1,h2,h3,tp){\nconst hole=[h0,h1,h2,h3];\nconst{Q:TQ,P:TP,T:TT,M:TM}=tp;\nlet best=-1;\nfor(let i=0;i<6;i++){\nconst x=hole[H2A[i]],y=hole[H2B[i]];\nconst bx=1<<(x>>2),by=1<<(y>>2);\nconst sx=x&3;\nconst same=sx===(y&3);\nfor(let j=0;j<10;j++){\nlet Q=TQ[j],P=TP[j],T=TT[j],F=0;\nif(Q&bx){if(P&bx){if(T&bx)F|=bx;else T|=bx;}else P|=bx;}else Q|=bx;\nif(Q&by){if(P&by){if(T&by)F|=by;else T|=by;}else P|=by;}else Q|=by;\nconst v=scoreMasks(Q,P,T,F,same&&TM[j]===sx);\nif(v>best)best=v;\n}\n}\nreturn best;\n}\nfunction bestOmahaNaive(hole,board){\nlet best=-1;\nfor(let i=0;i<6;i++){\nconst h0=hole[H2A[i]],h1=hole[H2B[i]];\nfor(let j=0;j<10;j++){\nconst b=B3[j];\nconst v=eval5(h0,h1,board[b[0]],board[b[1]],board[b[2]]);\nif(v>best)best=v;\n}\n}\nreturn best;\n}\nfunction categoryOf(score){return(score/CAT)|0;}\nconst CATEGORY_NAMES=['high card','pair','two pair','trips','straight','flush','full house','quads','straight flush'];\nfunction fnv1a(str){\nlet h=0x811c9dc5;\nfor(let i=0;i<str.length;i++){\nh^=str.charCodeAt(i);\nh=(h+((h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24)))>>>0;\n}\nreturn h>>>0;\n}\nclass Rng{\nconstructor(seed){\nlet s=(seed>>>0)||0x9e3779b9;\nthis.a=(s=(s^0x9e3779b9)>>>0)||1;\nthis.b=(s=Math.imul(s^(s>>>16),0x85ebca6b)>>>0)||2;\nthis.c=(s=Math.imul(s^(s>>>13),0xc2b2ae35)>>>0)||3;\nthis.d=(s=(s^(s>>>16))>>>0)||4;\nfor(let i=0;i<24;i++)this.next();\n}\nnext(){\nlet t=this.a^(this.a<<11);\nthis.a=this.b;this.b=this.c;this.c=this.d;\nthis.d=(this.d^(this.d>>>19))^(t^(t>>>8));\nreturn this.d>>>0;\n}\nint(n){return Math.floor((this.next()/4294967296)*n);}\nfloat(){return this.next()/4294967296;}\n}\nreturn{RANK_CHARS,SUIT_CHARS,rankOf,suitOf,parseCard,parseHand,cardStr,handStr,STRAIGHT_HI,PC,scoreMasks,eval5,H2A,H2B,makeTriplePartials,fillTriplePartials,bestOmaha,bestOmahaNaive,categoryOf,CATEGORY_NAMES,fnv1a,Rng};\n})();\nvar PLO_VRANGE=(function(){\n'use strict';\nconst SUIT_PERMS=(()=>{\nconst out=[];\nconst perm=(arr,rest)=>{\nif(!rest.length){out.push(Int8Array.from(arr));return;}\nfor(let i=0;i<rest.length;i++){\nperm(arr.concat(rest[i]),rest.slice(0,i).concat(rest.slice(i+1)));\n}\n};\nperm([],[0,1,2,3]);\nreturn out;\n})();\nfunction canonicalOf(c0,c1,c2,c3){\nlet best=0xffffffff;\nconst r0=c0&~3,r1=c1&~3,r2=c2&~3,r3=c3&~3;\nconst s0=c0&3,s1=c1&3,s2=c2&3,s3=c3&3;\nfor(let p=0;p<24;p++){\nconst m=SUIT_PERMS[p];\nlet a=r0+m[s0],b=r1+m[s1],c=r2+m[s2],d=r3+m[s3],t;\nif(a>b){t=a;a=b;b=t;}\nif(c>d){t=c;c=d;d=t;}\nif(a>c){t=a;a=c;c=t;}\nif(b>d){t=b;b=d;d=t;}\nif(b>c){t=b;b=c;c=t;}\nconst pk=(a|(b<<6)|(c<<12)|(d<<18))>>>0;\nif(pk<best)best=pk;\n}\nreturn best;\n}\nfunction buildSuitClasses(hands){\nconst index=new Map();\nconst clsOf=new Int32Array(hands.length);\nconst repList=[];\nconst sizeList=[];\nfor(let j=0;j<hands.length;j++){\nconst pk=hands[j];\nconst can=canonicalOf(pk&63,(pk>>>6)&63,(pk>>>12)&63,(pk>>>18)&63);\nlet ci=index.get(can);\nif(ci===undefined){ci=repList.length;index.set(can,ci);repList.push(can);sizeList.push(0);}\nclsOf[j]=ci;\nsizeList[ci]++;\n}\nreturn{\nreps:Uint32Array.from(repList),\nclsOf,\nsize:Int32Array.from(sizeList),\nn:repList.length,\n};\n}\nfunction cutAt(order,size,total,v){\nconst target=(v/100)*total;\nconst keep=new Uint8Array(size.length);\nlet cum=0,lastIdx=order[0];\nfor(let i=0;i<order.length;i++){\nconst ci=order[i];\nconst next=cum+size[ci];\nif(next>target&&(next-target)>(target-cum))break;\nkeep[ci]=1;cum=next;lastIdx=ci;\nif(cum>=target)break;\n}\nreturn{keep,cum,lastIdx};\n}\nfunction buildRanges(eq1,cls,hands,vPoints){\nconst total=hands.length;\nconst order=Int32Array.from({length:cls.n},(_,i)=>i)\n.sort((a,b)=>(eq1[b]-eq1[a])||(a-b));\nconst ranges={},realized={},cutEq={};\nfor(const v of vPoints){\nconst{keep,cum,lastIdx}=cutAt(order,cls.size,total,v);\nconst out=new Uint32Array(cum);\nlet w=0;\nfor(let j=0;j<total;j++)if(keep[cls.clsOf[j]])out[w++]=hands[j];\nranges[v]=out;\nrealized[v]=cum/total;\ncutEq[v]=eq1[lastIdx];\n}\nreturn{ranges,realized,cutEq,order};\n}\nfunction canonicalRanks(reps){\nconst idx=Int32Array.from({length:reps.length},(_,i)=>i)\n.sort((a,b)=>(reps[a]<reps[b]?-1:reps[a]>reps[b]?1:0));\nconst cid=new Int32Array(reps.length);\nfor(let r=0;r<idx.length;r++)cid[idx[r]]=r;\nreturn cid;\n}\nfunction classTableCanonical(hands){\nconst canon=new Uint32Array(hands.length);\nconst seen=new Map();\nfor(let j=0;j<hands.length;j++){\nconst pk=hands[j];\nconst c=canonicalOf(pk&63,(pk>>>6)&63,(pk>>>12)&63,(pk>>>18)&63);\ncanon[j]=c;\nif(!seen.has(c))seen.set(c,0);\n}\nconst reps=Uint32Array.from(seen.keys()).sort();\nconst rank=new Map();\nfor(let i=0;i<reps.length;i++)rank.set(reps[i],i);\nconst cidOf=new Int32Array(hands.length);\nconst size=new Int32Array(reps.length);\nfor(let j=0;j<hands.length;j++){\nconst c=rank.get(canon[j]);\ncidOf[j]=c;size[c]++;\n}\nreturn{reps,cidOf,size,n:reps.length};\n}\nreturn{SUIT_PERMS,canonicalOf,buildSuitClasses,cutAt,buildRanges,canonicalRanks,classTableCanonical};\n})();\nvar PLO_ORDER=(function(){\n'use strict';\nconst ORDER_BITS=15;\nconst B64='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\nconst B64INV=(()=>{\nconst t=new Int16Array(128).fill(-1);\nfor(let i=0;i<64;i++)t[B64.charCodeAt(i)]=i;\nreturn t;\n})();\nfunction b64encode(bytes){\nlet out='';\nconst n=bytes.length;\nlet i=0;\nfor(;i+2<n;i+=3){\nconst w=(bytes[i]<<16)|(bytes[i+1]<<8)|bytes[i+2];\nout+=B64[(w>>>18)&63]+B64[(w>>>12)&63]+B64[(w>>>6)&63]+B64[w&63];\n}\nconst rem=n-i;\nif(rem===1){\nconst w=bytes[i]<<16;\nout+=B64[(w>>>18)&63]+B64[(w>>>12)&63]+'==';\n}else if(rem===2){\nconst w=(bytes[i]<<16)|(bytes[i+1]<<8);\nout+=B64[(w>>>18)&63]+B64[(w>>>12)&63]+B64[(w>>>6)&63]+'=';\n}\nreturn out;\n}\nfunction b64decode(str){\nlet end=str.length;\nwhile(end>0&&str.charCodeAt(end-1)===61)end--;\nconst out=new Uint8Array(Math.floor((end*3)/4));\nlet acc=0,bits=0,w=0;\nfor(let i=0;i<end;i++){\nconst code=str.charCodeAt(i);\nconst d=code<128?B64INV[code]:-1;\nif(d<0)throw new Error(`order-pack: bad base64 character at index ${i}`);\nacc=(acc<<6)|d;bits+=6;\nif(bits>=8){bits-=8;out[w++]=(acc>>>bits)&0xff;}\n}\nreturn out;\n}\nfunction packOrder(order){\nconst n=order.length;\nconst lim=1<<ORDER_BITS;\nconst bytes=new Uint8Array(Math.ceil((n*ORDER_BITS)/8));\nlet bit=0;\nfor(let i=0;i<n;i++){\nconst v=order[i];\nif(!(v>=0&&v<lim&&v===(v|0))){\nthrow new RangeError(`order-pack: value ${v} at ${i} does not fit in ${ORDER_BITS} bits`);\n}\nfor(let b=0;b<ORDER_BITS;b++){\nif((v>>>b)&1)bytes[(bit+b)>>3]|=1<<((bit+b)&7);\n}\nbit+=ORDER_BITS;\n}\nreturn b64encode(bytes);\n}\nfunction unpackOrder(str,n){\nconst bytes=b64decode(str);\nconst need=Math.ceil((n*ORDER_BITS)/8);\nif(bytes.length<need){\nthrow new Error(`order-pack: packed payload is ${bytes.length} B, need ${need} B for ${n} entries`);\n}\nconst out=new Int32Array(n);\nlet bit=0;\nfor(let i=0;i<n;i++){\nlet v=0;\nfor(let b=0;b<ORDER_BITS;b++){\nif((bytes[(bit+b)>>3]>>>((bit+b)&7))&1)v|=1<<b;\n}\nout[i]=v;\nbit+=ORDER_BITS;\n}\nreturn out;\n}\nfunction orderHash(order){\nlet h1=0x811c9dc5>>>0,h2=0x9e3779b9>>>0;\nfor(let i=0;i<order.length;i++){\nconst v=order[i]>>>0;\nfor(let k=0;k<4;k++){\nconst byte=(v>>>(k*8))&0xff;\nh1=Math.imul(h1^byte,0x01000193)>>>0;\nh2=Math.imul(h2^byte,0x85ebca6b)>>>0;\n}\n}\nreturn(h1>>>0).toString(16).padStart(8,'0')+(h2>>>0).toString(16).padStart(8,'0');\n}\nfunction permutationProblem(order,n){\nif(order.length!==n)return`length ${order.length}, expected ${n}`;\nconst seen=new Uint8Array(n);\nfor(let i=0;i<n;i++){\nconst v=order[i];\nif(!(v>=0&&v<n))return`entry ${i} is ${v}, outside 0..${n-1}`;\nif(seen[v])return`class ${v} appears more than once (at index ${i})`;\nseen[v]=1;\n}\nreturn'';\n}\nreturn{ORDER_BITS,b64encode,b64decode,packOrder,unpackOrder,orderHash,permutationProblem};\n})();\nvar PLO_VILLAINS=(function(){\n'use strict';\nfunction sampleFromRange(range,rng,loMask,hiMask,tries=400){\nconst n=range.length;\nfor(let t=0;t<tries;t++){\nconst pk=range[(rng.next()%n)>>>0];\nconst c0=pk&63,c1=(pk>>>6)&63,c2=(pk>>>12)&63,c3=(pk>>>18)&63;\nlet ok=true;\nfor(const c of[c0,c1,c2,c3]){\nconst bit=c<32?(loMask&(1<<c)):(hiMask&(1<<(c-32)));\nif(bit){ok=false;break;}\n}\nif(ok)return pk;\n}\nreturn-1;\n}\nreturn{sampleFromRange};\n})();\nvar PLO_MC=(function(){\n'use strict';\nvar Rng=PLO_EVAL5.Rng,fnv1a=PLO_EVAL5.fnv1a,\nmakeTriplePartials=PLO_EVAL5.makeTriplePartials,fillTriplePartials=PLO_EVAL5.fillTriplePartials,\nbestOmaha=PLO_EVAL5.bestOmaha,categoryOf=PLO_EVAL5.categoryOf;\nvar sampleFromRange=PLO_VILLAINS.sampleFromRange;\nconst NMAX=7;\nconst NMAX_V1=5;\nconst COOLER_MIN_CAT=3;\nconst COOLER_REF_N=3;\nfunction isCooler(hero,villains){\nif(categoryOf(hero)<COOLER_MIN_CAT)return null;\nlet vmax=-1;\nfor(let k=0;k<COOLER_REF_N;k++)if(villains[k]>vmax)vmax=villains[k];\nreturn hero<vmax;\n}\nconst VILLAIN_DISCIPLINE=0.85;\nconst RANGE_TRIES=4000;\nconst trialSeed=(base,t)=>((base^Math.imul(t+1,0x9e3779b1))>>>0);\nfunction runMulti(pool,lo,hi,trials,heroSeed,streamSeed,extraSeed,nMax=NMAX){\nconst heroRng=new Rng(heroSeed);\nconst rng=new Rng(streamSeed);\nconst extraRng=new Rng(extraSeed);\nconst tp=makeTriplePartials();\nconst acc=new Float64Array(nMax);\nconst deck=new Int32Array(52);\nconst board=new Int32Array(5);\nconst vs=new Int32Array(nMax);\nconst span=hi-lo;\nconst NEED=5+nMax*4;\nlet coolNum=0,coolDen=0;\nfor(let t=0;t<trials;t++){\nconst pk=pool[lo+((heroRng.next()%span)>>>0)];\nconst h0=pk&63,h1=(pk>>>6)&63,h2=(pk>>>12)&63,h3=(pk>>>18)&63;\nlet n=0;\nfor(let c=0;c<52;c++)if(c!==h0&&c!==h1&&c!==h2&&c!==h3)deck[n++]=c;\nfor(let i=0;i<25;i++){\nconst j=i+((rng.next()%(n-i))>>>0);\nconst tmp=deck[i];deck[i]=deck[j];deck[j]=tmp;\n}\nfor(let i=25;i<NEED;i++){\nconst j=i+((extraRng.next()%(n-i))>>>0);\nconst tmp=deck[i];deck[i]=deck[j];deck[j]=tmp;\n}\nfor(let i=0;i<5;i++)board[i]=deck[i];\nfillTriplePartials(board,tp);\nconst hero=bestOmaha(h0,h1,h2,h3,tp);\nfor(let k=0;k<nMax;k++){\nconst b=5+k*4;\nvs[k]=bestOmaha(deck[b],deck[b+1],deck[b+2],deck[b+3],tp);\n}\nlet vmax=-1,vties=0;\nfor(let k=0;k<nMax;k++){\nconst s=vs[k];\nif(s>vmax){vmax=s;vties=1;}else if(s===vmax)vties++;\nif(hero>vmax)acc[k]+=1;\nelse if(hero===vmax)acc[k]+=1/(vties+1);\n}\nconst cool=isCooler(hero,vs);\nif(cool!==null){coolDen++;if(cool)coolNum++;}\n}\nconst eq=new Array(nMax);\nfor(let k=0;k<nMax;k++)eq[k]=(100*acc[k])/trials;\nreturn{eq,coolNum,coolDen};\n}\nfunction runMultiFiltered(pool,lo,hi,range,q,trials,heroSeed,villSeed,nMax=NMAX){\nconst heroRng=new Rng(heroSeed);\nconst tp=makeTriplePartials();\nconst acc=new Float64Array(nMax);\nconst avail=new Int32Array(52);\nconst board=new Int32Array(5);\nconst vh=new Int32Array(nMax*4);\nconst vs=new Int32Array(nMax);\nconst span=hi-lo;\nlet fallbacks=0;\nfor(let t=0;t<trials;t++){\nconst pk=pool[lo+((heroRng.next()%span)>>>0)];\nconst h0=pk&63,h1=(pk>>>6)&63,h2=(pk>>>12)&63,h3=(pk>>>18)&63;\nconst rng=new Rng(trialSeed(villSeed,t));\nlet loM=0,hiM=0;\nfor(const c of[h0,h1,h2,h3]){if(c<32)loM|=1<<c;else hiM|=1<<(c-32);}\nfor(let k=0;k<nMax;k++){\nlet vpk=-1;\nconst disciplined=rng.float()<q;\nif(disciplined)vpk=sampleFromRange(range,rng,loM,hiM,RANGE_TRIES);\nif(vpk<0){\nif(disciplined)fallbacks++;\nfor(let i=0;i<4;i++){\nlet c;\ndo{c=(rng.next()%52)>>>0;}while(c<32?(loM&(1<<c)):(hiM&(1<<(c-32))));\nvh[k*4+i]=c;\nif(c<32)loM|=1<<c;else hiM|=1<<(c-32);\n}\n}else{\nconst c0=vpk&63,c1=(vpk>>>6)&63,c2=(vpk>>>12)&63,c3=(vpk>>>18)&63;\nvh[k*4]=c0;vh[k*4+1]=c1;vh[k*4+2]=c2;vh[k*4+3]=c3;\nfor(const c of[c0,c1,c2,c3]){if(c<32)loM|=1<<c;else hiM|=1<<(c-32);}\n}\n}\nlet n=0;\nfor(let c=0;c<52;c++){\nconst bit=c<32?(loM&(1<<c)):(hiM&(1<<(c-32)));\nif(!bit)avail[n++]=c;\n}\nfor(let i=0;i<5;i++){\nconst j=i+((rng.next()%(n-i))>>>0);\nconst tmp=avail[i];avail[i]=avail[j];avail[j]=tmp;\nboard[i]=avail[i];\n}\nfillTriplePartials(board,tp);\nconst hero=bestOmaha(h0,h1,h2,h3,tp);\nfor(let k=0;k<nMax;k++){\nvs[k]=bestOmaha(vh[k*4],vh[k*4+1],vh[k*4+2],vh[k*4+3],tp);\n}\nlet vmax=-1,vties=0;\nfor(let k=0;k<nMax;k++){\nconst s=vs[k];\nif(s>vmax){vmax=s;vties=1;}else if(s===vmax)vties++;\nif(hero>vmax)acc[k]+=1;\nelse if(hero===vmax)acc[k]+=1/(vties+1);\n}\n}\nconst eq=new Array(nMax);\nfor(let k=0;k<nMax;k++)eq[k]=(100*acc[k])/trials;\nreturn{eq,fallbacks};\n}\nreturn{NMAX,NMAX_V1,COOLER_MIN_CAT,COOLER_REF_N,isCooler,VILLAIN_DISCIPLINE,runMulti,runMultiFiltered};\n})();\nvar PLO_JOB=(function(){\n'use strict';\nvar fnv1a=PLO_EVAL5.fnv1a;\nvar NMAX=PLO_MC.NMAX;\nfunction widthOf(job){\nvar n=(job&&job.nMax)|0;\nreturn n>0?n:NMAX;\n}\nvar SLICE=5000;\nfunction seedOf(what,job,s){\nreturn fnv1a('sim|'+what+'|'+job.stage+'|'+job.key+'|'+job.hash+'|'+s);\n}\nfunction buildRange(universe,ct,order,v){\nvar cut=PLO_VRANGE.cutAt(order,ct.size,universe.length,v);\nvar out=new Uint32Array(cut.cum),w=0,j;\nfor(j=0;j<universe.length;j++)if(cut.keep[ct.cidOf[j]])out[w++]=universe[j];\nreturn out;\n}\nfunction sliceCount(trials){return Math.ceil((trials|0)/SLICE);}\nfunction runSlice(pool,starts,range,job,s){\nvar lo=starts[job.unit],hi=starts[job.unit+1];\nif(!(hi>lo))throw new Error('unit '+job.unit+' is empty');\nvar want=job.trials|0;\nif(!(want>0))throw new Error('trials must be positive, got '+job.trials);\nvar from=s*SLICE;\nif(from>=want)return null;\nvar n=Math.min(SLICE,want-from);\nvar r=job.kind==='multi'\n?PLO_MC.runMulti(pool,lo,hi,n,seedOf('hero',job,s),\nseedOf('stream',job,s),seedOf('stream6',job,s),widthOf(job))\n:PLO_MC.runMultiFiltered(pool,lo,hi,range,job.q,n,\nseedOf('hero',job,s),seedOf('vill',job,s),widthOf(job));\nreturn{eq:r.eq,n:n,fallbacks:r.fallbacks||0};\n}\nfunction runUnit(pool,starts,range,job){\nvar w=widthOf(job);\nvar acc=new Float64Array(w);\nvar done=0,fallbacks=0,s=0,k,r;\nwhile((r=runSlice(pool,starts,range,job,s))!==null){\nfor(k=0;k<w;k++)acc[k]+=r.eq[k]*r.n;\nfallbacks+=r.fallbacks;done+=r.n;s++;\n}\nvar eq=new Float64Array(w);\nfor(k=0;k<w;k++)eq[k]=acc[k]/done;\nreturn{eq:eq,fallbacks:fallbacks,trials:done,slices:s};\n}\nreturn{\nSLICE:SLICE,NMAX:NMAX,widthOf:widthOf,seedOf:seedOf,buildRange:buildRange,\nsliceCount:sliceCount,runSlice:runSlice,runUnit:runUnit,\n};\n})();\nvar PLO_ENGINE={eval5:PLO_EVAL5,vrange:PLO_VRANGE,order:PLO_ORDER,villains:PLO_VILLAINS,mc:PLO_MC,job:PLO_JOB};";
+const SIM_KERNEL_SRC = "'use strict';\nvar PLO_EVAL5=(function(){\n'use strict';\nconst RANK_CHARS='23456789TJQKA';\nconst SUIT_CHARS='shdc';\nconst rankOf=(c)=>c>>2;\nconst suitOf=(c)=>c&3;\nfunction parseCard(str){\nconst r=RANK_CHARS.indexOf(str[0].toUpperCase());\nconst s=SUIT_CHARS.indexOf(str[1].toLowerCase());\nif(r<0||s<0)throw new Error(`bad card \"${str}\"`);\nreturn r*4+s;\n}\nfunction parseHand(str){\nconst clean=str.replace(/[\\s,]/g,'');\nif(clean.length%2)throw new Error(`bad hand \"${str}\"`);\nconst out=[];\nfor(let i=0;i<clean.length;i+=2)out.push(parseCard(clean.slice(i,i+2)));\nreturn out;\n}\nfunction cardStr(c){return RANK_CHARS[rankOf(c)]+SUIT_CHARS[suitOf(c)];}\nfunction handStr(cards){return cards.map(cardStr).join('');}\nconst STRAIGHT_HI=(()=>{\nconst t=new Int8Array(8192).fill(-1);\nt[(1<<12)|(1<<3)|(1<<2)|(1<<1)|1]=3;\nfor(let hi=4;hi<=12;hi++){\nlet m=0;\nfor(let k=0;k<5;k++)m|=1<<(hi-k);\nt[m]=hi;\n}\nreturn t;\n})();\nconst PC=(()=>{\nconst t=new Uint8Array(8192);\nfor(let i=1;i<8192;i++)t[i]=t[i>>1]+(i&1);\nreturn t;\n})();\nconst CAT=1<<26;\nfunction scoreMasks(Q,P,T,F,flush){\nconst st=STRAIGHT_HI[Q];\nif(st>=0){\nif(flush)return 8*CAT+st;\nif(F===0&&P===0){\nreturn 4*CAT+st;\n}\n}\nif(F!==0)return 7*CAT+((F<<13)|(Q^F));\nif(T!==0){\nif(P!==T)return 6*CAT+((T<<13)|(P^T));\nif(flush)return 5*CAT+Q;\nreturn 3*CAT+((T<<13)|(Q^T));\n}\nif(flush)return 5*CAT+Q;\nif(P!==0){\nconst np=PC[P];\nif(np===2)return 2*CAT+((P<<13)|(Q^P));\nreturn 1*CAT+((P<<13)|(Q^P));\n}\nreturn 0*CAT+Q;\n}\nfunction eval5(a,b,c,d,e){\nlet Q=0,P=0,T=0,F=0;\nconst s0=a&3;\nconst flush=((b&3)===s0)&&((c&3)===s0)&&((d&3)===s0)&&((e&3)===s0);\nconst cards=[a,b,c,d,e];\nfor(let i=0;i<5;i++){\nconst bit=1<<(cards[i]>>2);\nif(Q&bit){if(P&bit){if(T&bit)F|=bit;else T|=bit;}else P|=bit;}else Q|=bit;\n}\nreturn scoreMasks(Q,P,T,F,flush);\n}\nconst H2A=new Int8Array([0,0,0,1,1,2]);\nconst H2B=new Int8Array([1,2,3,2,3,3]);\nconst B3=[[0,1,2],[0,1,3],[0,1,4],[0,2,3],[0,2,4],[0,3,4],[1,2,3],[1,2,4],[1,3,4],[2,3,4]];\nfunction makeTriplePartials(){\nreturn{Q:new Int32Array(10),P:new Int32Array(10),T:new Int32Array(10),M:new Int8Array(10)};\n}\nfunction fillTriplePartials(board,tp){\nconst{Q,P,T,M}=tp;\nfor(let j=0;j<10;j++){\nconst b=B3[j];\nlet q=0,p=0,t=0;\nfor(let k=0;k<3;k++){\nconst bit=1<<(board[b[k]]>>2);\nif(q&bit){if(p&bit)t|=bit;else p|=bit;}else q|=bit;\n}\nQ[j]=q;P[j]=p;T[j]=t;\nconst s=board[b[0]]&3;\nM[j]=((board[b[1]]&3)===s&&(board[b[2]]&3)===s)?s:-1;\n}\n}\nfunction bestOmaha(h0,h1,h2,h3,tp){\nconst hole=[h0,h1,h2,h3];\nconst{Q:TQ,P:TP,T:TT,M:TM}=tp;\nlet best=-1;\nfor(let i=0;i<6;i++){\nconst x=hole[H2A[i]],y=hole[H2B[i]];\nconst bx=1<<(x>>2),by=1<<(y>>2);\nconst sx=x&3;\nconst same=sx===(y&3);\nfor(let j=0;j<10;j++){\nlet Q=TQ[j],P=TP[j],T=TT[j],F=0;\nif(Q&bx){if(P&bx){if(T&bx)F|=bx;else T|=bx;}else P|=bx;}else Q|=bx;\nif(Q&by){if(P&by){if(T&by)F|=by;else T|=by;}else P|=by;}else Q|=by;\nconst v=scoreMasks(Q,P,T,F,same&&TM[j]===sx);\nif(v>best)best=v;\n}\n}\nreturn best;\n}\nfunction bestOmahaNaive(hole,board){\nlet best=-1;\nfor(let i=0;i<6;i++){\nconst h0=hole[H2A[i]],h1=hole[H2B[i]];\nfor(let j=0;j<10;j++){\nconst b=B3[j];\nconst v=eval5(h0,h1,board[b[0]],board[b[1]],board[b[2]]);\nif(v>best)best=v;\n}\n}\nreturn best;\n}\nfunction categoryOf(score){return(score/CAT)|0;}\nconst CATEGORY_NAMES=['high card','pair','two pair','trips','straight','flush','full house','quads','straight flush'];\nfunction fnv1a(str){\nlet h=0x811c9dc5;\nfor(let i=0;i<str.length;i++){\nh^=str.charCodeAt(i);\nh=(h+((h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24)))>>>0;\n}\nreturn h>>>0;\n}\nclass Rng{\nconstructor(seed){\nlet s=(seed>>>0)||0x9e3779b9;\nthis.a=(s=(s^0x9e3779b9)>>>0)||1;\nthis.b=(s=Math.imul(s^(s>>>16),0x85ebca6b)>>>0)||2;\nthis.c=(s=Math.imul(s^(s>>>13),0xc2b2ae35)>>>0)||3;\nthis.d=(s=(s^(s>>>16))>>>0)||4;\nfor(let i=0;i<24;i++)this.next();\n}\nnext(){\nlet t=this.a^(this.a<<11);\nthis.a=this.b;this.b=this.c;this.c=this.d;\nthis.d=(this.d^(this.d>>>19))^(t^(t>>>8));\nreturn this.d>>>0;\n}\nint(n){return Math.floor((this.next()/4294967296)*n);}\nfloat(){return this.next()/4294967296;}\n}\nreturn{RANK_CHARS,SUIT_CHARS,rankOf,suitOf,parseCard,parseHand,cardStr,handStr,STRAIGHT_HI,PC,scoreMasks,eval5,H2A,H2B,makeTriplePartials,fillTriplePartials,bestOmaha,bestOmahaNaive,categoryOf,CATEGORY_NAMES,fnv1a,Rng};\n})();\nvar PLO_VRANGE=(function(){\n'use strict';\nconst SUIT_PERMS=(()=>{\nconst out=[];\nconst perm=(arr,rest)=>{\nif(!rest.length){out.push(Int8Array.from(arr));return;}\nfor(let i=0;i<rest.length;i++){\nperm(arr.concat(rest[i]),rest.slice(0,i).concat(rest.slice(i+1)));\n}\n};\nperm([],[0,1,2,3]);\nreturn out;\n})();\nfunction canonicalOf(c0,c1,c2,c3){\nlet best=0xffffffff;\nconst r0=c0&~3,r1=c1&~3,r2=c2&~3,r3=c3&~3;\nconst s0=c0&3,s1=c1&3,s2=c2&3,s3=c3&3;\nfor(let p=0;p<24;p++){\nconst m=SUIT_PERMS[p];\nlet a=r0+m[s0],b=r1+m[s1],c=r2+m[s2],d=r3+m[s3],t;\nif(a>b){t=a;a=b;b=t;}\nif(c>d){t=c;c=d;d=t;}\nif(a>c){t=a;a=c;c=t;}\nif(b>d){t=b;b=d;d=t;}\nif(b>c){t=b;b=c;c=t;}\nconst pk=(a|(b<<6)|(c<<12)|(d<<18))>>>0;\nif(pk<best)best=pk;\n}\nreturn best;\n}\nfunction buildSuitClasses(hands){\nconst index=new Map();\nconst clsOf=new Int32Array(hands.length);\nconst repList=[];\nconst sizeList=[];\nfor(let j=0;j<hands.length;j++){\nconst pk=hands[j];\nconst can=canonicalOf(pk&63,(pk>>>6)&63,(pk>>>12)&63,(pk>>>18)&63);\nlet ci=index.get(can);\nif(ci===undefined){ci=repList.length;index.set(can,ci);repList.push(can);sizeList.push(0);}\nclsOf[j]=ci;\nsizeList[ci]++;\n}\nreturn{\nreps:Uint32Array.from(repList),\nclsOf,\nsize:Int32Array.from(sizeList),\nn:repList.length,\n};\n}\nfunction cutAt(order,size,total,v){\nconst target=(v/100)*total;\nconst keep=new Uint8Array(size.length);\nlet cum=0,lastIdx=order[0];\nfor(let i=0;i<order.length;i++){\nconst ci=order[i];\nconst next=cum+size[ci];\nif(next>target&&(next-target)>(target-cum))break;\nkeep[ci]=1;cum=next;lastIdx=ci;\nif(cum>=target)break;\n}\nreturn{keep,cum,lastIdx};\n}\nfunction buildRanges(eq1,cls,hands,vPoints){\nconst total=hands.length;\nconst order=Int32Array.from({length:cls.n},(_,i)=>i)\n.sort((a,b)=>(eq1[b]-eq1[a])||(a-b));\nconst ranges={},realized={},cutEq={};\nfor(const v of vPoints){\nconst{keep,cum,lastIdx}=cutAt(order,cls.size,total,v);\nconst out=new Uint32Array(cum);\nlet w=0;\nfor(let j=0;j<total;j++)if(keep[cls.clsOf[j]])out[w++]=hands[j];\nranges[v]=out;\nrealized[v]=cum/total;\ncutEq[v]=eq1[lastIdx];\n}\nreturn{ranges,realized,cutEq,order};\n}\nfunction canonicalRanks(reps){\nconst idx=Int32Array.from({length:reps.length},(_,i)=>i)\n.sort((a,b)=>(reps[a]<reps[b]?-1:reps[a]>reps[b]?1:0));\nconst cid=new Int32Array(reps.length);\nfor(let r=0;r<idx.length;r++)cid[idx[r]]=r;\nreturn cid;\n}\nfunction classTableCanonical(hands){\nconst canon=new Uint32Array(hands.length);\nconst seen=new Map();\nfor(let j=0;j<hands.length;j++){\nconst pk=hands[j];\nconst c=canonicalOf(pk&63,(pk>>>6)&63,(pk>>>12)&63,(pk>>>18)&63);\ncanon[j]=c;\nif(!seen.has(c))seen.set(c,0);\n}\nconst reps=Uint32Array.from(seen.keys()).sort();\nconst rank=new Map();\nfor(let i=0;i<reps.length;i++)rank.set(reps[i],i);\nconst cidOf=new Int32Array(hands.length);\nconst size=new Int32Array(reps.length);\nfor(let j=0;j<hands.length;j++){\nconst c=rank.get(canon[j]);\ncidOf[j]=c;size[c]++;\n}\nreturn{reps,cidOf,size,n:reps.length};\n}\nreturn{SUIT_PERMS,canonicalOf,buildSuitClasses,cutAt,buildRanges,canonicalRanks,classTableCanonical};\n})();\nvar PLO_ORDER=(function(){\n'use strict';\nconst ORDER_BITS=15;\nconst B64='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\nconst B64INV=(()=>{\nconst t=new Int16Array(128).fill(-1);\nfor(let i=0;i<64;i++)t[B64.charCodeAt(i)]=i;\nreturn t;\n})();\nfunction b64encode(bytes){\nlet out='';\nconst n=bytes.length;\nlet i=0;\nfor(;i+2<n;i+=3){\nconst w=(bytes[i]<<16)|(bytes[i+1]<<8)|bytes[i+2];\nout+=B64[(w>>>18)&63]+B64[(w>>>12)&63]+B64[(w>>>6)&63]+B64[w&63];\n}\nconst rem=n-i;\nif(rem===1){\nconst w=bytes[i]<<16;\nout+=B64[(w>>>18)&63]+B64[(w>>>12)&63]+'==';\n}else if(rem===2){\nconst w=(bytes[i]<<16)|(bytes[i+1]<<8);\nout+=B64[(w>>>18)&63]+B64[(w>>>12)&63]+B64[(w>>>6)&63]+'=';\n}\nreturn out;\n}\nfunction b64decode(str){\nlet end=str.length;\nwhile(end>0&&str.charCodeAt(end-1)===61)end--;\nconst out=new Uint8Array(Math.floor((end*3)/4));\nlet acc=0,bits=0,w=0;\nfor(let i=0;i<end;i++){\nconst code=str.charCodeAt(i);\nconst d=code<128?B64INV[code]:-1;\nif(d<0)throw new Error(`order-pack: bad base64 character at index ${i}`);\nacc=(acc<<6)|d;bits+=6;\nif(bits>=8){bits-=8;out[w++]=(acc>>>bits)&0xff;}\n}\nreturn out;\n}\nfunction packOrder(order){\nconst n=order.length;\nconst lim=1<<ORDER_BITS;\nconst bytes=new Uint8Array(Math.ceil((n*ORDER_BITS)/8));\nlet bit=0;\nfor(let i=0;i<n;i++){\nconst v=order[i];\nif(!(v>=0&&v<lim&&v===(v|0))){\nthrow new RangeError(`order-pack: value ${v} at ${i} does not fit in ${ORDER_BITS} bits`);\n}\nfor(let b=0;b<ORDER_BITS;b++){\nif((v>>>b)&1)bytes[(bit+b)>>3]|=1<<((bit+b)&7);\n}\nbit+=ORDER_BITS;\n}\nreturn b64encode(bytes);\n}\nfunction unpackOrder(str,n){\nconst bytes=b64decode(str);\nconst need=Math.ceil((n*ORDER_BITS)/8);\nif(bytes.length<need){\nthrow new Error(`order-pack: packed payload is ${bytes.length} B, need ${need} B for ${n} entries`);\n}\nconst out=new Int32Array(n);\nlet bit=0;\nfor(let i=0;i<n;i++){\nlet v=0;\nfor(let b=0;b<ORDER_BITS;b++){\nif((bytes[(bit+b)>>3]>>>((bit+b)&7))&1)v|=1<<b;\n}\nout[i]=v;\nbit+=ORDER_BITS;\n}\nreturn out;\n}\nfunction orderHash(order){\nlet h1=0x811c9dc5>>>0,h2=0x9e3779b9>>>0;\nfor(let i=0;i<order.length;i++){\nconst v=order[i]>>>0;\nfor(let k=0;k<4;k++){\nconst byte=(v>>>(k*8))&0xff;\nh1=Math.imul(h1^byte,0x01000193)>>>0;\nh2=Math.imul(h2^byte,0x85ebca6b)>>>0;\n}\n}\nreturn(h1>>>0).toString(16).padStart(8,'0')+(h2>>>0).toString(16).padStart(8,'0');\n}\nfunction permutationProblem(order,n){\nif(order.length!==n)return`length ${order.length}, expected ${n}`;\nconst seen=new Uint8Array(n);\nfor(let i=0;i<n;i++){\nconst v=order[i];\nif(!(v>=0&&v<n))return`entry ${i} is ${v}, outside 0..${n-1}`;\nif(seen[v])return`class ${v} appears more than once (at index ${i})`;\nseen[v]=1;\n}\nreturn'';\n}\nreturn{ORDER_BITS,b64encode,b64decode,packOrder,unpackOrder,orderHash,permutationProblem};\n})();\nvar PLO_VILLAINS=(function(){\n'use strict';\nfunction sampleFromRange(range,rng,loMask,hiMask,tries=400){\nconst n=range.length;\nfor(let t=0;t<tries;t++){\nconst pk=range[(rng.next()%n)>>>0];\nconst c0=pk&63,c1=(pk>>>6)&63,c2=(pk>>>12)&63,c3=(pk>>>18)&63;\nlet ok=true;\nfor(const c of[c0,c1,c2,c3]){\nconst bit=c<32?(loMask&(1<<c)):(hiMask&(1<<(c-32)));\nif(bit){ok=false;break;}\n}\nif(ok)return pk;\n}\nreturn-1;\n}\nreturn{sampleFromRange};\n})();\nvar PLO_MC=(function(){\n'use strict';\nvar Rng=PLO_EVAL5.Rng,fnv1a=PLO_EVAL5.fnv1a,\nmakeTriplePartials=PLO_EVAL5.makeTriplePartials,fillTriplePartials=PLO_EVAL5.fillTriplePartials,\nbestOmaha=PLO_EVAL5.bestOmaha,categoryOf=PLO_EVAL5.categoryOf;\nvar sampleFromRange=PLO_VILLAINS.sampleFromRange;\nconst NMAX=7;\nconst NMAX_V1=5;\nconst COOLER_MIN_CAT=3;\nconst COOLER_REF_N=3;\nfunction isCooler(hero,villains){\nif(categoryOf(hero)<COOLER_MIN_CAT)return null;\nlet vmax=-1;\nfor(let k=0;k<COOLER_REF_N;k++)if(villains[k]>vmax)vmax=villains[k];\nreturn hero<vmax;\n}\nconst VILLAIN_DISCIPLINE=0.85;\nconst RANGE_TRIES=4000;\nconst trialSeed=(base,t)=>((base^Math.imul(t+1,0x9e3779b1))>>>0);\nfunction runMulti(pool,lo,hi,trials,heroSeed,streamSeed,extraSeed){\nconst heroRng=new Rng(heroSeed);\nconst rng=new Rng(streamSeed);\nconst extraRng=new Rng(extraSeed);\nconst tp=makeTriplePartials();\nconst acc=new Float64Array(NMAX);\nconst deck=new Int32Array(52);\nconst board=new Int32Array(5);\nconst vs=new Int32Array(NMAX);\nconst span=hi-lo;\nconst NEED=5+NMAX*4;\nlet coolNum=0,coolDen=0;\nfor(let t=0;t<trials;t++){\nconst pk=pool[lo+((heroRng.next()%span)>>>0)];\nconst h0=pk&63,h1=(pk>>>6)&63,h2=(pk>>>12)&63,h3=(pk>>>18)&63;\nlet n=0;\nfor(let c=0;c<52;c++)if(c!==h0&&c!==h1&&c!==h2&&c!==h3)deck[n++]=c;\nfor(let i=0;i<25;i++){\nconst j=i+((rng.next()%(n-i))>>>0);\nconst tmp=deck[i];deck[i]=deck[j];deck[j]=tmp;\n}\nfor(let i=25;i<NEED;i++){\nconst j=i+((extraRng.next()%(n-i))>>>0);\nconst tmp=deck[i];deck[i]=deck[j];deck[j]=tmp;\n}\nfor(let i=0;i<5;i++)board[i]=deck[i];\nfillTriplePartials(board,tp);\nconst hero=bestOmaha(h0,h1,h2,h3,tp);\nfor(let k=0;k<NMAX;k++){\nconst b=5+k*4;\nvs[k]=bestOmaha(deck[b],deck[b+1],deck[b+2],deck[b+3],tp);\n}\nlet vmax=-1,vties=0;\nfor(let k=0;k<NMAX;k++){\nconst s=vs[k];\nif(s>vmax){vmax=s;vties=1;}else if(s===vmax)vties++;\nif(hero>vmax)acc[k]+=1;\nelse if(hero===vmax)acc[k]+=1/(vties+1);\n}\nconst cool=isCooler(hero,vs);\nif(cool!==null){coolDen++;if(cool)coolNum++;}\n}\nconst eq=new Array(NMAX);\nfor(let k=0;k<NMAX;k++)eq[k]=(100*acc[k])/trials;\nreturn{eq,coolNum,coolDen};\n}\nfunction runMultiFiltered(pool,lo,hi,range,q,trials,heroSeed,villSeed){\nconst heroRng=new Rng(heroSeed);\nconst tp=makeTriplePartials();\nconst acc=new Float64Array(NMAX);\nconst avail=new Int32Array(52);\nconst board=new Int32Array(5);\nconst vh=new Int32Array(NMAX*4);\nconst vs=new Int32Array(NMAX);\nconst span=hi-lo;\nlet fallbacks=0;\nfor(let t=0;t<trials;t++){\nconst pk=pool[lo+((heroRng.next()%span)>>>0)];\nconst h0=pk&63,h1=(pk>>>6)&63,h2=(pk>>>12)&63,h3=(pk>>>18)&63;\nconst rng=new Rng(trialSeed(villSeed,t));\nlet loM=0,hiM=0;\nfor(const c of[h0,h1,h2,h3]){if(c<32)loM|=1<<c;else hiM|=1<<(c-32);}\nfor(let k=0;k<NMAX;k++){\nlet vpk=-1;\nconst disciplined=rng.float()<q;\nif(disciplined)vpk=sampleFromRange(range,rng,loM,hiM,RANGE_TRIES);\nif(vpk<0){\nif(disciplined)fallbacks++;\nfor(let i=0;i<4;i++){\nlet c;\ndo{c=(rng.next()%52)>>>0;}while(c<32?(loM&(1<<c)):(hiM&(1<<(c-32))));\nvh[k*4+i]=c;\nif(c<32)loM|=1<<c;else hiM|=1<<(c-32);\n}\n}else{\nconst c0=vpk&63,c1=(vpk>>>6)&63,c2=(vpk>>>12)&63,c3=(vpk>>>18)&63;\nvh[k*4]=c0;vh[k*4+1]=c1;vh[k*4+2]=c2;vh[k*4+3]=c3;\nfor(const c of[c0,c1,c2,c3]){if(c<32)loM|=1<<c;else hiM|=1<<(c-32);}\n}\n}\nlet n=0;\nfor(let c=0;c<52;c++){\nconst bit=c<32?(loM&(1<<c)):(hiM&(1<<(c-32)));\nif(!bit)avail[n++]=c;\n}\nfor(let i=0;i<5;i++){\nconst j=i+((rng.next()%(n-i))>>>0);\nconst tmp=avail[i];avail[i]=avail[j];avail[j]=tmp;\nboard[i]=avail[i];\n}\nfillTriplePartials(board,tp);\nconst hero=bestOmaha(h0,h1,h2,h3,tp);\nfor(let k=0;k<NMAX;k++){\nvs[k]=bestOmaha(vh[k*4],vh[k*4+1],vh[k*4+2],vh[k*4+3],tp);\n}\nlet vmax=-1,vties=0;\nfor(let k=0;k<NMAX;k++){\nconst s=vs[k];\nif(s>vmax){vmax=s;vties=1;}else if(s===vmax)vties++;\nif(hero>vmax)acc[k]+=1;\nelse if(hero===vmax)acc[k]+=1/(vties+1);\n}\n}\nconst eq=new Array(NMAX);\nfor(let k=0;k<NMAX;k++)eq[k]=(100*acc[k])/trials;\nreturn{eq,fallbacks};\n}\nreturn{NMAX,NMAX_V1,COOLER_MIN_CAT,COOLER_REF_N,isCooler,VILLAIN_DISCIPLINE,runMulti,runMultiFiltered};\n})();\nvar PLO_JOB=(function(){\n'use strict';\nvar fnv1a=PLO_EVAL5.fnv1a;\nvar NMAX=PLO_MC.NMAX;\nvar SLICE=5000;\nfunction seedOf(what,job,s){\nreturn fnv1a('sim|'+what+'|'+job.stage+'|'+job.key+'|'+job.hash+'|'+s);\n}\nfunction buildRange(universe,ct,order,v){\nvar cut=PLO_VRANGE.cutAt(order,ct.size,universe.length,v);\nvar out=new Uint32Array(cut.cum),w=0,j;\nfor(j=0;j<universe.length;j++)if(cut.keep[ct.cidOf[j]])out[w++]=universe[j];\nreturn out;\n}\nfunction sliceCount(trials){return Math.ceil((trials|0)/SLICE);}\nfunction runSlice(pool,starts,range,job,s){\nvar lo=starts[job.unit],hi=starts[job.unit+1];\nif(!(hi>lo))throw new Error('unit '+job.unit+' is empty');\nvar want=job.trials|0;\nif(!(want>0))throw new Error('trials must be positive, got '+job.trials);\nvar from=s*SLICE;\nif(from>=want)return null;\nvar n=Math.min(SLICE,want-from);\nvar r=job.kind==='multi'\n?PLO_MC.runMulti(pool,lo,hi,n,seedOf('hero',job,s),\nseedOf('stream',job,s),seedOf('stream6',job,s))\n:PLO_MC.runMultiFiltered(pool,lo,hi,range,job.q,n,\nseedOf('hero',job,s),seedOf('vill',job,s));\nreturn{eq:r.eq,n:n,fallbacks:r.fallbacks||0};\n}\nfunction runUnit(pool,starts,range,job){\nvar acc=new Float64Array(NMAX);\nvar done=0,fallbacks=0,s=0,k,r;\nwhile((r=runSlice(pool,starts,range,job,s))!==null){\nfor(k=0;k<NMAX;k++)acc[k]+=r.eq[k]*r.n;\nfallbacks+=r.fallbacks;done+=r.n;s++;\n}\nvar eq=new Float64Array(NMAX);\nfor(k=0;k<NMAX;k++)eq[k]=acc[k]/done;\nreturn{eq:eq,fallbacks:fallbacks,trials:done,slices:s};\n}\nreturn{\nSLICE:SLICE,NMAX:NMAX,seedOf:seedOf,buildRange:buildRange,\nsliceCount:sliceCount,runSlice:runSlice,runUnit:runUnit,\n};\n})();\nvar PLO_ENGINE={eval5:PLO_EVAL5,vrange:PLO_VRANGE,order:PLO_ORDER,villains:PLO_VILLAINS,mc:PLO_MC,job:PLO_JOB};";
 const SIM_ENTRY_SRC = "(function(){\n'use strict';\nvar E=PLO_ENGINE;\nvar JOB=E.job;\nvar ST=null;\nvar now=(typeof performance!=='undefined'&&performance.now)\n?function(){return performance.now();}:function(){return Date.now();};\nfunction rangeAt(v){\nif(ST.rangeV===v&&ST.range)return ST.range;\nST.range=JOB.buildRange(ST.universe,ST.ct,ST.order,v);\nST.rangeV=v;\nreturn ST.range;\n}\nfunction boot(msg){\nvar t0=now();\nvar universe=msg.pool;\nif(!universe||universe.length!==270725){\nthrow new Error('init: the cell pool must be the whole 270,725-hand universe, got '\n+(universe?universe.length:'nothing'));\n}\nvar ct=E.vrange.classTableCanonical(universe);\nvar order=E.order.unpackOrder(msg.order.packed,msg.order.n);\nvar bad=E.order.permutationProblem(order,msg.order.n);\nif(bad)throw new Error('init: the shipped villain order is not a permutation — '+bad);\nif(ct.n!==msg.order.n){\nthrow new Error('init: enumeration yields '+ct.n+' classes, the shipped order carries '+msg.order.n);\n}\nST={\nuniverse:universe,ct:ct,order:order,\npools:{cell:universe},starts:{cell:msg.starts},\nrange:null,rangeV:null,\n};\nreturn{classes:ct.n,universe:universe.length,ms:now()-t0};\n}\nfunction runOne(job){\nif(!ST)throw new Error('jobs before init');\nvar pool=ST.pools[job.pool],starts=ST.starts[job.pool];\nif(!pool||!starts)throw new Error('unknown pool \"'+job.pool+'\"');\nvar t0=now();\nvar r=JOB.runUnit(pool,starts,job.kind==='multi'?null:rangeAt(job.v),job);\nreturn{\nid:job.id,eq:r.eq,fallbacks:r.fallbacks,trials:r.trials,slices:r.slices,\nms:now()-t0,\n};\n}\nself.onmessage=function(ev){\nvar msg=ev.data,i,out,xfer,r;\nif(!msg)return;\nif(msg.cmd==='ping'){self.postMessage({pong:true});return;}\nif(msg.cmd==='init'){\ntry{\nvar b=boot(msg);\nself.postMessage({ready:true,classes:b.classes,universe:b.universe,ms:b.ms});\n}catch(e){self.postMessage({error:String((e&&e.message)||e)});}\nreturn;\n}\nif(msg.cmd==='jobs'){\nout=[];xfer=[];\nfor(i=0;i<msg.jobs.length;i++){\ntry{r=runOne(msg.jobs[i]);out.push(r);xfer.push(r.eq.buffer);}\ncatch(e){out.push({id:msg.jobs[i].id,error:String((e&&e.message)||e)});}\n}\nself.postMessage({results:out},xfer);\nreturn;\n}\n};\nself.postMessage({booted:true});\n})();";
 /* @end:engine */
 </script>
@@ -2615,12 +2634,6 @@ try{if(typeof EQUILIBRIUM!=='undefined'&&EQUILIBRIUM)window.EQUILIBRIUM=EQUILIBR
 'use strict';
 var MODEL=window.MODEL,TAX=window.TAXONOMY;
 var NMAX=(MODEL&&MODEL.meta&&MODEL.meta.nMax)||7;
-var SIM_NMAX=NMAX;
-function setSimSeats(seats){
-var P=window.POLICY,L=P&&P.CONSTANTS&&P.CONSTANTS.ladder;
-SIM_NMAX=(L&&L.seats&&L.seats.indexOf(seats)>=0)?P.nMax(seats):NMAX;
-return SIM_NMAX;
-}
 var TOTAL=(MODEL&&MODEL.meta&&MODEL.meta.comboTotal)||270725;
 var DEFAULT_TRIALS=25000;
 var MAX_TRIALS=100000;
@@ -2685,20 +2698,19 @@ force:window.__SIM_FORCE||urlOpt('simforce')||null,
 noCache:!!(window.__SIM_NOCACHE||urlOpt('simnocache'))
 };
 }
-function validEqArray(e,n){
-var w=(n|0)>0?n|0:NMAX;
-if(!Array.isArray(e)||e.length!==w)return false;
-for(var k=0;k<w;k++){
+function validEqArray(e){
+if(!Array.isArray(e)||e.length!==NMAX)return false;
+for(var k=0;k<NMAX;k++){
 var x=e[k];
 if(typeof x!=='number'||!isFinite(x)||x<0||x>100)return false;
 }
 return true;
 }
-function validMeasurement(m,n){
+function validMeasurement(m){
 if(!m||!m.cells||typeof m.cells!=='object')return false;
 var keys=Object.keys(m.cells),i;
 if(!keys.length)return false;
-for(i=0;i<keys.length;i++)if(!validEqArray(m.cells[keys[i]],n))return false;
+for(i=0;i<keys.length;i++)if(!validEqArray(m.cells[keys[i]]))return false;
 if(!(m.trials>0))return false;
 return true;
 }
@@ -2750,9 +2762,9 @@ function valid(p,want){
 if(!p||p.tag!==TAG)return false;
 if(p.model!==((MODEL.meta&&MODEL.meta.hash)||''))return false;
 if(p.hash!==want.hash)return false;
-if(p.nMax!==SIM_NMAX)return false;
+if(p.nMax!==NMAX)return false;
 if(p.v!==want.v||p.q!==want.q||p.trials!==want.trials)return false;
-return validMeasurement(p,p.nMax);
+return validMeasurement(p);
 }
 return{
 status:function(){
@@ -3803,6 +3815,7 @@ gtoD:null,
 filters:{},soloRow:null,soloCol:null,soloBand:null,compare:[],
 mix:(C.vs3bet.mix||[0.6,0.25,0.1,0.05]).map(function(x){return Math.round(x*100);}),
 d:DEPTH.ref,rake:HAS_ENV?RAKE.preset:0,rakeCap:RAKE.capBB,straddle:false,
+seats:6,
 cbPatterns:false,monoSuits:false,rain:8,reduce:false,itab:'verdict',preview:null,
 pres:'score',
 skill:0,
@@ -3810,10 +3823,12 @@ vp:false,q:QDEF==null?0.85:QDEF
 };
 var SRCH={active:false,level:null,row:null,cellKey:null,
 ownedHand:false,canon:''};
-function envKey(){return S.d+'|'+S.rake+'|'+S.rakeCap+'|'+(S.straddle?1:0);}
+var RING=null;
+function envKey(){return S.d+'|'+S.rake+'|'+S.rakeCap+'|'+(S.straddle?1:0)+'|'+S.seats;}
 function stateOf(o){
-var s={pos:S.pos,node:S.node,v:S.v/100,limpers:S.L,raiserPos:S.raiser||defaultRaiser(),
-d:S.d,rakePct:S.rake,rakeCapBB:S.rakeCap,straddle:S.straddle};
+var s=envArg();
+s.pos=S.pos;s.node=S.node;s.v=S.v/100;s.limpers=S.L;
+s.raiserPos=S.raiser||defaultRaiser();s.ring=RING;
 if(o)for(var k in o)if(Object.prototype.hasOwnProperty.call(o,k))s[k]=o[k];
 return s;
 }
@@ -4189,10 +4204,10 @@ try{return fn();}finally{S.vp=vp;S.q=q;syncProfileCells();}
 }
 function vpArg(){return{on:!!(HAS_VP&&S.vp),q:S.q};}
 function solveState(v01,pos,node,L,raiser,mix){
-return POL.solve(emodel(),{pos:pos,node:node,v:v01,limpers:L,raiserPos:raiser,mix:mixW(mix),
-d:S.d,rakePct:S.rake,rakeCapBB:S.rakeCap,straddle:S.straddle});
+return POL.solve(emodel(),stateOf({pos:pos,node:node,v:v01,limpers:L,mix:mixW(mix),
+raiserPos:raiser||defaultRaiser()}));
 }
-function envArg(){return{d:S.d,rakePct:S.rake,rakeCapBB:S.rakeCap,straddle:S.straddle};}
+function envArg(){return{d:S.d,rakePct:S.rake,rakeCapBB:S.rakeCap,straddle:S.straddle,seats:S.seats};}
 if(POL){
 POLICY_SOURCE='injected policy.mjs';
 rhoAt=function(d,N){return POL.rhoAt(d.rho,N);};
@@ -4272,14 +4287,20 @@ return'FOLD';
 }
 function tierShort(t,node){return String(tierLabel(t,node)).replace(/\s*\(.*\)$/,'');}
 var posthumb=$('#posthumb'),posseg=$('#posseg');
-function buildTopbar(){
+function buildPosSeg(){
+posseg.innerHTML='';
+posseg.appendChild(posthumb);
+var m=(POL&&POL.SEAT_DISPLAY)||{};
 POSITIONS.forEach(function(p){
 var b=el('button');
 b.dataset.pos=p;
-b.innerHTML='<span>'+p+'</span><span class="sub" data-w>—</span>';
+b.innerHTML='<span>'+(m[p]||p)+'</span><span class="sub" data-w>—</span>';
 b.onclick=function(){if(b.getAttribute('aria-disabled')==='true')return;setPos(p);};
 posseg.appendChild(b);
 });
+}
+function buildTopbar(){
+buildPosSeg();
 var tabs=$('#facingtabs');
 NODES.forEach(function(n,i){
 var b=el('button',null,n.tabs);
@@ -6931,6 +6952,7 @@ note+=' <b>Straddled:</b> the preflop unit doubles, the straddler joins the fiel
 'range you 3-bet with, and it does not restructure who is allowed to act (BB still cannot open here).';
 }
 $('#tablenote').innerHTML=note;
+syncSeatsCtl();
 }
 function wireTableCtl(){
 if(!HAS_ENV){var s0=$('#tablesec');if(s0)s0.hidden=true;return;}
@@ -6989,6 +7011,7 @@ commitEnv(false);syncVP();
 announce('v1 identity point — '+DEPTH.ref+' big blinds, no rake, no straddle, random villains. Gate I22 '+
 'asserts every score here equals v1\'s, bit for bit.');
 };
+wireSeatsCtl();
 var tk=$('#depthticks');
 det.forEach(function(t){
 var n=el('div','tick',t===DEPTH.ref?'REF':String(t));
@@ -6996,6 +7019,91 @@ n.style.left=((t-DEPTH.min)/(DEPTH.max-DEPTH.min)*100)+'%';
 n.title=t+'bb';
 tk.appendChild(n);
 });
+}
+var RING_WHY='';
+function seatLabel(p){var m=POL&&POL.SEAT_DISPLAY;return(m&&m[p])||p;}
+var HAS_SEATS=!!(POL&&POL.seatsFor&&POL.nMax&&POL.positionDisabled&&POL.behindNonBlind
+&&POL.rhoAtSeats&&C.ladder&&C.ladder.ladder9);
+if(HAS_SEATS){
+var rg=(window.RING&&window.RING.cells)?window.RING
+:(MODEL.ring&&MODEL.ring.cells)?MODEL.ring:null;
+RING=(rg&&rg.meta)?rg:null;
+if(!RING){
+RING_WHY='this build carries no ring payload (data/ring.json): the N_eff 8 and 9 equity '
++'columns nine seats reaches at the iso node are not in it, and reading the seven-opponent '
++'column instead would be a measurement this file does not have.';
+}
+}
+var RKEYED=false;
+function ringKeyOf(d){
+if(!RKEYED){
+RKEYED=true;
+for(var i=0;i<CELLS.length;i++){
+try{Object.defineProperty(CELLS[i].d0,'__rk',{value:CELLS[i].key,configurable:true});}
+catch(e){}
+}
+}
+return d&&d.__rk;
+}
+if(HAS_SEATS){
+rhoAt=function(d,N){return POL.rhoAtSeats(d,N,S.seats,RING,ringKeyOf(d));};
+eqAt=function(d,N){return POL.eqAtSeats(d,N,S.seats,RING,ringKeyOf(d));};
+scoreOf=function(d,pos,N,shift){return POL.scoreCell(d,pos,N,shift,envArg(),RING,ringKeyOf(d)).S;};
+realization=function(pos,N,nu){return POL.realization(pos,N,nu,dEff(),S.seats);};
+posDisabledReason=function(pos,node,seats){
+return POL.positionDisabled(pos,node,seats==null?S.seats:seats)||'';
+};
+legalPos=function(node,seats){
+var L=POL.seatsFor(seats==null?S.seats:seats),o={},i;
+for(i=0;i<L.length;i++)o[L[i]]=posDisabledReason(L[i],node,seats)?0:1;
+return o;
+};
+}
+function applySeats(n){
+S.seats=n===9?9:6;
+POSITIONS=POL.seatsFor(S.seats);
+NP=POSITIONS.length;
+POSITIONS.forEach(function(p){NNB[p]=POL.behindNonBlind(p,S.seats);NBL[p]=POL.blindBehind(p,S.seats);});
+posseg.className=NP>6?'seg seg-wide':'seg';
+}
+function setSeats(n){
+n=n===9?9:6;
+if(!HAS_SEATS||n===S.seats||(n===9&&!RING))return;
+simCancelOnChange('the table size');
+var behind=POSITIONS.length-1-POSITIONS.indexOf(S.pos);
+applySeats(n);
+S.pos=POSITIONS[Math.max(0,NP-1-behind)];
+if(!legalPos(S.node)[S.pos]){
+var i=0;
+while(i<NP&&!legalPos(S.node)[POSITIONS[i]])i++;
+S.pos=POSITIONS[Math.min(i,NP-1)];
+}
+if(S.raiser&&seatsBefore(S.pos).indexOf(S.raiser)<0)S.raiser=null;
+buildPosSeg();
+commitEnv(false);
+announce('Table size '+n+'-max — '+NP+' seats, the clamp on N_eff moves to '
++nEffMax()+', and you are at '+seatLabel(S.pos)+'.');
+}
+function syncSeatsCtl(){
+var row=$('#seatsrow'),note=$('#seatsnote');
+if(!row)return;
+row.hidden=!HAS_SEATS;
+note.hidden=!(HAS_SEATS&&RING_WHY);
+if(!HAS_SEATS)return;
+note.innerHTML=RING_WHY?'<b>9-max unavailable</b> &mdash; '+RING_WHY:'';
+[6,9].forEach(function(n){
+var b=$('#seats'+n),off=n===9&&!RING;
+b.setAttribute('aria-pressed',S.seats===n?'true':'false');
+b.disabled=off;
+b.title=off?RING_WHY:n+'-max — '+POL.seatsFor(n).length+' seats, N_eff clamped at '+POL.nMax(n);
+});
+var tag=$('#tabletag');
+if(tag&&S.seats===9)tag.textContent='9-MAX · '+tag.textContent;
+}
+function wireSeatsCtl(){
+if(!HAS_SEATS)return;
+$('#seats6').onclick=function(){setSeats(6);};
+$('#seats9').onclick=function(){setSeats(9);};
 }
 var SIMTOKEN=0;
 var SIMRUN=null;
@@ -7896,6 +8004,7 @@ if(S.rake!==RAKE.preset)h+='&rake='+S.rake;
 if(S.rakeCap!==RAKE.capBB)h+='&cap='+S.rakeCap;
 if(S.straddle)h+='&str=1';
 }
+if(S.seats!==6)h+='&seats='+S.seats;
 if(HAS_VP){
 if(S.vp!==VP_DEFAULT)h+='&vp='+(S.vp?'1':'0');
 if(S.q!==QDEF)h+='&q='+S.q;
@@ -7918,6 +8027,7 @@ h.split('&').forEach(function(kv){
 var p=kv.split('=');if(p[0])q[p[0]]=decodeURIComponent(p.slice(1).join('=')||'');
 });
 function num(v){if(v==null||v==='')return null;var n=+v;return isFinite(n)?n:null;}
+if(q.seats==='9'&&HAS_SEATS&&RING)applySeats(9);
 if(POSITIONS.indexOf(q.pos)>=0)S.pos=q.pos;
 if(NODEBY[q.facing])S.node=q.facing;
 if(!legalPos(S.node)[S.pos])S.pos=S.node==='rfi'?'UTG':'HJ';
@@ -8399,7 +8509,8 @@ tr.onclick=function(){select(tr.dataset.key);setView('matrix');pulseCell(tr.data
 }
 var MEASURED_CONST={nuBarMeasured:1,coolerBarMeasured:1,nMax:1,mosaicTotal:1,cooler:1,villainLattice:1};
 var SOLVER_CONST={solver:1};
-var UNANCHORED={'rake.potScale':1,'sizing.min':1,'sizing.premiumCalibratedAt':1,'sizing.detents':1,'baselineQuant':1,'skill.blend':1,'skill.playsBetter':1,'skill.min':1,'skill.ref':1,'skill.max':1};
+var UNANCHORED={'rake.potScale':1,'sizing.min':1,'sizing.premiumCalibratedAt':1,'sizing.detents':1,'baselineQuant':1,'skill.blend':1,'skill.playsBetter':1,'skill.min':1,'skill.ref':1,'skill.max':1,
+'ladder.derived':1};
 function constHTML(v,p){
 if(v==null||typeof v!=='object')return String(v);
 if(Array.isArray(v))return v.length?v.map(function(x){return constHTML(x,'');}).join(', '):'—';
@@ -8409,23 +8520,28 @@ return'<span class="cf"><i>'+k+(UNANCHORED[q]?'<span class="tag-m tag-e">estimat
 '</i>'+constHTML(v[k],q)+'</span>';
 }).join('');
 }
-function extrapReach(){
-var fires=0,total=0,max=0,at='';
+function extrapReach(seats){
+seats=seats||S.seats;
+var fires=0,total=0,max=0,at='',by={};
+var LAD=POL&&POL.seatsFor?POL.seatsFor(seats):POSITIONS;
+var clamp9=POL&&POL.nMax?POL.nMax(seats):7;
 var raw0=(POL&&POL.nEff)
 ?function(st){return POL.nEff(st).raw;}
 :function(st){return nEffRaw(st.v,st.pos,st.node,st.limpers);};
 var strs=HAS_ENV?[false,true]:[false];
 for(var ni=0;ni<NODES.length;ni++){
-var node=NODES[ni].key,lp=legalPos(node);
-for(var pi=0;pi<POSITIONS.length;pi++){
-var pos=POSITIONS[pi];
+var node=NODES[ni].key,lp=legalPos(node,seats);
+for(var pi=0;pi<LAD.length;pi++){
+var pos=LAD[pi];
 if(!lp[pos])continue;
 var Ls=node==='limps'?[1,2,3,4]:[2];
+var row=by[pos+'|'+node]=[0,0,0];
 for(var si=0;si<strs.length;si++)for(var li=0;li<Ls.length;li++){
 for(var v=VMIN;v<=VMAX;v++){
-var raw=raw0({pos:pos,node:node,v:v/100,limpers:Ls[li],straddle:strs[si]});
-total++;
-if(raw>nEffMax()+0.0001)fires++;
+var raw=raw0({pos:pos,node:node,v:v/100,limpers:Ls[li],straddle:strs[si],seats:seats});
+total++;row[1]++;
+if(raw>clamp9+0.0001){fires++;row[0]++;}
+if(raw>row[2])row[2]=raw;
 if(raw>max){
 max=raw;
 at=NODEBY[node].label+' / '+pos+' / VPIP '+v+
@@ -8435,7 +8551,7 @@ at=NODEBY[node].label+' / '+pos+' / VPIP '+v+
 }
 }
 }
-return{fires:fires,total:total,max:max,at:at};
+return{fires:fires,total:total,max:max,at:at,by:by,clamp:clamp9};
 }
 function calibHTML(){
 var C0=MODEL.calibration;
@@ -8590,6 +8706,106 @@ DEPTH.ref+'bb · rake 0 · no straddle: the one setting where gate <b>I22</b> as
 'pot is exactly '+(RAKE.capBB/(RAKE.potBB||60)*100).toFixed(0)+'%, so every setting above it is identical. '+
 'The straddle is a transform, not a new measurement — its scope is in Known weaknesses below.</p>';
 }
+if(HAS_SEATS){
+var LD=C.ladder,sf=POL.seatsFor,sizes=[6,9];
+var lrow=function(label,fn){
+return'<tr><td>'+label+'</td>'+sizes.map(function(n){
+return'<td>'+fn(n)+'</td>';
+}).join('')+'</tr>';
+};
+var names=function(n){return sf(n).map(seatLabel).join(' · ');};
+var perSeat=function(n,f){return sf(n).map(f).join(' ');};
+var cx=extrapReach(9),c6=extrapReach(6);
+var dom=function(r){
+var t=0,k;
+for(k in r.by)if(k.slice(k.indexOf('|')+1)!=='3bet')t+=r.by[k][1];
+return t;
+};
+var d9=dom(cx),d6=dom(c6);
+html+='<h3>Table size &mdash; the seat ladder</h3>'+
+'<p>One array, two views. <code>seatsFor(seats)</code> is the whole of the axis and the set is '+
+'<b>{'+(LD.seats||[]).join(', ')+'}</b> &mdash; a set, not an integer: every additional size '+
+'is a fixture, a skill re-measurement and a UI surface of its own, so nothing here builds a '+
+'ladder generator that pretends otherwise. Six is the default and the identity: at six seats '+
+'<code>seatsFor(6)</code> is the very array this page has always used, by reference.</p>'+
+'<table class="tbl"><tr><th></th><th>6-max</th><th>9-max</th></tr>'+
+lrow('ladder',names)+
+lrow('non-blind seats behind',function(n){return perSeat(n,function(p){return POL.behindNonBlind(p,n);});})+
+lrow('blind seats behind',function(n){return perSeat(n,function(p){return POL.blindBehind(p,n);});})+
+lrow('nesting chain at RFI',function(n){return POL.nestChain('rfi',n).map(seatLabel).join(' &rarr; ');})+
+lrow('nesting chain at iso / vs raise',function(n){return POL.nestChain('limps',n).map(seatLabel).join(' &rarr; ');})+
+lrow('structurally illegal (position, node)',function(n){
+var out=[];
+sf(n).forEach(function(p){
+NODES.forEach(function(nd){
+if(POL.positionDisabled(p,nd.key,n))out.push(seatLabel(p)+'&thinsp;&times;&thinsp;'+nd.label);
+});
+});
+return out.join(', ');
+})+
+lrow('legal (position, node) pairs',function(n){
+var k=0;
+sf(n).forEach(function(p){NODES.forEach(function(nd){if(!POL.positionDisabled(p,nd.key,n))k++;});});
+return k+' of '+(sf(n).length*NODES.length);
+})+
+lrow('N_eff clamp',function(n){return POL.nMax(n);})+
+'</table>'+
+'<h4>The early-seat constants, and why they wear a badge</h4>'+
+'<p class="t-sm dim">The six legacy <code>baseRaise</code> and <code>baseR</code> values are '+
+'unchanged, bit for bit. The three seats the ladder gains are <b>derived by a named rule</b> '+
+'rather than typed: <code>baseRaise</code> is <b>'+LD.baseRaiseRule+'</b>, one factor of '+
+'<code>ladder.earlyStep</code> = '+LD.earlyStep+' per seat off the anchor seat, and '+
+'<code>baseR</code> is <b>'+LD.baseRRule+'</b>. The step is not a new number: '+LD.anchor+
+'. There is no nine-handed measurement behind the six values below, which is what the '+
+'<span class="tag-m tag-e">estimate</span> badge on <code>ladder.derived</code> in the '+
+'constants block says, and what <code>ladder.flag</code> names the gate for: '+LD.flag+'</p>'+
+'<table class="tbl"><tr><th>seat</th><th>baseRaise</th><th>baseR</th></tr>'+
+Object.keys(LD.derived.baseRaise).map(function(p){
+return'<tr><td>'+seatLabel(p)+'</td><td>'+LD.derived.baseRaise[p]+'</td><td>'+
+LD.derived.baseR[p]+'</td></tr>';
+}).join('')+'</table>'+
+'<h4>The ring &mdash; where the equity curve stops</h4>'+
+'<p class="t-sm dim">The Monte Carlo measured N = 1&hellip;'+NMAX+' and <code>cells[*].eq</code> '+
+'is byte-identical to what it always was. Nine seats reaches past it, so the N = 8 and 9 columns '+
+'are a <b>separate artifact</b>, read through <code>eqAtSeats</code> and never spliced into the '+
+'shipped arrays. '+
+(RING?'This build carries it: nMax <b>'+RING.meta.nMax+'</b>, '+
+(RING.meta.trials!=null?RING.meta.trials.toLocaleString()+' trials per cell, ':'')+
+(RING.meta.se&&RING.meta.se.cell!=null?'&plusmn;'+RING.meta.se.cell+' pt, ':'')+
+(RING.meta.seeds?[].concat(RING.meta.seeds).length+' seeds, ':'')+
+'generator <code>'+String(RING.meta.generatorHash).slice(0,8)+'</code>, content <code>'+
+String(RING.meta.contentHash).slice(0,8)+'</code>.'
+:'<b>This build does not carry it</b> &mdash; '+RING_WHY+' The 9-max control is '+
+'disabled by name rather than hidden, and the accessor fails closed rather than reading '+
+'the seven-opponent column.')+'</p>'+
+'<h4>Where the clamp bites &mdash; the extrapolated census, per (position, node)</h4>'+
+'<p class="t-sm dim">Swept live over the settings this page can be driven to at each size &mdash; '+
+'four nodes &times; legal seats &times; every integer VPIP &times; one to four limpers at the iso '+
+'node'+(HAS_ENV?' &times; straddle off and on':'')+', depth excluded because N_eff does not '+
+'read it, and vs 3-Bet excluded because N_eff is the constant 2 there. At six seats the clamp is '+
+c6.clamp+' and the badge fires at <b>'+c6.fires+'</b> of '+
+commas(d6)+' ('+(c6.fires/d6*100).toFixed(2)+'%). At nine the clamp <i>moves</i> '+
+'to '+cx.clamp+' rather than lifting, and the clamped share <b>falls</b> to <b>'+cx.fires+'</b> of '+
+commas(d9)+' ('+(cx.fires/d9*100).toFixed(2)+'%) &mdash; worst raw N_eff '+
+f2(cx.max)+' at '+cx.at+'. Every pair that clamps at all, at either size:</p>'+
+'<table class="tbl"><tr><th>seat &times; node</th><th>6-max</th><th>9-max</th><th>worst raw (9-max)</th></tr>'+
+(function(){
+var keys={},k;
+for(k in cx.by)if(cx.by[k][0])keys[k]=1;
+for(k in c6.by)if(c6.by[k][0])keys[k]=1;
+var ks=Object.keys(keys);
+if(!ks.length)return'<tr><td colspan="4">no setting at either size clamps</td></tr>';
+return ks.map(function(kk){
+var a=c6.by[kk],b=cx.by[kk],p=kk.split('|');
+return'<tr><td>'+seatLabel(p[0])+' &times; '+NODEBY[p[1]].label+'</td><td>'+
+(a?a[0]+' / '+a[1]:'&mdash;')+'</td><td>'+
+(b?b[0]+' / '+b[1]:'&mdash;')+'</td><td>'+(b?f2(b[2]):'&mdash;')+'</td></tr>';
+}).join('');
+})()+'</table>'+
+'<p class="t-sm dim">The badge lives on the N_eff readout beside the VPIP slider, for the '+
+'setting you are on. It is deliberately <b>not</b> a per-seat chip on the rail: this table is '+
+'where the reach is counted, and METHODOLOGY limitation 20 is where it is written down.</p>';
+}
 html+='<h3>Constants (rendered from the shipped data)</h3>'+
 '<p class="t-sm dim">Everything the model knows, in one object. <b>Opinion unless tagged</b> — the untagged rows are '+
 'authored constants whose source of truth is <code>policy.mjs</code>; the '+
@@ -8631,10 +8847,10 @@ html+='<h3>The equilibrium baseline &mdash; what <span class="tag-m">vs GTO</spa
 covd.map(function(c){
 return'<tr><td>'+c.pos+'</td><td>'+NODEBY[c.node].label+'</td><td>'+c.what+'</td></tr>';
 }).join('')+'</table>'+
-'<p class="t-sm dim">'+covd.length+' of '+cov2.length+' (position, node) pairs. The other '+
-(cov2.length-covd.length)+' carry the reason <b>&ldquo;'+bb2.notCovered+'&rdquo;</b> in the shipped '+
+'<p class="t-sm dim">'+covd.length+' of '+(POSITIONS.length*NODES.length)+' (position, node) pairs. The other '+
+(POSITIONS.length*NODES.length-covd.length)+' carry the reason <b>&ldquo;'+bb2.notCovered+'&rdquo;</b> in the shipped '+
 'block, and the colour mode reads it from there rather than saying it here: the baseline is heads-up, '+
-'six-max is deferred on the payoff&rsquo;s domain, and the mode disables itself by name at every seat the '+
+'the multiway domain is deferred on the payoff&rsquo;s, and the mode disables itself by name at every seat the '+
 'solve does not reach.</p>'+
 '<p class="t-sm dim">Tiers are quantized to <b>'+bb2.quant+'</b>'+
 (UNANCHORED['baselineQuant']?'<span class="tag-m tag-e">estimate</span>':'')+
@@ -9111,6 +9327,11 @@ setView:setView,runTour:runTour,atV1Point:atV1Point,
 RAIL:RAIL,MODES:MODES,
 railState:function(){return RAILST;},toggleSec:toggleSec,syncRail:syncRail,
 colorMode:function(){return{want:S.colorBy,active:activeMode(),caps:modeCaps()};},
+setSeats:setSeats,
+seatsState:function(){
+return{seats:S.seats,has:HAS_SEATS,ring:!!RING,why:RING_WHY,nMax:nEffMax(),
+rail:POSITIONS.slice(),pos:S.pos};
+},
 gtoState:function(){
 if(!BASE)return null;
 var a=BASE.at(S.pos,S.node,S.raiser||defaultRaiser());
