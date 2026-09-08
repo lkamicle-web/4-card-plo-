@@ -143,22 +143,108 @@ export const WIDTH_INTERIOR_EXCEPTIONS = Object.freeze([
 ]);
 
 /**
- * THE TWO FROZEN RECORDS, RE-KEYED BY (seats, pos, node) — V4-PLAN §2.6, R5.
+ * THE FIRST RECORD AT NINE SEATS — V4-PLAN §3's rule R5, measured at S2 over `legalPairs(9)`.
+ *
+ * THE PROCEDURE IS REPRODUCIBLE FROM THE DOCS, and that is R5's first question answered rather than
+ * assumed: re-running METHODOLOGY §3.5's procedure at six seats — the five-point `SKILL_GRID`, the
+ * `SWEEP_RAISER` attribution, `limpers: 2`, painted combo-weighted width, "wider at s = 1 than at
+ * s = 0" — reproduces both six-seat arrays above EXACTLY, in order and in content
+ * (`test/skill-9max.test.mjs` asserts that reproduction beside these). So R5's fallback ("if the
+ * procedure is not reproducible, the new pairs ship WITHOUT exceptions") is NOT taken, and nothing
+ * here is hand-typed or inferred from resemblance to a six-seat entry.
+ *
+ * NINE of the thirty-three pairs widen end to end, and they are again exactly the vs-3-Bet pairs —
+ * now all nine seats of the ladder, through THE SAME two cells and the same tier move as at six
+ * (`WIDTH_ENDPOINT_CELLS`, `WIDTH_ENDPOINT_MOVE`, re-derived at nine seats by `widthProblems`), by
+ * the same 0.1729 points at every one of the nine. The reading is the six-seat one continued, which
+ * is what the seat axis being inert at the shared seats predicts: at this node `nestChain` is empty,
+ * so no seat's answer can depend on the seats in front of it.
+ *
+ * THE SWEEP READS NO RING. The largest `N_eff` anywhere in the nine-seat sweep is 4.995 against
+ * `nMax(6)` = 7, so `eqAtSeats` / `rhoAtSeats` never leave the shipped `cells[*].eq` columns: this
+ * record is measured on the shipped payload alone and depends on neither `data/ring.json` nor the
+ * `vDelta` policyDelta that docs/spikes/V4-ladder.md files for lane R. It would have been
+ * unmeasurable until S3 if the sweep's own settings reached past seven, and they do not.
+ */
+export const WIDTH_ENDPOINT_EXCEPTIONS_9 = Object.freeze([
+  'UTG|3bet', 'UTG1|3bet', 'UTG2|3bet', 'LJ|3bet', 'HJ|3bet',
+  'CO|3bet', 'BTN|3bet', 'SB|3bet', 'BB|3bet',
+]);
+
+/**
+ * THE SECOND RECORD AT NINE SEATS — TWENTY (pair, step) interior rises, same `pair@step` spelling.
+ *
+ * MEASURED AT S2, and the mechanism is measured with them rather than carried over as a sentence:
+ *
+ *   NINE are the AMBUSH-CALL relabel of the endpoint record above, seen the moment it happens —
+ *   every seat's `3bet@1`, each of them exactly `BROADWAY_RUN|SSA` and `BROADWAY_RUN|DS` going
+ *   T3 -> T2 with `N` unmoved at 2.000. The same thing the six-seat record names, at nine seats.
+ *
+ *   ELEVEN are the granularity effect, and here is what it measures as: at every one of them `N`
+ *   FALLS as the pool tightens (that is the axis working), the cut re-ranks, and one or two cells
+ *   cross INTO the aggressive mass even though the target width fell — 35 crossing cells over the
+ *   twenty steps, of which 9 are MIX cells whose T4 overlay stops straddling the cut and therefore
+ *   start counting as aggressive mass again. At 4 of the 11 the falling `N` also crosses
+ *   `nutGate[2]` = 3.0 (UTG+2|rfi@1, HJ|limps@4, BTN|limps@3, HJ|raise@2), so the nut gate switches
+ *   off at that step; at the other 7 it does not. **The nut gate is therefore not the whole
+ *   mechanism, and the six-seat record's "five nut-gate steps" sentence is the same overstatement
+ *   read at six** — by this measurement 2 of those 5 steps cross the threshold (BTN|limps@3,
+ *   HJ|limps@4) and 3 do not. Recorded, not patched: the six-seat arrays are frozen bit-for-bit and
+ *   METHODOLOGY §3.5 owns the prose (S5's repair, docs/spikes/V4-skill.md).
+ *
+ * WHAT MOVED RELATIVE TO SIX SEATS, compared by LADDER POSITION (nine-max `i+3` against six-max
+ * `i`, the embedding S1 measured the ladder identity under): four of the five six-seat non-3bet
+ * rises survive at their own seat (HJ|rfi@1, BTN|rfi@2, BTN|limps@3, HJ|limps@4) and ONE DOES NOT —
+ * six-max `UTG|rfi@1` maps to `LJ|rfi@1`, which does not rise at nine seats, because the nesting
+ * post-pass unions LJ's rfi set with UTG/UTG+1/UTG+2's and the s = 0 width it starts from is
+ * already 13.6049% rather than 13.4705%. An exception ERASED by the seat axis is as much a
+ * measurement as one created by it. The three new shared-seat rises (HJ|raise@2, CO|raise@2,
+ * BTN|raise@2) are the other side of the same post-pass: `nestChain('raise', 9)` runs UTG+1..BTN,
+ * so those three seats gain unions at `raise` that six seats has no front seats to supply, and each
+ * differs from its six-seat twin at exactly ONE dial setting (s = 0.5).
+ */
+export const WIDTH_INTERIOR_EXCEPTIONS_9 = Object.freeze([
+  'UTG2|rfi@1', 'HJ|rfi@1', 'BTN|rfi@2',
+  'UTG2|limps@3', 'LJ|limps@2', 'LJ|limps@3', 'HJ|limps@4', 'BTN|limps@3',
+  'HJ|raise@2', 'CO|raise@2', 'BTN|raise@2',
+  'UTG|3bet@1', 'UTG1|3bet@1', 'UTG2|3bet@1', 'LJ|3bet@1', 'HJ|3bet@1',
+  'CO|3bet@1', 'BTN|3bet@1', 'SB|3bet@1', 'BB|3bet@1',
+]);
+
+/**
+ * THE TWO RECORDS AT BOTH TABLE SIZES, KEYED BY (seats, pos, node) — V4-PLAN §2.6, R5.
  *
  * The six-seat entries above are UNTOUCHED, bit for bit, and keep their own exported names because
- * `scripts/gates/skill.mjs` and `test/skill.test.mjs` read them directly. What changes is that they
- * are now reachable under a table size, and that nine seats is `null` rather than `[]`.
+ * `scripts/gates/skill.mjs` and `test/skill.test.mjs` read them directly. What changed at S1 is
+ * that they became reachable under a table size; what changed at S2 is that nine seats stopped
+ * being `null` — the measurement has been taken, so the honest value is the measurement.
  *
- * `null` MEANS UNMEASURED, AND THAT IS THE WHOLE POINT. The twelve pairs the nine-seat ladder makes
- * legal (`UTG|rfi`, `UTG|3bet`, `UTG1` x 4, `UTG2` x 4, `LJ|limps`, `LJ|raise` — note the two `LJ`
- * pairs, which are new because the first-seat exclusion moves FORWARD, so a procedure keyed only to
- * the new seat NAMES would silently skip them) need the same measurement METHODOLOGY §3.5 records
- * for the six-seat lists. An empty array would assert "measured, and there are none"; `null` says
- * "nobody has run this yet", and `widthProblems` refuses rather than passing vacuously.
+ * WHICH TWELVE PAIRS ARE "NEW" HAS TWO ANSWERS AND THEY ARE NOT THE SAME TWELVE. Both are recorded
+ * here because R5 is explicitly a rule about not missing pairs:
+ *
+ *   BY KEY — `legalPairs(9) \ legalPairs(6)` — is `UTG1`, `UTG2` and `LJ` at all four nodes.
+ *     `UTG|rfi` and `UTG|3bet` are NOT in it: they are legal at six seats already, so
+ *     `positionDisabled(…, 9)` does not "newly make them legal" in the literal sense R5's gloss
+ *     uses.
+ *   BY LADDER POSITION — the pairs at nine seats that the six-seat table does not already answer
+ *     under the `i+3` embedding (six-max UTG..BB sits at nine-max LJ..BB, with the same
+ *     `behindNonBlind`, `blindBehind` and `baseR`) — is V4-PLAN §3 R5's own enumeration:
+ *     `UTG|{rfi,3bet}`, `UTG1|×4`, `UTG2|×4`, `LJ|{limps,raise}`.
+ *
+ * The two agree on the COUNT (12) and on `LJ|limps` / `LJ|raise`, and differ on exactly two pairs
+ * each way: the key reading adds `LJ|{rfi,3bet}`, the position reading adds `UTG|{rfi,3bet}`. THE
+ * POSITION READING IS THE ONE THAT DESCRIBES THE MEASUREMENT, and that is itself measured rather
+ * than argued: over I38(e)'s 14,760 nine-seat readings the realization the pipeline uses differs
+ * from the SEATS-BLIND `realization(pos, N, nu, d)` at exactly 5,535 of them, and those are exactly
+ * the nine non-3bet pairs of the KEY reading — while the pair whose measurement is genuinely new
+ * and whose key is old, `UTG|rfi`, is invisible to a seats-blind check because `baseR` is flat and
+ * nine-max UTG reads the same 0.97 six-max UTG does. Neither reading may be used alone as "the
+ * pairs to measure": the records below cover ALL 33 legal pairs, which is the only self-consistent
+ * answer and is what `widthProblems` compares in both directions.
  */
 export const WIDTH_EXCEPTIONS = Object.freeze({
   6: Object.freeze({ endpoint: WIDTH_ENDPOINT_EXCEPTIONS, interior: WIDTH_INTERIOR_EXCEPTIONS }),
-  9: null,
+  9: Object.freeze({ endpoint: WIDTH_ENDPOINT_EXCEPTIONS_9, interior: WIDTH_INTERIOR_EXCEPTIONS_9 }),
 });
 /** the frozen records at a table size, or `null` where nothing has been measured */
 export function widthExceptionsFor(seats) { return WIDTH_EXCEPTIONS[seats] || null; }
@@ -194,11 +280,17 @@ export function widthProblems(model, grid = SKILL_GRID, seats = 6) {
   }
 
   // (iii) the cells behind them, and the tier move, at every recorded pair
+  //
+  // `seats` IS THREADED HERE, and it has to be from the moment nine seats stops being `null`: the
+  // two solves below are the ones that name the CELLS behind an endpoint exception, and a
+  // seats-blind solve at `UTG1` reads `baseR['UTG1']` out of the six-seat object, gets `undefined`,
+  // and realizes every cell at NaN — which does not throw, orders as if every cell were equal, and
+  // would have reported whatever that produced as "the cells this pair loosens through".
   for (const key of endpoint) {
     const [pos, node] = key.split('|');
-    const a = P.solve(t.pools[0].model, { pos, node, v: t.pools[0].v, limpers: 2, raiserPos: SWEEP_RAISER });
+    const a = P.solve(t.pools[0].model, { pos, node, v: t.pools[0].v, limpers: 2, raiserPos: SWEEP_RAISER, seats });
     const b = P.solve(t.pools[t.pools.length - 1].model,
-      { pos, node, v: t.pools[t.pools.length - 1].v, limpers: 2, raiserPos: SWEEP_RAISER });
+      { pos, node, v: t.pools[t.pools.length - 1].v, limpers: 2, raiserPos: SWEEP_RAISER, seats });
     const moved = Object.keys(a.cells).filter((k) => a.cells[k].action !== b.cells[k].action).sort();
     if (moved.join(' ') !== WIDTH_ENDPOINT_CELLS.join(' ')) {
       out.push(`${key} loosens through cells [${moved.join(' ')}], recorded [${WIDTH_ENDPOINT_CELLS.join(' ')}]`);
