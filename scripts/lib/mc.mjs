@@ -33,7 +33,15 @@ const SELF = fileURLToPath(import.meta.url);
    names from its own IIFEs, so the page and the generator run the SAME measurement code and cannot
    drift. Do not move a Node dependency inside these markers. */
 
-/** opponents measured in one deal: eq[N] for N = 1..NMAX (V2-PLAN §2.2) */
+/**
+ * Opponents measured in one deal: eq[N] for N = 1..NMAX (V2-PLAN §2.2).
+ *
+ * v4: this is now the DEFAULT of a per-call `nMax` option on both multi-N kernels, not the width
+ * itself. `data/model.json` is measured at 7 and stays measured at 7 — the name still describes
+ * `cells[*].eq` — while `data/ring.json` runs the same kernels at 9 to add the N = 8, 9 columns the
+ * nine-seat ladder reads (V4-PLAN §2.4). The constant stays INSIDE the worker slice because the
+ * browser bundle needs the default too: `sim-kernel.js` reads it whenever a job names no width.
+ */
 export const NMAX = 7;
 
 /** the v1 field size, kept as its own name because ν is still defined on rho[5] − rho[1] */
@@ -87,23 +95,33 @@ const trialSeed = (base, t) => ((base ^ Math.imul(t + 1, 0x9e3779b1)) >>> 0);
  * deck positions 25..32, which the first 25 steps can never revisit. So eq[1..5] is bit-identical to
  * v1 and eq[6..7] is new information dealt from new randomness.
  *
+ * THE WIDTH IS A PER-CALL OPTION (v4, V4-PLAN §2.4), and the stream discipline above is exactly
+ * what makes that safe. The first 25 draws are unconditional — they are the v1 stream, and they do
+ * not know how many villains follow — and every villain past the fifth is appended by `extraRng` at
+ * a strictly higher deck index. So raising `nMax` from 7 to 9 EXTENDS the deal rather than
+ * perturbing it: positions 0..32 are dealt from the same two streams in the same order, and
+ * `eq[0..6]` at `nMax = 9` is bit-identical to `eq[0..6]` at `nMax = 7` under the same seeds. That
+ * is the 5 -> 7 lockstep argument (I22) applied once more, and `test/ring.test.mjs` asserts it
+ * rather than assuming it.
+ *
  * @param {Uint32Array} pool packed hands to draw the hero from
  * @param {number} lo start index in pool
  * @param {number} hi end index (exclusive)
+ * @param {number} [nMax] villains dealt per trial; defaults to the module's NMAX
  * @returns {{eq: number[], coolNum: number, coolDen: number}} coolDen counts the trials where hero
  *   reached a set or better; coolNum how many of those he lost outright at COOLER_REF_N opponents.
  */
-export function runMulti(pool, lo, hi, trials, heroSeed, streamSeed, extraSeed) {
+export function runMulti(pool, lo, hi, trials, heroSeed, streamSeed, extraSeed, nMax = NMAX) {
   const heroRng = new Rng(heroSeed);
   const rng = new Rng(streamSeed);
   const extraRng = new Rng(extraSeed);
   const tp = makeTriplePartials();
-  const acc = new Float64Array(NMAX);
+  const acc = new Float64Array(nMax);
   const deck = new Int32Array(52);
   const board = new Int32Array(5);
-  const vs = new Int32Array(NMAX);
+  const vs = new Int32Array(nMax);
   const span = hi - lo;
-  const NEED = 5 + NMAX * 4;
+  const NEED = 5 + nMax * 4;
   let coolNum = 0, coolDen = 0;
 
   for (let t = 0; t < trials; t++) {
@@ -125,12 +143,12 @@ export function runMulti(pool, lo, hi, trials, heroSeed, streamSeed, extraSeed) 
     for (let i = 0; i < 5; i++) board[i] = deck[i];
     fillTriplePartials(board, tp);
     const hero = bestOmaha(h0, h1, h2, h3, tp);
-    for (let k = 0; k < NMAX; k++) {
+    for (let k = 0; k < nMax; k++) {
       const b = 5 + k * 4;
       vs[k] = bestOmaha(deck[b], deck[b + 1], deck[b + 2], deck[b + 3], tp);
     }
     let vmax = -1, vties = 0;
-    for (let k = 0; k < NMAX; k++) {
+    for (let k = 0; k < nMax; k++) {
       const s = vs[k];
       if (s > vmax) { vmax = s; vties = 1; } else if (s === vmax) vties++;
       if (hero > vmax) acc[k] += 1;
@@ -140,8 +158,8 @@ export function runMulti(pool, lo, hi, trials, heroSeed, streamSeed, extraSeed) 
     const cool = isCooler(hero, vs);
     if (cool !== null) { coolDen++; if (cool) coolNum++; }
   }
-  const eq = new Array(NMAX);
-  for (let k = 0; k < NMAX; k++) eq[k] = (100 * acc[k]) / trials;
+  const eq = new Array(nMax);
+  for (let k = 0; k < nMax; k++) eq[k] = (100 * acc[k]) / trials;
   return { eq, coolNum, coolDen };
 }
 
@@ -159,17 +177,25 @@ export function runMulti(pool, lo, hi, trials, heroSeed, streamSeed, extraSeed) 
  * stream is reseeded per trial, so every cell sees the same stream position at the same trial index
  * even though rejection sampling consumes a hero-dependent number of draws.
  *
+ * THE WIDTH IS A PER-CALL OPTION HERE TOO (v4, V4-PLAN §2.4) — and unlike `runMulti` this kernel's
+ * prefix is NOT preserved by raising it. Villains are dealt BEFORE the board and each one consumes
+ * a hero-dependent number of draws, so villains 8 and 9 shift the board every trial: `eq[0..6]` at
+ * `nMax = 9` is a DIFFERENT measurement from `eq[0..6]` at `nMax = 7`, not an extension of it. That
+ * asymmetry between the two kernels is measured in `test/ring.test.mjs`, and it is why the ring's
+ * `vDelta` baseline is the ring's own `runMulti` column rather than `data/model.json`'s.
+ *
+ * @param {number} [nMax] villains dealt per trial; defaults to the module's NMAX
  * @returns {{eq: number[], fallbacks: number}} fallbacks counts villain draws where the range was
  *   so blocked that RANGE_TRIES rejections in a row failed and a random hand was dealt instead.
  */
-export function runMultiFiltered(pool, lo, hi, range, q, trials, heroSeed, villSeed) {
+export function runMultiFiltered(pool, lo, hi, range, q, trials, heroSeed, villSeed, nMax = NMAX) {
   const heroRng = new Rng(heroSeed);
   const tp = makeTriplePartials();
-  const acc = new Float64Array(NMAX);
+  const acc = new Float64Array(nMax);
   const avail = new Int32Array(52);
   const board = new Int32Array(5);
-  const vh = new Int32Array(NMAX * 4);
-  const vs = new Int32Array(NMAX);
+  const vh = new Int32Array(nMax * 4);
+  const vs = new Int32Array(nMax);
   const span = hi - lo;
   let fallbacks = 0;
 
@@ -180,7 +206,7 @@ export function runMultiFiltered(pool, lo, hi, range, q, trials, heroSeed, villS
     let loM = 0, hiM = 0;
     for (const c of [h0, h1, h2, h3]) { if (c < 32) loM |= 1 << c; else hiM |= 1 << (c - 32); }
 
-    for (let k = 0; k < NMAX; k++) {
+    for (let k = 0; k < nMax; k++) {
       let vpk = -1;
       const disciplined = rng.float() < q;
       if (disciplined) vpk = sampleFromRange(range, rng, loM, hiM, RANGE_TRIES);
@@ -214,19 +240,19 @@ export function runMultiFiltered(pool, lo, hi, range, q, trials, heroSeed, villS
     }
     fillTriplePartials(board, tp);
     const hero = bestOmaha(h0, h1, h2, h3, tp);
-    for (let k = 0; k < NMAX; k++) {
+    for (let k = 0; k < nMax; k++) {
       vs[k] = bestOmaha(vh[k * 4], vh[k * 4 + 1], vh[k * 4 + 2], vh[k * 4 + 3], tp);
     }
     let vmax = -1, vties = 0;
-    for (let k = 0; k < NMAX; k++) {
+    for (let k = 0; k < nMax; k++) {
       const s = vs[k];
       if (s > vmax) { vmax = s; vties = 1; } else if (s === vmax) vties++;
       if (hero > vmax) acc[k] += 1;
       else if (hero === vmax) acc[k] += 1 / (vties + 1);
     }
   }
-  const eq = new Array(NMAX);
-  for (let k = 0; k < NMAX; k++) eq[k] = (100 * acc[k]) / trials;
+  const eq = new Array(nMax);
+  for (let k = 0; k < nMax; k++) eq[k] = (100 * acc[k]) / trials;
   return { eq, fallbacks };
 }
 
@@ -573,18 +599,24 @@ if (!isMainThread && workerData && workerData.__mcWorker) {
             fnv1a(`hero|${job.stage}|${job.key}|${job.comp}`), fnv1a(`stream|${job.stage}|${job.comp}`)),
         });
       } else if (job.kind === 'latt') {
-        // the hero stream is the CELL stage's, so the delta this job feeds is paired hand for hand
+        /* the hero stream is the CELL stage's, so the delta this job feeds is paired hand for hand.
+           `job.tag` is v4's one addition: an OPTIONAL stream-name prefix, absent on every job
+           `generate-data.mjs` builds, so the v1/v2 streams are untouched by construction, and set
+           to the ring's seed name on every job `generate-ring.mjs` builds. `job.nMax` likewise
+           defaults to the kernel's own NMAX when the job does not name a width. */
         out.push({
           id: job.id,
           out: runMultiFiltered(pool, lo, hi, filtered[job.v], job.q, job.trials,
-            fnv1a(`hero|cell|${job.key}`), fnv1a(`villain|latt|${job.v}`)),
+            fnv1a(`hero|${job.tag ? `${job.tag}|` : ''}cell|${job.key}`),
+            fnv1a(`villain|${job.tag ? `${job.tag}|` : ''}latt|${job.v}`), job.nMax),
         });
       } else {
         out.push({
           id: job.id,
           out: runMulti(pool, lo, hi, job.trials,
-            fnv1a(`hero|${job.stage}|${job.key}`), fnv1a(`stream|${job.stage}`),
-            fnv1a(`stream6|${job.stage}`)),
+            fnv1a(`hero|${job.tag ? `${job.tag}|` : ''}${job.stage}|${job.key}`),
+            fnv1a(`stream|${job.tag ? `${job.tag}|` : ''}${job.stage}`),
+            fnv1a(`stream6|${job.tag ? `${job.tag}|` : ''}${job.stage}`), job.nMax),
         });
       }
     }
@@ -623,7 +655,10 @@ export async function stopPool(workers) {
  * starve a worker (dynamic load balancing beats static striping when unit cost varies).
  * @param {object[]} jobs each { id, kind, ... }: 'multi'/'vs3bet'/'latt' take
  *   { pool, unit, stage, key, trials } plus comp (vs3bet) or v and q (latt); 'eq1' takes
- *   { block, deals } and reads the class representatives out of workerData.
+ *   { block, deals } and reads the class representatives out of workerData. 'multi' and 'latt' also
+ *   take the two OPTIONAL v4 fields `nMax` (the field width, default NMAX) and `tag` (a stream-name
+ *   prefix); omitting both reproduces the v1/v2 streams exactly, which is what `data/model.json`
+ *   depends on and `test/ring.test.mjs` asserts.
  */
 export function runJobs(workers, jobs, onProgress, chunkSize = 4) {
   const results = new Array(jobs.length);

@@ -25,7 +25,19 @@
 var PLO_JOB = (function () {
   'use strict';
   var fnv1a = PLO_EVAL5.fnv1a;
+  /* THE FIELD WIDTH IS A PER-JOB FIELD, NOT AN IIFE-TIME BINDING (v4, V4-PLAN §2.4).
+     `PLO_MC.NMAX` is still the DEFAULT — a job that names no width measures the seven columns
+     `data/model.json` is built from, which is every job the six-seat page has ever sent. At nine
+     seats the page sends `nMax: SIM_NMAX` (shell.html :1181) and the same kernels measure nine.
+     Reading it at IIFE time would freeze the width at boot, which is exactly wrong for an axis the
+     user can toggle without reloading the page. */
   var NMAX = PLO_MC.NMAX;
+  function widthOf(job) {
+    /* `| 0` first, then the test: it turns undefined, NaN and Infinity into 0 in one step, so a job
+       that names no width — every job the six-seat page has ever sent — reads NMAX. */
+    var n = (job && job.nMax) | 0;
+    return n > 0 ? n : NMAX;
+  }
 
   /* ~32 ms of work on the measured single-thread throughput (about 157k filtered trials/s), i.e.
      one frame. Fixed, not adaptive: an adaptive slice size would make the RESULT depend on how
@@ -79,9 +91,9 @@ var PLO_JOB = (function () {
     var n = Math.min(SLICE, want - from);
     var r = job.kind === 'multi'
       ? PLO_MC.runMulti(pool, lo, hi, n, seedOf('hero', job, s),
-        seedOf('stream', job, s), seedOf('stream6', job, s))
+        seedOf('stream', job, s), seedOf('stream6', job, s), widthOf(job))
       : PLO_MC.runMultiFiltered(pool, lo, hi, range, job.q, n,
-        seedOf('hero', job, s), seedOf('vill', job, s));
+        seedOf('hero', job, s), seedOf('vill', job, s), widthOf(job));
     return { eq: r.eq, n: n, fallbacks: r.fallbacks || 0 };
   }
 
@@ -90,19 +102,20 @@ var PLO_JOB = (function () {
    * @returns {{eq:Float64Array, fallbacks:number, trials:number, slices:number}}
    */
   function runUnit(pool, starts, range, job) {
-    var acc = new Float64Array(NMAX);
+    var w = widthOf(job);
+    var acc = new Float64Array(w);
     var done = 0, fallbacks = 0, s = 0, k, r;
     while ((r = runSlice(pool, starts, range, job, s)) !== null) {
-      for (k = 0; k < NMAX; k++) acc[k] += r.eq[k] * r.n;
+      for (k = 0; k < w; k++) acc[k] += r.eq[k] * r.n;
       fallbacks += r.fallbacks; done += r.n; s++;
     }
-    var eq = new Float64Array(NMAX);
-    for (k = 0; k < NMAX; k++) eq[k] = acc[k] / done;
+    var eq = new Float64Array(w);
+    for (k = 0; k < w; k++) eq[k] = acc[k] / done;
     return { eq: eq, fallbacks: fallbacks, trials: done, slices: s };
   }
 
   return {
-    SLICE: SLICE, NMAX: NMAX, seedOf: seedOf, buildRange: buildRange,
+    SLICE: SLICE, NMAX: NMAX, widthOf: widthOf, seedOf: seedOf, buildRange: buildRange,
     sliceCount: sliceCount, runSlice: runSlice, runUnit: runUnit,
   };
 })();

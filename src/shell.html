@@ -1178,7 +1178,32 @@ try { if (typeof EQUILIBRIUM !== 'undefined' && EQUILIBRIUM) window.EQUILIBRIUM 
 'use strict';
 
 var MODEL = window.MODEL, TAX = window.TAXONOMY;
+/* NMAX — THE EQUITY-ARRAY SHAPE INVARIANT, and it STAYS 7 at every table size (V4-PLAN §2.4).
+   `meta.nMax` describes `cells`, and `cells[*].eq` is seven long in both variants and stays that
+   way: the nine-seat columns live in the separate `data/ring.json` artifact precisely so this
+   number never moves (§0.4). It is enforced at :1318 (`validEqArray`) and :1407 (the sim-payload
+   compat check), and a 9-length `eq` reaching either of those is a bug, not a table size. */
 var NMAX = (MODEL && MODEL.meta && MODEL.meta.nMax) || 7;
+/* SIM_NMAX — THE SIMULATION FIELD WIDTH, which is a DIFFERENT NUMBER and moves with the table.
+   This is what `PLO_MC.NMAX` is set from and what the page sends as each job's `nMax`: at six seats
+   Simulate measures seven opponents, at nine it measures nine, and `policy.nMax(seats)` is the one
+   place that decides which. Getting these two names the wrong way round is the mistake §2.4 warns
+   about twice — a nine-long `eq` validated against the MODEL's shape fails, and a seven-long sim
+   result at nine seats is silently short by two columns.
+
+   It is a var with a setter rather than a constant because the Table control changes seats without
+   a reload, and the setter takes a SEAT COUNT and asks the ladder for the width — so this file
+   gains no seat literal and no width literal either. `ladder.seats` is the membership test as well
+   as the source: a seat count the ladder does not name falls back to NMAX, so a stale `?seats=`, a
+   console call or a pre-ladder build cannot widen the field. Lane U calls this from the Table
+   control and passes `SIM_NMAX` as each job's `nMax`; until it does, every job names no width and
+   the kernels default to the seven the six-seat page has always measured. */
+var SIM_NMAX = NMAX;
+function setSimSeats(seats) {
+  var P = window.POLICY, L = P && P.CONSTANTS && P.CONSTANTS.ladder;
+  SIM_NMAX = (L && L.seats && L.seats.indexOf(seats) >= 0) ? P.nMax(seats) : NMAX;
+  return SIM_NMAX;
+}
 var TOTAL = (MODEL && MODEL.meta && MODEL.meta.comboTotal) || 270725;
 var DEFAULT_TRIALS = 25000;
 /* THE CEILING. 100,000 trials per unit, which is 4x the default and exactly the shipped dataset's
@@ -1313,20 +1338,28 @@ function hooks() {
    the page paints must not claim more.
 
    ONE implementation, exported, because the page keeps a second book of these — and a validator
-   written twice is how the two books drifted apart the first time. */
-function validEqArray(e) {
-  if (!Array.isArray(e) || e.length !== NMAX) return false;
-  for (var k = 0; k < NMAX; k++) {
+   written twice is how the two books drifted apart the first time.
+
+   THE SECOND ARITY (v4, V4-PLAN §2.4). `n` is the width to validate AGAINST, and it defaults to
+   `NMAX` — the MODEL's shape — so every existing caller means exactly what it meant before. The SIM
+   path passes `SIM_NMAX` instead, because a nine-seat measurement really is nine numbers wide and
+   checking it against the model's seven would reject the correct answer. Two widths, one validator:
+   the alternative is a second copy of this function for the sim path, which is precisely how the
+   two books drifted apart the first time. */
+function validEqArray(e, n) {
+  var w = (n | 0) > 0 ? n | 0 : NMAX;
+  if (!Array.isArray(e) || e.length !== w) return false;
+  for (var k = 0; k < w; k++) {
     var x = e[k];
     if (typeof x !== 'number' || !isFinite(x) || x < 0 || x > 100) return false;
   }
   return true;
 }
-function validMeasurement(m) {
+function validMeasurement(m, n) {
   if (!m || !m.cells || typeof m.cells !== 'object') return false;
   var keys = Object.keys(m.cells), i;
   if (!keys.length) return false;
-  for (i = 0; i < keys.length; i++) if (!validEqArray(m.cells[keys[i]])) return false;
+  for (i = 0; i < keys.length; i++) if (!validEqArray(m.cells[keys[i]], n)) return false;
   /* The cache binds `trials` to the settings that were requested (see `valid`); a payload with no
      trial count cannot be told apart from one that never ran, so it does not get in. */
   if (!(m.trials > 0)) return false;
@@ -1404,7 +1437,14 @@ var CACHE = (function () {
     if (!p || p.tag !== TAG) return false;
     if (p.model !== ((MODEL.meta && MODEL.meta.hash) || '')) return false;
     if (p.hash !== want.hash) return false;
-    if (p.nMax !== NMAX) return false;
+    /* THE SIM PAYLOAD IS VALIDATED AGAINST THE SIM WIDTH, NOT THE MODEL'S (v4, §2.4). A cached
+       measurement declares the field it was measured at; at nine seats that is nine columns, and
+       comparing it to `NMAX` — the model's frozen 7 — would throw away every correct nine-seat
+       result. The check does NOT get looser for it: `p.nMax` is pinned to the width in force RIGHT
+       NOW, so a payload measured at another table size is refused rather than reinterpreted, and
+       the arrays below are then checked against that same pinned width. A stored `nMax` is
+       attacker-supplied like everything else in this envelope and is never its own yardstick. */
+    if (p.nMax !== SIM_NMAX) return false;
     /* THE SETTINGS A PAYLOAD DECLARES MUST BE THE SETTINGS THAT WERE ASKED FOR, not merely
        something that hashes to the same 8 hex characters. These three fields are not decoration:
        `trials` sets the tolerance the partition identity is judged against and the ± the badge
@@ -1412,7 +1452,9 @@ var CACHE = (function () {
        real hash but claims `trials: 1` would hand itself a 400-point tolerance and walk any
        fabrication straight through — the validator's own yardstick must not be attacker-supplied. */
     if (p.v !== want.v || p.q !== want.q || p.trials !== want.trials) return false;
-    return validMeasurement(p);
+    /* `p.nMax` and not `NMAX`: the line above has already pinned it to the width in force, so this
+       is the sim width for a sim payload and still the model's 7 whenever the two coincide. */
+    return validMeasurement(p, p.nMax);
   }
 
   return {
