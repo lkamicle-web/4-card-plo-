@@ -286,4 +286,6 @@ allowlist, reported by `file:line`.
 - **`preNesting` is a reconstruction of `aggressiveSetUncached`**, needed because `aggressiveSet` is
   memoised on a key that omits the ring. `test/tier-fixture-9max.test.mjs` greps policy.mjs for the
   five lines it reproduces, so the copy cannot drift from its original in silence.
-- **The lane added zero seat-name literals.** `RAISER` is `seatsFor(6)[2]`, not `'CO'`.
+- **The lane typed no seat number and no seat name.** `RAISER` is `seatsFor(6)[2]`, not `'CO'`;
+  `SEATS` is the last member of `constants.ladder.seats`, not `9`. I51(c)'s scan reads zero new-key
+  literals and zero added legacy hits from either of lane F's two new files.

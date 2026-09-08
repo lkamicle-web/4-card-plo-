@@ -70,8 +70,16 @@ import * as TF3 from './tier-fixture-v3.mjs';
 export const FIXTURE_VERSION = TF2.FIXTURE_VERSION;
 export const FIXTURE_PATH = 'data/tiers-9max.fixture.txt';
 
-/** the table size this fixture freezes. `{6, 9}` is a SET (§0.2); this is the other member. */
-export const SEATS = 9;
+/**
+ * The table size this fixture freezes, READ OFF THE SHIPPED LADDER rather than typed.
+ *
+ * `{6, 9}` is a SET (§0.2) and `constants.ladder.seats` is where it lives; this is its other
+ * member. Deriving it costs one line and buys the thing §2.3 asks of every seat number in this
+ * program: nobody types one. A fixture whose seat count were a literal here could disagree with the
+ * axis the model publishes, and the disagreement would show up as thousands of moved tiers wearing
+ * no explanation.
+ */
+export const SEATS = P.CONSTANTS.ladder.seats[P.CONSTANTS.ladder.seats.length - 1];
 
 export const { codeOf, describeCode, fixtureCells, settingKey, envArgs,
   laneId, laneSpec, digestOf, parseFixture } = TF2;
