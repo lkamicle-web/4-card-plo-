@@ -79,7 +79,13 @@ test('the margins are the documented ones, and each row says where it was read',
  *  403,177 B and model code 53,376 B are recorded here and nowhere else. No assertion below turns on
  *  the byte: the bounds are 414K and 57K for either figure. */
 const TODAY = {
-  total: 601614, app: 403386, appCore: 403386 - 35290, modelCode: 56270,
+  /* v4 lane R: +373 B of `app` for the two N-names (SIM_NMAX and the validEqArray second arity,
+     shell :1181/:1318/:1407) and `sim-kernel.js`'s per-job width — measured, and shrunk before it
+     was pinned (the first cut read +614 B; folding the allowed-width derivation into the setter and
+     the width resolution into one `| 0` returned 241 B). This fixture is a MEASUREMENT, not a
+     decision, and every v4 lane that moves a page byte moves it: S3 re-pins it once after the
+     merge rather than four lanes racing it. */
+  total: 601987, app: 403759, appCore: 403759 - 35290, modelCode: 56270,
   blocks: { gto: 10198, ev: 11403, skill: 3532, topn: 4844, calib: 5313 },
 };
 const loosened = (over) => ({ ...VARIANTS.lite.budgets, ...over });
@@ -88,7 +94,7 @@ test('today\'s caps clear the clause, and every ceiling is read', () => {
   const r = pageCeilingProblems('lite', VARIANTS.lite.budgets, TODAY);
   assert.deepEqual(r.problems, []);
   assert.equal(r.readings.length, 4 + BLOCKS.length, 'total, app, core, model code, and one per block');
-  assert.match(r.readings.join(' '), /app 393\.9K\/398K≤414K/);
+  assert.match(r.readings.join(' '), /app 394\.3K\/398K≤415K/);
   // modelCode raised 54 -> 56 KB at v4 S1 (see test/variant.test.mjs's pin for the shrink-first
   // record). The BOUND moves with the measurement, not with the cap: 54.8K x 1.08 rounds to 60K.
   assert.match(r.readings.join(' '), /model code 55\.0K\/56K≤60K/);
@@ -98,7 +104,7 @@ test('REFUTER 1 REPLAYED: `app` at 460 KB is refused, and the refusal names the 
   const r = pageCeilingProblems('lite', loosened({ app: 460 * KB }), TODAY);
   assert.equal(r.problems.length, 1, r.problems.join(' | '));
   assert.match(r.problems[0], /^lite app: the ceiling 460K is LOOSER/);
-  assert.match(r.problems[0], /393\.9K × 1\.05 rounded up to the whole KB is 414K/);
+  assert.match(r.problems[0], /394\.3K × 1\.05 rounded up to the whole KB is 415K/);
   assert.match(r.problems[0], /variant\.mjs:\d+/, 'the refusal cites where the margin was read');
 });
 
@@ -122,16 +128,16 @@ test('the model code is bounded at +8 %, not +5 %: 60 KB clears (55.0K × 1.08 r
 });
 
 test('`core` and `total` are bounded too — a removal that does not move the ceiling is refused', () => {
-  /* Delete 20 KB of unmarked code and leave both ceilings where they are: core 339.5K × 1.05 =
-     356.5 -> 357 KB < 360, and app 373.9K × 1.05 = 392.6 -> 393 KB < 398. Unmarked bytes are in
+  /* Delete 20 KB of unmarked code and leave both ceilings where they are: core 339.8K × 1.05 =
+     356.8 -> 357 KB < 360, and app 374.3K × 1.05 = 393.0 -> 394 KB < 398. Unmarked bytes are in
      both readings, so BOTH caps are now looser than the rule and both are refused — the removal
      has to be paid back on each. */
   const shrunk = { ...TODAY, app: TODAY.app - 20 * KB, appCore: TODAY.appCore - 20 * KB };
   const r = pageCeilingProblems('lite', VARIANTS.lite.budgets, shrunk);
   assert.deepEqual(r.problems.map((p) => p.split(':')[0]), ['lite app', 'lite core']);
-  const t = pageCeilingProblems('lite', loosened({ total: 618 * KB }), TODAY);
+  const t = pageCeilingProblems('lite', loosened({ total: 619 * KB }), TODAY);
   assert.deepEqual(t.problems.map((p) => p.split(':')[0]), ['lite total']);
-  assert.deepEqual(pageCeilingProblems('lite', loosened({ total: 617 * KB }), TODAY).problems, []);
+  assert.deepEqual(pageCeilingProblems('lite', loosened({ total: 618 * KB }), TODAY).problems, []);
 });
 
 test('a cap for a block the shell no longer marks is pure headroom, and is refused', () => {
