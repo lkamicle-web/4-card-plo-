@@ -1,13 +1,21 @@
 # V4 S2 lane R — the ring artifact. What was built, what was measured, what the plan got wrong.
 
-Base `v4-s1-base` (S1's snapshot; this worktree predated it and was fast-forwarded onto it before any
-edit). Branch `worktree-wf_3c958a35-f26-4`.
+Base `v4-s1-base` (S1's snapshot **plus the owner's post-run-1 amendment to R2**). This worktree
+carried run 1's lane R work, so `v4-s1-base` was merged into it before any edit; the diff of
+`scripts/lib/policy.mjs` against that base is empty, which is the contention registry's own check.
+Branch `worktree-wf_3c958a35-f26-4`.
+
+**RUN 2**, after the owner's adjudication of run 1's R2 blocker (V4-PLAN §2.4 and rule R2, amended in
+place). `data/ring.json` was regenerated fresh, `--check` re-run at a different worker count from the
+write, the wall re-measured at four workers, and every D12 clause re-demonstrated failing on a
+fabricated violator. Sections 3.2 and 4 below are kept as the record they are; §7 is rewritten from
+"the blocker" into the adjudication and the reading under it.
 
 **GREEN at return** — `node scripts/verify.mjs` exit 0 with **62/62** gates, `node --test
-test/*.test.mjs` **731/731**, `node scripts/build.mjs --check` **2/2 current**, and
-`node scripts/generate-ring.mjs --check` byte-identical. The 62 do NOT include D12: lane F is the
-single writer of all seven v4 id registrations, so this lane's gate is written, tested and unwired
-by design (§6.5). **One blocker**, R2's — §7, and in the return.
+test/*.test.mjs` **734/734**, `node scripts/build.mjs --check` **2/2 current**, and
+`node scripts/generate-ring.mjs --check` byte-identical. The gate count does NOT include D12: lane F
+is the single writer of all seven v4 id registrations, so this lane's gate is written, tested and
+unwired by design (§6.5). **No blockers.**
 
 ---
 
@@ -22,7 +30,7 @@ by design (§6.5). **One blocker**, R2's — §7, and in the return.
 | `scripts/lib/mc.mjs` | `nMax` as a per-call option on BOTH kernels; `tag` as an optional stream prefix; the worker body threads both |
 | `scripts/lib/sim-kernel.js` | the IIFE-time `var NMAX = PLO_MC.NMAX` becomes a per-job `widthOf(job)` |
 | `src/shell.html` | three named sites only — `:1181` (`NMAX` + the new `SIM_NMAX`/`setSimSeats`), `:1318` (`validEqArray` second arity), `:1407` (the sim-payload compat check, including the `validMeasurement(p, p.nMax)` on its last line) |
-| `test/ring.test.mjs`, `test/ring-gate.test.mjs`, `test/ring-shell.test.mjs` | 40 tests (11 + 22 + 7); every D12 clause shown to fail on a fabricated violator |
+| `test/ring.test.mjs`, `test/ring-gate.test.mjs`, `test/ring-shell.test.mjs` | 43 tests (11 + 25 + 7); every D12 clause shown to fail on a fabricated violator |
 | `test/block-census.test.mjs` | re-pinned `TODAY` + three literal readings — a MEASUREMENT, not a decision; see §6 |
 
 `data/model.json` is **byte-identical**: sha256 `4c35c01424344f57373d5e4c6bc5cc6d50a7c8ffe7f0780eaf40b937f98d6963`
@@ -33,17 +41,25 @@ before lane R's first edit and after its last. The ring is a separate artifact, 
 
 ## 2. The measurements
 
+All values are RUN 2's, measured on the artifact this branch ships. Where run 1 differs the run-1
+figure is given beside it; every agreement statistic reproduced to the last printed digit and both
+fallback counts to the unit, which is the determinism claim making itself rather than being asserted.
+
 | reading | value | against |
 |---|---|---|
-| two-seed wall, 4 workers | **1,213.6 s** | R2's pre-registered 300 s — **4.05× over** |
+| **two-seed wall, 4 workers** | **1,255.4 s** (run 1: 1,213.6 s) | `ring.meta.wallBudget` **1,280 s** — **inside, at 0.98× of budget** |
+| R-CELL, seed A / seed B | 15.3 s / 14.8 s | shipped S2's 12 s — the 1.16× §2.4 predicted, and got right |
+| R-LATT, seed A / seed B | 624.0 s / 601.2 s | shipped S2L's 101 s — 6.2× and 6.0×, where §2.4 predicted 1.29× |
+| D12(a) `--check` | **byte-identical**, exit 0, 630.3 s | rebuilt at **8 workers** against the write's 4; `wallSec` blanked on both sides |
+| blocked-pool fallbacks, seed A / seed B | 5,195,877 / 5,210,970 | identical to run 1's and to the 8-worker rebuild's, to the unit |
 | D12(c) worst prefix delta | 0.8488 pt = **5.31 · se.cell** (3.75 σ of `seDiff`) | §5.2's band 2.0 — **FALSIFIED**; the 5 σ outlier line holds |
 | D12(b) worst two-seed delta | 0.8409 pt = **5.26 · se.cell** (3.72 σ of `seDiff`) | §5.2's band 2.0 — **FALSIFIED**; the 5 σ outlier line holds |
-| `data/ring.json` on disk | **18,606 B** = 18.2 K | note 505 · meta 1,468 · cells 15,362 · agree 1,235 |
-| injected (`const RING = …`) | **18,619 B** = 18.2 K | the `ring` budget row S3 must add, capped from above at **20 KB** |
+| worst per-cell agreement | twoSeed **2.63 σ** · prefix **3.75 σ** | the 5 σ outlier line, asserted on all 123 cells |
+| `data/ring.json` on disk | **18,607 B** = 18.2 K | meta 1,469 · cells 15,362 · agree 1,235 |
+| injected (`const RING = …`) | **18,620 B** = 18.2 K | the `ring` budget row S3 must add, capped from above at **20 KB** |
 | `appCore` cost of lane R | **+373 B** (lite) | shrink-first: first cut read +614 B |
-| D12(a) `--check` | **byte-identical**, exit 0 | rebuilt at 8 workers against the write's 4; `wallSec` blanked both sides |
-| worst N=7→8 seam, `eq(8) − eq(7)` | **−0.700 pt** (`TRIPS_BIG\|RB`) | monotone on all 123 cells, ~3.1 σ of `seDiff` — a cross-artifact check neither file can make alone |
-| worst N=8→9 step inside the ring | **−0.500 pt** (`TRIPS_SMALL\|RB`) | monotone on all 123 cells |
+| worst N=7→8 seam, `eq(8) − eq(7)` | **−0.700 pt** (`TRIPS_BIG\|RB`) | ≤ 0 on all 123 cells, 3.09 σ of `seDiff` — a cross-artifact check neither file can make alone, and **now a D12(c) clause, not only a test** |
+| worst N=8→9 step inside the ring | **−0.500 pt** (`TRIPS_SMALL\|RB`) | ≤ 0 on all 123 cells, 2.21 σ |
 | D12(b) bias / spread | **0.129 σ** / **0.847×** | inside 2 and 2 |
 | D12(c) bias / spread | **0.436 σ** / **0.922×** | inside 2 and 2 |
 | numbers past the pre-registered 0.32 pt | 153 of 1,476 · 88 of 861 | Gaussian noise at `seDiff` predicts 232 and 135 — **fewer breaches than noise alone predicts** |
@@ -106,7 +122,16 @@ count and worker count — **5.9×**, reproducing the per-cell ratio to within 5
 **This is a finding about the measurement layer at nine seats, not only about the budget.** A v = 25
 villain pool cannot be dealt nine times from one deck without distortion: 5.7 % of the ninth
 villain's draws are not from the range at all, and the ones that succeed are selected for being
-unblocked. METHODOLOGY should carry it beside limitation 20.
+unblocked. METHODOLOGY should carry it beside limitation 20 — and it must be carried there whatever
+the budget says, because the amended budget pays for the TIME the exhaustion costs and does nothing
+about what the exhaustion does to the numbers.
+
+> **Re-measured (run 2).** Nothing above moved. The two lattice stages read 624.0 s and
+> 601.2 s (6.2× and 6.0× of the shipped S2L's 101 s) against run 1's 584.1 s and
+> 599.1 s — the same cost model, ~4 % of machine variance between runs — and the blocked-pool
+> fallback counts came back **identical to the unit**: 5,195,877 and 5,210,970, in run 1, in run 2's
+> write at four workers, and in run 2's `--check` at eight. The exhaustion is deterministic, which is
+> what makes it a property of the construction rather than of the afternoon.
 
 ---
 
@@ -123,8 +148,10 @@ No trial budget rescues either clause:
 
 - **D12(c)** compares against the **shipped** layer, whose own `se.cell` = 0.158 is frozen. Even an
   infinitely precise ring leaves `se_diff ≥ 0.158`, so 0.32 is at most **2.02 σ** in the limit.
-- **D12(b)** would need ≈ **597,000 trials per cell** to make 0.32 a 3.5 σ bound — six times a wall
-  budget that is already 4× over.
+- **D12(b)** would need ≈ **597,000 trials per cell** to make 0.32 a 3.5 σ bound — six times the
+  measured wall. [Run 2 note, kept beside the run-1 sentence rather than replacing it: that wall was
+  then 4× the 300 s pre-registration and is now 0.98× the amended 1,280 s, so the ratio changed and
+  the arithmetic did not — six times 1,255 s is over two hours per seed pair.]
 
 Both facts are asserted in `test/ring.test.mjs` ("the pre-registered 2·se.cell band is
 unsatisfiable"), so this is a standing claim rather than a paragraph.
@@ -172,7 +199,7 @@ random numbers leave the whole comparison with an effective sample size closer t
 There is no mechanism that would bias the two estimators against each other — both are unbiased
 estimators of the same quantity and the shipped rounding to 1 dp is symmetric — so the reading is
 recorded as noise. Resolving it properly would need more seeds, which is the same wall budget
-problem §7 is already a blocker about. A supporting datum, measured: the number of readings past the
+problem §7 records — run 1 as a blocker, run 2 as the owner's re-derivation. A supporting datum, measured: the number of readings past the
 pre-registered 0.32 pt is 153 of 1,476 and 88 of 861, where Gaussian noise at `seDiff` predicts 232
 and 135 — the measurement is QUIETER than the conservative `50/√n` bound, not noisier, which is what
 `spread` at 0.847× and 0.922× says too.
@@ -226,14 +253,35 @@ caller means what it meant. The compat check pins `p.nMax` to the width **in for
 measured at another table size is refused rather than reinterpreted — the stored value is never its
 own yardstick.
 
+**`job.tag` — one field beyond `nMax` in `mc.mjs`, and it is named here because the brief scoped
+this lane to the per-call `nMax` option.** The two named seeds have to produce two independent
+samples, and `mc.mjs`'s worker body derives every stream name from `job.stage` / `job.key` /
+`job.v` — none of which carries a seed. Without a seed-bearing prefix the two seeds would run the
+same streams and D12(b) would compare a measurement with itself, which is the one thing the second
+seed exists to prevent. So `job.tag` is an OPTIONAL stream-name prefix: absent on every job
+`generate-data.mjs` builds, so the v1/v2 streams are untouched **by construction** rather than by
+measurement, and set to the seed name on every job `generate-ring.mjs` builds. It is inert at the
+legacy settings in exactly the sense §0.4 asks a new mechanism to be, and `test/ring.test.mjs`
+asserts a tagless job reproduces the untagged stream.
+
+**The cross-artifact seam is now a GATE clause, not only a test (run 2).** `eqAtSeats` joins
+`model.json`'s N ≤ 7 to the ring's N = 8, 9, and nothing inside either file can tell whether the two
+halves line up: a ring measured against a different pool, a stale kernel, or a column read off by one
+leaves both files internally consistent and the JOIN wrong. Run 1 asserted the seam in
+`test/ring.test.mjs`; run 2 also asserts it in D12(c), which reads `data/model.json`'s cells through
+`ctx.model` and refuses any cell where the ring's N = 8 rises above the model's N = 7 — **zero
+tolerance**, the same discipline as `eq[9] ≤ eq[8]`, with the worst margin printed on the report on a
+passing run too. Two fabricated violators cover it, including the one-hundredth-of-a-point case that
+proves there is no band hiding in it.
+
 ---
 
 ## 6. Filed for S3
 
 1. **`variant.mjs` — add a top-level `ring` budget row to BOTH variants.** `ring: 20 * 1024` in
-   `VARIANTS.lite.budgets` and `VARIANTS.full.budgets`. Measured injected payload **18,619 B**
-   (18.2 K); `ceil(measured × 1.05)` to the whole KB is **20 KB**. D12(d) asserts this from above and
-   FAILS while the row is absent — it does so today, naming both variants and printing the exact
+   `VARIANTS.lite.budgets` and `VARIANTS.full.budgets`. Measured injected payload **18,620 B**
+   (18.2 K); `ceil(measured × 1.05)` to the whole KB is **20 KB**. D12(d) asserts this from above
+   and FAILS while the row is absent — it does so today, naming both variants and printing the exact
    line to add, which is the gate working rather than the gate broken.
 2. **`build.mjs` — register the ring's own injected region**, on the `data/equilibrium.json`
    precedent (`const RING = ${JSON.stringify(JSON.parse(raw))};`), in **both** variants — lite keeps
@@ -259,57 +307,92 @@ own yardstick.
    to stay green; **S3 should re-pin it once after the merge** rather than reconciling four races.
    It is a measurement, not a decision.
 5. **D12 is not registered in this worktree** — lane F owns all seven id registrations. When F
-   registers it, **clause (e) will be RED** until the R2 blocker below is adjudicated. Nothing else
-   in D12 fails.
-6. **`policyDeltas`: none.** S1's `eqAtSeats(cell, N, seats, ring, key)` takes the ring payload as a
-   parameter and needs no change for the `eq` columns. S1's own filed delta —
-   `vDeltaAtSeats(pts, vDelta, v, seats, ring, key)` plus threading `ring` through
-   `villainEq`/`profiledModel` — is still needed for the villain-profiled path above N = 7, and lane
-   R has now settled the decision S1 said it was coupled to: `SIM_NMAX` is a separate name from
-   `NMAX`, `validEqArray` takes the width as an argument, and a nine-long `eq` on the sim path is
-   valid. `villainEq` may therefore return a nine-long `eq` at nine seats without breaking the model
-   path. **The ring ships `vDelta[v][N=8, N=9]` for all 123 cells, so the data that delta needs
-   exists.**
+   registers it, **every clause including (e) is GREEN** on this branch except (d), which is red
+   only because item 1's row does not exist yet and goes green the moment S3 adds it. That is the
+   one deliberate red, and it is the gate asking for the registration rather than the gate broken.
+6. **One `policyDelta`, and it is S1's own, now unblocked by lane R.** Add
+   `vDeltaAtSeats(pts, vDelta, v, seats, ring, key)` beside `eqAtSeats` and thread `ring` through
+   `villainEq` / `profiledModel`. S1 filed it and deliberately did not ship it because it forces
+   `villainEq` to return a nine-long `eq`, which S1 recorded as **one decision with lane R's
+   `SIM_NMAX` / `validEqArray` arity split, not two**. Lane R has now made that decision: `SIM_NMAX`
+   is a separate name from `NMAX`, `validEqArray` takes the width as an argument, and a nine-long
+   `eq` on the sim path is valid, so a nine-long `eq` out of `villainEq` no longer breaks the model
+   path. Until the delta lands, the villain-profiled path above N = 7 at nine seats **throws** —
+   fail-closed, never silent — and **the ring already ships `vDelta[v][N=8, N=9]` for all 123 cells,
+   so the data the delta needs exists.** `eqAtSeats(cell, N, seats, ring, key)` itself needs no
+   change: lane R supplies its payload and the `eq` columns work as written.
 
 ---
 
-## 7. The blocker — R2, stated as R2 asks for it
+## 7. The adjudication, and the reading under it
 
-The measured two-seed wall is **1,213.6 s** against the pre-registered **300 s** — **4.05× over** —
-at four workers, the regime the budget was derived from (METHODOLOGY: "Four workers … on a 4-core
-box: 188 s — … S2 12 s, S2L 101 s"), and METHODOLOGY :2798 records that `workers=1` and `workers=8`
-produce the same numbers, so choosing a larger count to meet a wall budget would be gaming it rather
-than measuring it. The four stages read: R-CELL 14.9 s and 15.0 s (against the shipped S2's 12 s —
-the 1.16× the plan predicted), R-LATT 584.1 s and 599.1 s (against the shipped S2L's 101 s — 5.9×,
-where the plan predicted 1.29×). **The whole of the overrun is in one kernel, for one measured
-reason**, and §3.2 above is that reason.
+Run 1 filed a blocker here. R2's blocker clause had fired exactly as written: the measured two-seed
+wall was **1,213.6 s** against a pre-registered **300 s**, R2's halving remedy was measured at
+≈ 622 s and eight workers at 660.8 s, so neither could reach the budget, and lane R had no authority
+to widen a pre-registration. It did not halve (halving cannot fit and would permanently coarsen
+`se.latt` for nothing), did not drop a seed, did not widen, and did not reach for `--force`.
 
-R2's remedy is to **halve the lattice trials for the ring only** and never to drop a seed. That does
-not save it. Lattice cost is **linear in trials**, measured directly rather than assumed — 4 cells ×
-5 VPIP at nine villains: 50,000 trials 40.97 s / 91,755 fallbacks, 100,000 trials 82.81 s / 183,648
-fallbacks, a ratio of **2.021** on time and **2.001** on fallbacks. So halving gives 30 s of cell
-stage + 592 s of lattice ≈ **622 s** — still **2.07× over**. R2's own next sentence then applies:
-*"if it still exceeds 300 s, that is a blocker, not a silent widening."* (Derived from two measured
-points rather than run end to end: a second full pass costs 11 minutes to produce a strictly worse
-artifact that fails the same clause.)
+**The owner adjudicated on 2026-09-08, before this relaunch, by amending the plan itself.** The
+amendment is in `docs/V4-PLAN.md` in four places — beneath §2.4's derivation, beneath rule R2, in
+§4's `ring.meta.wallBudget` row, and in §5.2's D12(e) spec — and it is a re-derivation, not a
+widening:
 
-**What lane R did not do, deliberately.** It did not halve. Halving is a remedy for fitting the
-budget; measurement says it cannot fit, so halving would permanently coarsen `se.latt` on the shipped
-N = 8, 9 columns and still fail the clause. The artifact therefore ships at the regime the brief
-mandates — the same `TRIALS` and `se` as `generate-data.mjs` — and the owner adjudicates with the
-best artifact in hand rather than a degraded one.
+> `2 × (12 × 1.16 + 101 × 6.2) ≈ 1,280 s`, four workers.
 
-**And more parallelism does not answer it either, measured rather than argued.** The `--check`
-re-measurement was deliberately run at **8 workers** against the write's 4 — which also makes the
-determinism claim stronger than a same-regime rerun would. It reproduced **byte-identically**, with
-identical blocked-pool fallback counts — 5,195,877 and 5,210,970, to the unit, reproduced across
-four independent runs of this generator — and took **660.8 s**: a 1.84× speedup for 2× the workers,
-and **still 2.20× over the 300 s budget**. Doubling the
-parallelism does not reach it, and METHODOLOGY :2798's pin — worker count cannot move a number —
-means it could never have been anything but a wall-clock trade.
+It is **the same shape as the derivation it replaces**, `2 × (S2 + S2L)`, with the two per-kernel
+coefficients this lane MEASURED (§3.2) in place of the assumed `9/7`. The 300 s derivation is
+falsified and is kept as written everywhere it appears — in the plan, in `ring.mjs`'s `WALL_BUDGET`
+docstring, in D12's header, and in §3.2 above. What changed is the cost model the pre-registration
+rests on, and it changed because it was measured false, which is the plan's own rule for a falsified
+prediction.
 
-**What only the owner can decide.** Either (a) the budget is re-derived from the measured cost model
-rather than the assumed one — the honest number is `2 × (12·1.16 + 101·6.2) ≈ 1,280 s`, and it is a
-one-off cost paid per change to the construction, never per model run or per verify, exactly as the
-checkdown matrix's 21 s is; or (b) the ring's lattice ships at a coarser `se.latt` with the badge R2
-requires. Lane R has no authority to widen a pre-registered budget and has not.
+Three things the amendment explicitly does **not** do, each of which this lane re-checked rather
+than assumed:
+
+- **It does not coarsen the measurement.** The lattice ships at the full `generate-data` regime —
+  `trials.latt` 100,000, `se.latt` 0.16, identical to `data/model.json`'s. No halving,
+  because halving was measured unable to reach even the old budget; nothing is badged `estimate` and
+  `ring.meta.se` carries the shipped regime.
+- **It does not drop a seed.** Both named seeds ran in full; D12(b) is still a comparison of two
+  measurements rather than of a measurement with itself.
+- **It does not buy the budget with parallelism.** The budget is pre-registered AT FOUR WORKERS, the
+  derivation's own regime. METHODOLOGY :2798 pins that worker count cannot move a number, so a
+  larger count is a wall-clock trade and never a way to pass D12(e). This run re-measured at four.
+
+### The reading under it, re-measured this run
+
+| reading | value | against |
+|---|---|---|
+| two-seed wall, **4 workers** | **1,255.4 s** | `ring.meta.wallBudget` **1,280 s** — inside, at 0.98x of budget |
+| R-CELL, seed A / seed B | 15.3 s / 14.8 s | shipped S2's 12 s (the 1.16× the plan predicted, and got right) |
+| R-LATT, seed A / seed B | 624.0 s / 601.2 s | shipped S2L's 101 s (the 6.2× the plan predicted linear, and got wrong) |
+| `--check` rebuild, **8 workers** | 630.3 s | byte-identical to the 4-worker write, `meta.wallSec` blanked on both sides |
+
+D12(e) is **green** and still fails closed: it asserts `meta.wallBudget === ring.mjs`'s
+`WALL_BUDGET` (so a budget edited into the artifact rather than into the code is refused by name) and
+`meta.wallSec <= meta.wallBudget`, and `test/ring-gate.test.mjs` fabricates a violator for each — the
+budget mutated back to the falsified 300, and a wall of 2,000 s. **No blocker is filed for the wall
+this run.**
+
+**The margin is 24.6 s — 1.9 % — and that is stated rather than rounded away.** Run 1 read 1,213.6 s
+and run 2 reads 1,255.4 s on the same box with the same seeds and byte-identical output, so ~3.4 % of
+run-to-run machine variance is the observed spread of a quantity whose budget has 1.9 % of room. The
+re-derivation is honest — it is `2 × (12 × 1.16 + 101 × 6.2)` from measured coefficients, not a
+number chosen to clear a measurement — but a slower box, or this box under load, can put a correct
+ring over D12(e). That is not a reason to widen anything, and this lane has not: R2 as amended says
+exactly what happens then (halve the ring's lattice trials, never drop a seed, and blocker if it
+still exceeds), and halving now comfortably fits at ≈ 654 s, which it could not do against 300. The
+note is for whoever regenerates the ring next — S3, S5, or the red team — so a machine-variance
+failure is read as machine variance and neither widened nor mistaken for a construction change.
+`meta.wallSec` is stored precisely so the comparison is against a recorded number rather than a
+memory.
+
+### What is carried forward as a finding, not laundered by the budget
+
+§3.2's mechanism stands unchanged and is a **measurement-layer limitation**, not merely a cost:
+at nine villains the VPIP-filtered pools cannot be dealt from one deck without distortion. By the
+ninth villain 40 of 52 cards are dead; **5.7 % of the ninth villain's v = 25 draws are not from the
+range at all** but are random fallbacks after `RANGE_TRIES = 4,000` rejections, and the draws that do
+succeed are selected for being unblocked. That belongs in METHODOLOGY beside limitation 20, in S5's
+hands. The budget pays for the time it costs; it does not make the tightest pools at nine seats mean
+what they mean at six.

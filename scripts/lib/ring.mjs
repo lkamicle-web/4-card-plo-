@@ -40,7 +40,7 @@
 //   No trial budget rescues it. D12(c) compares against the SHIPPED layer, whose own `se.cell` =
 //   0.158 is fixed and frozen; even an infinitely precise ring leaves `se_diff >= 0.158`, so 0.32
 //   is at most 2.02 sigma however long this generator runs. D12(b) would need ~597,000 trials per
-//   cell to make 0.32 a 3.5-sigma bound — six times the budgeted wall, against a 300 s ceiling.
+//   cell to make 0.32 a 3.5-sigma bound — six times the measured wall, against a 1,280 s ceiling.
 //
 // So the pre-registered reading is REPORTED, every run, in `meta.prefix.worstSE` and
 // `meta.twoSeed.worstSE` (the worst |delta| in units of `se.cell`, the plan's own units, against
@@ -96,13 +96,33 @@ export const SEEDS = Object.freeze(['rundown-v4/ring-A', 'rundown-v4/ring-B']);
 export const RING_NMAX = 9;
 
 /**
- * The wall-time budget, in seconds. PRE-REGISTERED at 300 in V4-PLAN §3 (rule R2) and DERIVED, not
- * chosen: the shipped pipeline's two NMAX-scaling stages are S2 (12 s) + S2L (101 s) = 113 s at
- * seven villains (METHODOLOGY :1955); per-trial cost scales about linearly in villains because the
- * draw width is `NEED = 5 + nMax * 4`; and the ring runs two seeds. `2 × 113 × 9/7 ≈ 291`, rounded
- * up. R2's halving clause bites strictly ABOVE this value, never at it.
+ * The wall-time budget, in seconds. PRE-REGISTERED at 1,280 in V4-PLAN §3 (rule R2 as amended by
+ * the owner, 2026-09-08) and DERIVED, not chosen — twice, and the first derivation is kept.
+ *
+ * ORIGINALLY 300, from the shipped pipeline's two NMAX-scaling stages S2 (12 s) + S2L (101 s) =
+ * 113 s at seven villains (METHODOLOGY :1955) on the assumption that per-trial cost scales about
+ * linearly in villains because the draw width is `NEED = 5 + nMax * 4`, over two seeds:
+ * `2 × 113 × 9/7 ≈ 291`, rounded up. THAT DERIVATION IS FALSIFIED and is recorded here rather than
+ * edited away. Measured at stage S2 (run 1, `docs/spikes/V4-ring.md` §3.2): linearity holds for
+ * `runMulti` (per cell 19 → 22 ms, 1.16×) and fails for `runMultiFiltered` (per-cell lattice
+ * Σ 189 → 1,170 ms, 6.2×) — not because of the draw width but because by the ninth villain 40 of
+ * 52 cards are dead, the VPIP-filtered pools exhaust rejection sampling, and each exhaustion burns
+ * the full `RANGE_TRIES = 4,000` before falling back to a random hand (v = 25 fallback rate
+ * 0.029 % → 5.744 %).
+ *
+ * The owner re-derived the budget FROM THE MEASURED COST MODEL, in the same shape as the derivation
+ * it replaces, with the two measured per-kernel coefficients in place of the assumed 9/7:
+ *
+ *     2 × (12 × 1.16 + 101 × 6.2) ≈ 1,280 s        four workers — the derivation's own regime
+ *
+ * Worker count cannot move a number (METHODOLOGY :2798: `workers=1` and `workers=8` agree), so a
+ * larger count is a wall-clock trade and never a way to meet this budget. R2 is otherwise unchanged:
+ * the lattice ships at the full `generate-data` regime (no halving — halving was measured at ≈ 622 s
+ * and would coarsen `se.latt` for nothing), no seed is ever dropped, the halving clause bites
+ * strictly ABOVE this value and never at it, and a measured wall still above it after halving is a
+ * blocker rather than a silent widening.
  */
-export const WALL_BUDGET = 300;
+export const WALL_BUDGET = 1280;
 
 /**
  * The outlier line, in standard errors of the difference. See THE BAND above: 5 sigma is the

@@ -58,7 +58,13 @@ function budgetsFor(raw) {
   return { lite: { ring: cap }, full: { ring: cap } };
 }
 
-const run = (r, budgets) => ringProblems(r.body, r.raw, LIVE, budgets || budgetsFor(r.raw));
+/* `data/model.json`'s shape, for the cross-artifact SEAM clause: the model's N = 7 must sit at or
+   above the ring's N = 8 on every cell. The good fixture's eq[N=8] is 30, 29, 28, so a model N = 7
+   of 40 clears the seam on all three and only the mutation under test can move it. */
+const MODEL_CELLS = Object.fromEntries(KEYS.map((k) => [k, { eq: [70, 60, 55, 50, 46, 43, 40] }]));
+
+const run = (r, budgets, modelCells = MODEL_CELLS) =>
+  ringProblems(r.body, r.raw, LIVE, budgets || budgetsFor(r.raw), modelCells);
 const fires = (r, re, budgets) => {
   const { problems } = run(r, budgets);
   assert.ok(problems.some((p) => re.test(p)),
@@ -76,13 +82,13 @@ test('the good ring passes every clause', () => {
 
 test('(a) a STALE generatorHash is refused', () => {
   const r = goodRing();
-  const { problems } = ringProblems(r.body, r.raw, { generator: 'MOVED', kernel: 'KERN' }, budgetsFor(r.raw));
+  const { problems } = ringProblems(r.body, r.raw, { generator: 'MOVED', kernel: 'KERN' }, budgetsFor(r.raw), MODEL_CELLS);
   assert.ok(problems.some((p) => /STALE: the ring was written by generatorHash/.test(p)));
 });
 
 test('(a) a STALE kernelHash is refused — an edit inside mc.mjs\'s worker slice invalidates the ring', () => {
   const r = goodRing();
-  const { problems } = ringProblems(r.body, r.raw, { generator: 'GEN', kernel: 'MOVED' }, budgetsFor(r.raw));
+  const { problems } = ringProblems(r.body, r.raw, { generator: 'GEN', kernel: 'MOVED' }, budgetsFor(r.raw), MODEL_CELLS);
   assert.ok(problems.some((p) => /STALE: the ring was measured by kernelHash/.test(p)));
 });
 
@@ -182,21 +188,61 @@ test('(d) a payload over its own ceiling is refused', () => {
   fires(r, /over budget/, { lite: { ring: 64 }, full: { ring: 64 } });
 });
 
+// -- (c) the cross-artifact seam -----------------------------------------------------------------
+
+test('(c) a ring whose N=8 sits ABOVE the model\'s N=7 breaks the seam and is refused', () => {
+  /* The check neither artifact can make alone: both files stay internally consistent — the content
+     hash still recomputes, eq[9] <= eq[8] still holds — and the JOIN eqAtSeats makes is wrong. */
+  const r = goodRing();
+  const model = { ...MODEL_CELLS, [KEYS[0]]: { eq: [70, 60, 55, 50, 46, 43, 20] } };
+  const { problems } = run(r, undefined, model);
+  assert.ok(problems.some((p) => /SEAM AA_BIGPAIR\|DS: the ring's N=8 30 sits ABOVE the model's N=7 20/.test(p)),
+    problems.join('\n  '));
+  assert.ok(problems.some((p) => /1 cell\(s\) break the N=7 → N=8 seam/.test(p)));
+});
+
+test('(c) the seam is judged at ZERO tolerance, and reported either way', () => {
+  const r = goodRing();
+  /* exactly equal is allowed; a hundredth of a point above is not — no band, by design */
+  const flat = { ...MODEL_CELLS, [KEYS[0]]: { eq: [70, 60, 55, 50, 46, 43, 30] } };
+  assert.deepEqual(run(r, undefined, flat).problems, [], 'equality is not a rise');
+  const over = { ...MODEL_CELLS, [KEYS[0]]: { eq: [70, 60, 55, 50, 46, 43, 29.99] } };
+  assert.ok(run(r, undefined, over).problems.some((p) => /break the N=7 → N=8 seam/.test(p)));
+  const reading = run(r).readings.find((x) => x.startsWith('seam worst'));
+  assert.ok(reading, 'the seam margin is on the report on a passing run too');
+  /* THE MARGIN IS THE MEASUREMENT, NOT THE INITIALISER. Every margin is negative on a correct ring,
+     so a worst-so-far seeded at 0 would report "0.000" — a number that reads like the tightest cell
+     sits exactly on the line. The fixture's tightest is 40 - 30 = -10 pt at the first key. */
+  assert.match(reading, /^seam worst -10\.000 pt at AA_BIGPAIR\|DS \(must be ≤ 0\)$/, reading);
+});
+
+test('(c) a ring sharing no key with the model cannot be judged, and says so', () => {
+  const problems = run(goodRing(), undefined, {}).problems;
+  assert.ok(problems.some((p) => /not one ring cell has a comparable model cell/.test(p)),
+    'a blank margin is not a passing seam');
+});
+
 // -- (e) the wall --------------------------------------------------------------------------------
 
 test('(e) a wallBudget edited in the artifact is the silent widening R2 names', () => {
-  fires(goodRing((b) => { b.meta.wallBudget = 1200; return b; }),
-    /meta\.wallBudget is 1200, and R2 pre-registers 300/);
+  /* 300 is the ORIGINAL pre-registration, falsified by run 1's measurement and re-derived by the
+     owner to 1,280. Fabricating it back into the artifact is precisely the move the clause exists to
+     refuse: a budget moves in `ring.mjs` (and in the plan above it), never in the file it judges. */
+  const problems = fires(goodRing((b) => { b.meta.wallBudget = 300; return b; }),
+    /meta\.wallBudget is 300, and R2 as amended pre-registers 1280/);
+  const p = problems.find((x) => x.includes('meta.wallBudget'));
+  assert.match(p, /2 × \(12 × 1\.16 \+ 101 × 6\.2\)/, 'the amended derivation, from the measured model');
+  assert.match(p, /falsified and kept as written/, 'the original derivation is recorded, not erased');
 });
 
 test('(e) a measured wall over the budget is refused, with R2\'s remedy and the measured cause', () => {
-  const problems = fires(goodRing((b) => { b.meta.wallSec = 1200; return b; }),
-    /the measured two-seed wall is 1200s against R2's pre-registered 300s/);
+  const problems = fires(goodRing((b) => { b.meta.wallSec = 2000; return b; }),
+    /the measured two-seed wall is 2000s against R2's pre-registered 1280s/);
   const p = problems.find((x) => x.includes('measured two-seed wall'));
   assert.match(p, /halve the LATTICE trials/, 'the remedy R2 states');
   assert.match(p, /never to drop a seed/);
   assert.match(p, /blocker, not a widening/);
-  assert.match(p, /runMultiFiltered \(5\.6x\)/, 'the measured cause, not a guess');
+  assert.match(p, /runMultiFiltered 6\.2x/, 'the measured cause the budget is already built from');
 });
 
 test('(e) an absent wallSec is refused — a gate cannot judge a number that lives only in a log', () => {

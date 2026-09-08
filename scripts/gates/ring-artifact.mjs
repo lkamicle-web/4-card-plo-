@@ -55,17 +55,28 @@
 // evidence.
 //
 // ------------------------------------------------------------------------------------------------
-// (e) IS EXPECTED TO FAIL, AND THAT IS THE FINDING
+// (e) JUDGES A BUDGET THAT WAS RE-DERIVED AFTER ITS FIRST DERIVATION WAS FALSIFIED
 // ------------------------------------------------------------------------------------------------
-// R2 pre-registers 300 s, derived as `2 × 113 × 9/7 ≈ 291` from the shipped pipeline's two
-// NMAX-scaling stages on the assumption that cost scales about linearly in villain count. Measured
-// at stage S2, that assumption is TRUE for the random-villain kernel (7 -> 9 costs 1.16x) and FALSE
-// for the filtered one (5.6x-6.2x), because `runMultiFiltered` rejection-samples the VPIP pool
-// against an increasingly blocked deck: at v = 25 the blocked-pool fallback rate rises from 0.029%
-// at seven villains to 5.744% at nine — a 198-fold increase — and every fallback burns the full
-// `RANGE_TRIES` = 4,000 rejection budget before giving up. The clause asserts the budget anyway, at
-// the pre-registered number, because R2 says a run over budget is a blocker and not a widening. The
-// gate is where that shows up as a number instead of a paragraph.
+// R2 originally pre-registered 300 s, derived as `2 × 113 × 9/7 ≈ 291` from the shipped pipeline's
+// two NMAX-scaling stages on the assumption that cost scales about linearly in villain count.
+// Measured at stage S2 (run 1), that assumption is TRUE for the random-villain kernel (7 -> 9 costs
+// 1.16x) and FALSE for the filtered one (6.2x per cell, 5.9x end to end), because
+// `runMultiFiltered` rejection-samples the VPIP pool against an increasingly blocked deck: at
+// v = 25 the blocked-pool fallback rate rises from 0.029% at seven villains to 5.744% at nine — a
+// 198-fold increase — and every fallback burns the full `RANGE_TRIES` = 4,000 rejection budget
+// before giving up. Run 1 measured 1,213.6 s at four workers, showed R2's halving remedy reaches
+// only ~622 s and eight workers only 660.8 s, and filed the blocker R2 asks for; nothing was
+// widened by any stage. The OWNER then re-derived the pre-registration from the measured cost
+// model, in the same shape as the derivation it replaces (V4-PLAN §2.4 and rule R2, both amended in
+// place with the falsified derivation kept as written):
+//
+//     2 × (12 × 1.16 + 101 × 6.2) ≈ 1,280 s      four workers — the derivation's own regime
+//
+// So this clause asserts `meta.wallBudget` against `ring.mjs`'s `WALL_BUDGET` — a budget edited in
+// the artifact rather than in the code is exactly the silent widening R2 names — and the measured
+// wall against that budget, failing closed on either. Worker count cannot move a number
+// (METHODOLOGY :2798), so re-measuring at eight workers is a wall-clock trade and never a way to
+// pass this clause.
 //
 // WHAT IS NOT THIS GATE'S. `scripts/gates/ring.mjs` (I48-I52) is lane F's file and holds the seat
 // axis's own clauses; the two lanes never share one. The id REGISTRATION — `reserved.mjs`, the
@@ -106,9 +117,11 @@ const K = (b) => `${(b / 1024).toFixed(1)}K`;
  * @param {string} raw its bytes, for the injected-size measurement
  * @param {{generator:string, kernel:string}} live the working tree's hashes
  * @param {object} budgets `{ lite: VARIANTS.lite.budgets, full: ... }`
+ * @param {object} [modelCells] `data/model.json`'s `cells`, for the cross-artifact seam clause;
+ *   omitted, the seam is not judged, which is why `build()` always passes it.
  * @returns {{problems:string[], readings:string[]}}
  */
-export function ringProblems(body, raw, live, budgets) {
+export function ringProblems(body, raw, live, budgets, modelCells) {
   const problems = [];
   const readings = [];
   const p = (s) => problems.push(s);
@@ -230,6 +243,47 @@ export function ringProblems(body, raw, live, budgets) {
       + 'that is not 7, which would mean cells[*].eq had been re-measured — §0.4 forbids exactly that');
   }
 
+  /* (c) THE SEAM, WHICH IS THE CHECK NEITHER ARTIFACT CAN MAKE ALONE. `eqAtSeats` joins
+     `model.json`'s N <= 7 to the ring's N = 8, 9, and nothing INSIDE either file can tell whether
+     the two halves line up: a ring measured against a different pool, a stale kernel, or a column
+     read off by one all leave both files internally consistent and the JOIN wrong. Equity cannot
+     rise with the field size, so the model's N = 7 must sit at or above the ring's N = 8 on every
+     cell, at ZERO tolerance — the same discipline as the eq[9] <= eq[8] clause above, applied
+     across the artifact boundary. Measured worst margin is ~3 sigma of seDiff, so this is not a
+     marginal call. `test/ring.test.mjs` asserts it on the shipped pair as well; the gate is what
+     makes it fail closed on every verify. */
+  if (modelCells && keys.length) {
+    /* -Infinity, NOT 0: every margin is negative on a correct ring, so a zero seed would report
+       "0.000" — a number that reads like the tightest cell sits exactly on the line — instead of
+       the real worst margin. The reading is the evidence that the seam is not marginal, so it has
+       to be the measurement and not the initialiser. */
+    let seamBad = 0, worstSeam = -Infinity, worstAt = '';
+    for (const key of keys) {
+      const c = cells[key];
+      const mc = modelCells[key];
+      if (!mc || !Array.isArray(mc.eq) || mc.eq.length < 7 || !Array.isArray(c.eq) || c.eq.length !== 2) continue;
+      const step = c.eq[0] - mc.eq[6];             // ring N = 8 minus model N = 7
+      if (step > worstSeam) { worstSeam = step; worstAt = key; }
+      if (step > 0) {
+        seamBad++;
+        if (seamBad <= 2) {
+          p(`(c) SEAM ${key}: the ring's N=8 ${c.eq[0]} sits ABOVE the model's N=7 ${mc.eq[6]} — `
+            + 'equity cannot rise with the field size across the join eqAtSeats makes, and neither '
+            + 'file can catch this on its own');
+        }
+      }
+    }
+    if (seamBad) p(`(c) ${seamBad} cell(s) break the N=7 → N=8 seam between the two artifacts`);
+    if (isFinite(worstSeam)) {
+      readings.push(`seam worst ${worstSeam <= 0 ? '' : '+'}${worstSeam.toFixed(3)} pt at ${worstAt} `
+        + '(must be ≤ 0)');
+    } else {
+      /* no cell was comparable at all — the ring and the model share no key, which is a different
+         failure from a seam that rises and is worth saying rather than reporting a blank margin. */
+      p('(c) not one ring cell has a comparable model cell — the seam cannot be judged at all');
+    }
+  }
+
   // -- (d) THE ARTIFACT BUDGET, PINNED FROM ABOVE IN BOTH VARIANTS --------------------------------
   const injected = Buffer.byteLength(injectedForm(raw));
   const bound = ceilingBound(injected, RING_CEILING_FACTOR);
@@ -254,11 +308,12 @@ export function ringProblems(body, raw, live, budgets) {
     }
   }
 
-  // -- (e) THE WALL, AGAINST R2's PRE-REGISTERED 300 s --------------------------------------------
+  // -- (e) THE WALL, AGAINST R2's PRE-REGISTERED 1,280 s ------------------------------------------
   if (meta.wallBudget !== WALL_BUDGET) {
-    p(`(e) meta.wallBudget is ${meta.wallBudget}, and R2 pre-registers ${WALL_BUDGET} s — derived as `
-      + '2 × 113 × 9/7 ≈ 291 rounded up, not chosen. A budget edited in the artifact is the silent '
-      + 'widening R2 names by name');
+    p(`(e) meta.wallBudget is ${meta.wallBudget}, and R2 as amended pre-registers ${WALL_BUDGET} s — `
+      + 'derived as 2 × (12 × 1.16 + 101 × 6.2) from the MEASURED per-kernel cost model, not chosen; '
+      + 'the original 2 × 113 × 9/7 ≈ 291 is falsified and kept as written. A budget edited in the '
+      + 'artifact is the silent widening R2 names by name');
   }
   if (!(typeof meta.wallSec === 'number' && isFinite(meta.wallSec) && meta.wallSec > 0)) {
     p(`(e) meta.wallSec is ${meta.wallSec} — the measured wall is what this clause judges, and it is `
@@ -269,10 +324,10 @@ export function ringProblems(body, raw, live, budgets) {
       p(`(e) the measured two-seed wall is ${meta.wallSec}s against R2's pre-registered `
         + `${meta.wallBudget}s — ${(meta.wallSec / meta.wallBudget).toFixed(1)}x over. R2's remedy is to `
         + 'halve the LATTICE trials for the ring only and never to drop a seed; if that still exceeds '
-        + 'the budget it is a blocker, not a widening. Measured cause: §2.4 derived the budget from '
-        + 'cost scaling linearly in villain count, which holds for runMulti (7→9 costs 1.16x) and '
-        + 'fails for runMultiFiltered (5.6x), whose blocked-pool fallback rate at v=25 rises from '
-        + '0.029% to 5.744% and burns RANGE_TRIES=4000 rejections per fallback');
+        + 'the budget it is a blocker, not a widening. The budget already carries the measured cost '
+        + 'model (runMulti 1.16x, runMultiFiltered 6.2x, whose blocked-pool fallback rate at v=25 '
+        + 'rises from 0.029% to 5.744% and burns RANGE_TRIES=4000 rejections per fallback), so a run '
+        + 'over it is a NEW cost this run has not explained — measure the cause, never the flag');
     }
   }
 
@@ -280,7 +335,7 @@ export function ringProblems(body, raw, live, budgets) {
 }
 
 export function build(ctx) {
-  const { G } = ctx;
+  const { G } = ctx;   // `ctx.model` is read below for the cross-artifact seam clause
   return {
     sections: [
       {
@@ -300,7 +355,7 @@ export function build(ctx) {
           const live = { generator: sourceHash(), kernel: kernelHash() };
           const budgets = {};
           for (const v of VARIANT_NAMES) budgets[v] = VARIANTS[v] && VARIANTS[v].budgets;
-          const { problems, readings } = ringProblems(body, raw, live, budgets);
+          const { problems, readings } = ringProblems(body, raw, live, budgets, ctx.model && ctx.model.cells);
           const detail = `${readings.join(' · ')}`
             + (problems.length ? ` — ${problems.length} problem(s): ${problems.slice(0, 3).join('; ')}` : '')
             + `. The byte-compare itself is \`node ${GENERATOR} --check\`, at the close-out beside the `

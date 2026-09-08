@@ -20,11 +20,14 @@
 // `scripts/gates/ring-artifact.mjs`: the meta matches the code, the content hash recomputes, the
 // recorded per-cell agreement holds on all 123 cells, and the wall fits its budget.
 //
-// WHAT THE TWO SEEDS COST AND WHY NEITHER IS DROPPED. Rule R2 pre-registers 300 s and says that if
-// the measured run exceeds it the executor HALVES THE LATTICE TRIALS FOR THE RING ONLY — se.latt
-// doubles for the N = 8, 9 columns and is recorded in `meta.se` — and never drops a seed. A single
-// seed would make D12(b) a comparison of a measurement with itself, which is the one economy that
-// buys nothing.
+// WHAT THE TWO SEEDS COST AND WHY NEITHER IS DROPPED. Rule R2 pre-registers the ring's wall — 300 s
+// as first written, re-derived by the owner to 1,280 s after run 1 measured the first derivation's
+// cost model false (`ring.mjs`'s WALL_BUDGET carries both derivations) — and says that if the
+// measured run exceeds it the executor HALVES THE LATTICE TRIALS FOR THE RING ONLY — se.latt doubles
+// for the N = 8, 9 columns and is recorded in `meta.se` — and never drops a seed. Run 1 measured
+// that halving cannot reach 300 s (~622 s), so the amended budget ships the lattice at the FULL
+// `generate-data` regime and nothing is coarsened. A single seed would make D12(b) a comparison of a
+// measurement with itself, which is the one economy that buys nothing.
 //
 // USAGE
 //   node scripts/generate-ring.mjs                write data/ring.json
