@@ -14,6 +14,8 @@
  *      × VPIP {25, 55, 85}
  *   5. the slider morph: the retained floor check, then the layout-inclusive
  *      sweep run TWICE, once in each villain-profile state (§ below)
+ *  5b. the table-size toggle (V4-PLAN §2.6) repaints inside the ON-default
+ *      morph budget, and the size actually moved when it says it did
  *   6. a copied link reopens the same spot
  *   7. THE PER-VARIANT MANIFEST, at runtime (§ below)
  *   8. no horizontal page scroll at 1440 / 1360 / 1280 / 1024 / 390
@@ -450,6 +452,56 @@ check(offKey === 'OFF' && morphL.p95 < MORPH_LAYOUT_BUDGET_MS,
   + `(anchor: S-E §3 measured p95 2.7 ms with the profile off; budget = measured + ~48%)`);
 await toggleVP();                                   // back to the state the page ships in
 await page.evaluate(() => window.__rundown.setV(55));
+
+/* 5b — THE TABLE-SIZE TOGGLE (V4-PLAN §2.6). ONE row, and it is deliberately read against the
+   PROFILE-ON budget rather than against a fourth number of its own: a table-size change re-solves
+   every seat on the rail and repaints the grid, which is the same quantity the ON row measures, and
+   giving this page a second ceiling to raise is the thing barrier B1 already refused once.
+   THE THREE ROWS ABOVE ARE UNTOUCHED at 8 / 16 / 4 ms. They are measurements.
+
+   IT ASSERTS THE STATE MOVED, for the reason the ON row does: a control that silently stopped
+   working would otherwise measure six seats twice and report a green row for it. A build that
+   carries no `data/ring.json` CANNOT move — nine seats reaches N_eff past the shipped equity span
+   at the iso node and `policy.rhoAtSeats` fails closed rather than reading the seven-opponent
+   column — so on such a build the 9-max button is disabled with that reason and THIS ROW IS RED,
+   naming it. That is the correct answer: the claim is "toggling the table size repaints inside the
+   budget", and a page that cannot toggle has not demonstrated it. */
+const seatsState = () => page.evaluate(() => (window.__rundown.seatsState ? window.__rundown.seatsState() : null));
+const seats0 = await seatsState();
+if (!seats0) {
+  check(false, 'table-size toggle: the seat axis is absent from this build',
+    'window.__rundown.seatsState is not there — @block:ring did not ship in this artifact');
+} else {
+  const seatRows = await page.evaluate(() => {
+    const out = [];
+    for (let round = 0; round < 8; round++) {
+      for (const n of [9, 6]) {
+        const b = document.getElementById('seats' + n);
+        const t0 = performance.now();
+        if (b) b.click();
+        void document.documentElement.offsetHeight;   // force style + layout, as the sweeps do
+        out.push({ round, n, ms: performance.now() - t0 });
+      }
+    }
+    return out;
+  });
+  /* Through the buttons a user clicks, never by writing S.seats: the control cancels a running
+     measurement, remaps the seat, rebuilds the rail, re-solves and rewrites the hash. */
+  await page.evaluate(() => { const b = document.getElementById('seats9'); if (b) b.click(); });
+  const seats9 = await seatsState();
+  await page.evaluate(() => { const b = document.getElementById('seats6'); if (b) b.click(); });
+  const seatsBack = await seatsState();
+  const st = stats(seatRows.map((r) => r.ms));
+  const moved = seats9.seats === 9 && seats9.rail.length === 9 && seatsBack.seats === 6
+    && seatsBack.rail.length === 6 && seats9.nMax === 9 && seatsBack.nMax === 7;
+  check(moved && st.p95 < MORPH_LAYOUT_ON_BUDGET_MS,
+    `table-size toggle repaint p95 < ${MORPH_LAYOUT_ON_BUDGET_MS} ms (the ON-default morph budget)`,
+    `${line(st)} over ${st.n} toggles in ${seatRows.length / 2} rounds · rail ${seats9.rail.length} seats at 9-max `
+    + `and ${seatsBack.rail.length} back at 6-max · N_eff clamp ${seatsBack.nMax} -> ${seats9.nMax} · `
+    + (moved ? `seat ${seats0.pos} -> ${seats9.pos} -> ${seatsBack.pos}, kept by distance from the button`
+      : `THE TABLE SIZE DID NOT MOVE (${seats9.seats}-max): ${seats9.ring ? 'the control is live but the page stayed put'
+        : seats9.why}`));
+}
 
 /* provenance of the model + policy --------------------------------------- */
 const src = await page.evaluate(() => ({

@@ -11,6 +11,9 @@
  *   F1  a classic Blob worker boots from a file:// page
  *   F2  localStorage is reachable there, via the page's own write-probe design
  *   F3  a hidden tab suspends requestAnimationFrame
+ *   F4  the table-size control (V4-PLAN §2.6) agrees with what this artifact
+ *       carries: live and round-tripping with the ring payload, disabled and
+ *       SAYING SO without it
  *
  * ---------------------------------------------------------------------------
  * WHAT THIS GATE ASSERTS, AND WHAT IT DOES NOT
@@ -195,6 +198,44 @@ async function measure(engineName) {
   /* Past the 400 ms arming window, so this is the real answer and not an early one. */
   await page.waitForTimeout(600);
   out.tourQuiet = await page.evaluate(() => !document.getElementById('tour'));
+
+  /* --- F4 (V4-PLAN §2.6) -------------------------------------------------
+     THE TABLE-SIZE CONTROL, in each engine, on a pristine page — before F1's
+     Simulate run and before F3 stubs rAF and disposes the engine.
+
+     Measured the way F1 and F2 are: the RAW fact beside what the page CLAIMS
+     about it, and the gate is the agreement. The raw fact here is whether this
+     ARTIFACT carries the ring payload — nine seats drives N_eff past the span
+     the Monte Carlo measured (`cells[*].eq` stops at seven opponents) and
+     `policy.rhoAtSeats` fails closed rather than reading the last column, so a
+     build without `data/ring.json` genuinely cannot offer the size. Either
+     answer is safe; a SILENT one is not. With the payload the toggle must work
+     and round-trip; without it the 9-max button must be disabled AND carry the
+     reason, which is the same disclosure rule the whole harness is built on.
+
+     Driven through the buttons rather than through `setSeats`, because engines
+     differ about clicks and about nothing else here. */
+  out.f4raw = await page.evaluate(() => ({
+    payload: !!(window.RING && window.RING.cells) || !!(window.MODEL && window.MODEL.ring && window.MODEL.ring.cells),
+    hasPolicy: !!(window.POLICY && window.POLICY.seatsFor),
+  }));
+  out.f4 = await page.evaluate(() => {
+    const R = window.__rundown;
+    if (!R || !R.seatsState) return { present: false };
+    const btn = (n) => document.getElementById('seats' + n);
+    const b9 = btn(9), b6 = btn(6);
+    const at = () => { const s = R.seatsState(); return { seats: s.seats, rail: s.rail.length, nMax: s.nMax, pos: s.pos }; };
+    const out = { present: !!(b9 && b6), disabled: !!(b9 && b9.disabled), why: R.seatsState().why,
+      rowShown: !!(document.getElementById('seatsrow') && !document.getElementById('seatsrow').hidden),
+      noteShown: !!(document.getElementById('seatsnote') && !document.getElementById('seatsnote').hidden),
+      start: at() };
+    if (b9) b9.click();
+    out.nine = at();
+    if (b6) b6.click();
+    out.back = at();
+    out.hash = String(location.hash);
+    return out;
+  });
 
   /* --- F1 ---------------------------------------------------------------
      RAW: a classic Blob worker, built and round-tripped in the page. The
@@ -483,6 +524,24 @@ for (const engineName of ENGINES) {
     + `does not finish hidden (${!s.completedWhileHidden}), resumes (${s.advanced}), clears the flag (${s.cleared}), `
     + `and the disclosure sentence is on the page (${s.sentenceInPage})${s.err ? ` — ${s.err}` : ''}`);
 
+  /* F4 — the table-size axis */
+  const q = m.f4, raw4 = m.f4raw;
+  const f4ok = !!q && q.present && q.rowShown && (raw4.payload
+    ? (!q.disabled && q.nine.seats === 9 && q.nine.rail === 9 && q.nine.nMax === 9
+      && q.back.seats === 6 && q.back.rail === 6 && q.back.nMax === 7)
+    : (q.disabled && !!q.why && q.noteShown && q.nine.seats === 6));
+  record(engineName, g, 'F4', f4ok,
+    `this artifact ${raw4.payload ? 'CARRIES' : 'does NOT carry'} the ring payload`,
+    q && q.present
+      ? `the control is ${q.disabled ? 'disabled, saying: ' + String(q.why).slice(0, 80) : 'live'}; `
+        + `rail ${q ? q.start.rail : '?'} -> ${q ? q.nine.rail : '?'} -> ${q ? q.back.rail : '?'} seats`
+      : 'the table-size control is not in this artifact',
+    q && q.present ? '' : '@block:ring did not ship');
+  console.log(`${f4ok ? '  ok  ' : ' FAIL '} F4 table size: ring payload ${raw4.payload ? 'present' : 'absent'}`
+    + ` · control ${q && q.present ? (q.disabled ? 'DISABLED with its reason' : 'live') : 'MISSING'}`
+    + (q && q.present ? ` · rail ${q.start.rail} -> ${q.nine.rail} -> ${q.back.rail}, clamp ${q.back.nMax} -> ${q.nine.nMax}` : '')
+    + (f4ok ? '' : ' — a size the page cannot reach must be disabled BY NAME, and one it can reach must round-trip'));
+
   if (engineName === 'webkit') {
     console.log('  ..    SS caveat, printed every run: Playwright\'s WebKit is NOT Safari.app. Same engine '
       + 'family, different product — these verdicts are WebKit\'s, and METHODOLOGY must say so.');
@@ -496,16 +555,17 @@ for (const engineName of ENGINES) {
    job is to make sure the wording cannot outlive the measurement. */
 console.log('  MEASURED VERDICTS — the table METHODOLOGY limitation 15 is rewritten from');
 console.log('  ' + '-'.repeat(96));
-console.log(`  ${'ENGINE'.padEnd(26)}${'GATE'.padEnd(7)}${'F1 worker'.padEnd(22)}${'F2 localStorage'.padEnd(22)}F3 rAF suspension`);
+console.log(`  ${'ENGINE'.padEnd(26)}${'GATE'.padEnd(7)}${'F1 worker'.padEnd(22)}${'F2 localStorage'.padEnd(22)}${'F3 rAF suspension'.padEnd(42)}F4 table size`);
 for (const engineName of ENGINES) {
   const r = rows.filter((x) => x.engine === engineName);
   const f = (name) => r.find((x) => x.fact === name);
   if (!r.length) continue;
-  const f1 = f('F1'), f2 = f('F2'), f3 = f('F3-consequence');
+  const f1 = f('F1'), f2 = f('F2'), f3 = f('F3-consequence'), f4 = f('F4');
   console.log(`  ${engineName.padEnd(26)}${(GATE[engineName] || '—').padEnd(7)}`
     + `${(f1 ? (f1.measured.includes('BOOTS') ? 'boots' : 'refused') : 'not run').padEnd(22)}`
     + `${(f2 ? (f2.measured.includes('REACHABLE') ? 'reachable' : 'refused') : 'not run').padEnd(22)}`
-    + `${f3 ? (f3.ok ? 'consequence green; raw fact unmeasurable' : 'CONSEQUENCE FAILED') : 'not run'}`);
+    + `${(f3 ? (f3.ok ? 'consequence green; raw fact unmeasurable' : 'CONSEQUENCE FAILED') : 'not run').padEnd(42)}`
+    + `${f4 ? (f4.ok ? (f4.measured.includes('does NOT') ? 'disabled by name (no ring)' : 'live, round-trips') : 'FAILED') : 'not run'}`);
 }
 console.log('  ' + '-'.repeat(96));
 console.log('  Every row is one headless run against a throwaway profile. WebKit here is Playwright\'s');
