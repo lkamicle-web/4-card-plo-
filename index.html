@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- GENERATED FILE — do not edit. Built by scripts/build.mjs from:
-       src/shell.html   sha256 2d6326d6b0a2e5af
+       src/shell.html   sha256 1f317b16d18e6166
        data/model.json   1.0.0 · 0b563af107d9d223
        scripts/lib/policy.mjs + scripts/lib/taxonomy.mjs (inlined)
      VARIANT lite — a self-contained offline page: the measured model, the scored grid, and the equilibrium baseline as quantized tiers with none of the strategies they came from.
@@ -113,6 +113,10 @@ svg{display:block}
 .seg button[aria-pressed=true]{color:var(--t1-ink)}
 .seg .thumb{position:absolute;top:2px;height:36px;border-radius:var(--r-pill);background:var(--accent);
   transition:transform var(--dur-base) var(--ease-out),width var(--dur-base) var(--ease-out);z-index:0}
+/* @block:ring — the nine-seat rail. Nine chips at 48px each overflow the topbar's left group, so
+   the ladder gets its own narrower chip. 9-max-ONLY bytes: at six seats the class is never set. */
+.seg-wide button{min-width:36px;padding:0 var(--sp-2);font-size:11px;letter-spacing:.02em}
+/* @end:block */
 .tabs{display:flex;gap:var(--sp-2);align-items:center;height:56px}
 .tabs button{position:relative;height:56px;padding:0 var(--sp-5);color:var(--text-tertiary);white-space:nowrap;
   font:600 13px/16px var(--font-ui);transition:color var(--dur-fast) var(--ease-standard)}
@@ -978,6 +982,21 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
                  standing on it. -->
             <button class="btn btn-sm" id="v1point" type="button">v1 point</button>
           </div>
+          <!-- @block:ring — THE TABLE-SIZE CONTROL (V4-PLAN §2.6). An environment axis beside depth,
+               rake and straddle, because it is one: it moves N_eff, the opening bases and the
+               realization ladder, and it is in `envKey` and in the permalink with them. Two buttons
+               rather than a toggle chip, because `{6, 9}` is a SET and not an on/off — §0.2 keeps a
+               later `{6, 7, 9}` a data change, and a chip would have to be re-drawn for it. No new
+               CSS: `.btn-sm[aria-pressed=true]` is the rake presets' own pressed state.
+               9-max is DISABLED WITH ITS REASON, never hidden, on a build with no ring payload —
+               the same disablement idiom lite's second solved depth uses (§8 item 15). -->
+          <div class="ctlrow2" id="seatsrow" hidden>
+            <span class="t-micro" style="color:var(--text-tertiary)">table</span>
+            <button class="btn btn-sm" id="seats6" type="button" aria-pressed="true">6-max</button>
+            <button class="btn btn-sm" id="seats9" type="button" aria-pressed="false">9-max</button>
+          </div>
+          <div class="ctlnote" id="seatsnote" hidden></div>
+          <!-- @end:block -->
           <div class="ctlnote" id="tablenote"></div>
           </div>
         </section>
@@ -3789,6 +3808,7 @@ gtoD:null,
 filters:{},soloRow:null,soloCol:null,soloBand:null,compare:[],
 mix:(C.vs3bet.mix||[0.6,0.25,0.1,0.05]).map(function(x){return Math.round(x*100);}),
 d:DEPTH.ref,rake:HAS_ENV?RAKE.preset:0,rakeCap:RAKE.capBB,straddle:false,
+seats:6,
 cbPatterns:false,monoSuits:false,rain:8,reduce:false,itab:'verdict',preview:null,
 pres:'score',
 skill:0,
@@ -3796,10 +3816,12 @@ vp:false,q:QDEF==null?0.85:QDEF
 };
 var SRCH={active:false,level:null,row:null,cellKey:null,
 ownedHand:false,canon:''};
-function envKey(){return S.d+'|'+S.rake+'|'+S.rakeCap+'|'+(S.straddle?1:0);}
+var RING=null;
+function envKey(){return S.d+'|'+S.rake+'|'+S.rakeCap+'|'+(S.straddle?1:0)+'|'+S.seats;}
 function stateOf(o){
-var s={pos:S.pos,node:S.node,v:S.v/100,limpers:S.L,raiserPos:S.raiser||defaultRaiser(),
-d:S.d,rakePct:S.rake,rakeCapBB:S.rakeCap,straddle:S.straddle};
+var s=envArg();
+s.pos=S.pos;s.node=S.node;s.v=S.v/100;s.limpers=S.L;
+s.raiserPos=S.raiser||defaultRaiser();s.ring=RING;
 if(o)for(var k in o)if(Object.prototype.hasOwnProperty.call(o,k))s[k]=o[k];
 return s;
 }
@@ -4175,10 +4197,10 @@ try{return fn();}finally{S.vp=vp;S.q=q;syncProfileCells();}
 }
 function vpArg(){return{on:!!(HAS_VP&&S.vp),q:S.q};}
 function solveState(v01,pos,node,L,raiser,mix){
-return POL.solve(emodel(),{pos:pos,node:node,v:v01,limpers:L,raiserPos:raiser,mix:mixW(mix),
-d:S.d,rakePct:S.rake,rakeCapBB:S.rakeCap,straddle:S.straddle});
+return POL.solve(emodel(),stateOf({pos:pos,node:node,v:v01,limpers:L,mix:mixW(mix),
+raiserPos:raiser||defaultRaiser()}));
 }
-function envArg(){return{d:S.d,rakePct:S.rake,rakeCapBB:S.rakeCap,straddle:S.straddle};}
+function envArg(){return{d:S.d,rakePct:S.rake,rakeCapBB:S.rakeCap,straddle:S.straddle,seats:S.seats};}
 if(POL){
 POLICY_SOURCE='injected policy.mjs';
 rhoAt=function(d,N){return POL.rhoAt(d.rho,N);};
@@ -4258,14 +4280,20 @@ return'FOLD';
 }
 function tierShort(t,node){return String(tierLabel(t,node)).replace(/\s*\(.*\)$/,'');}
 var posthumb=$('#posthumb'),posseg=$('#posseg');
-function buildTopbar(){
+function buildPosSeg(){
+posseg.innerHTML='';
+posseg.appendChild(posthumb);
+var m=(POL&&POL.SEAT_DISPLAY)||{};
 POSITIONS.forEach(function(p){
 var b=el('button');
 b.dataset.pos=p;
-b.innerHTML='<span>'+p+'</span><span class="sub" data-w>—</span>';
+b.innerHTML='<span>'+(m[p]||p)+'</span><span class="sub" data-w>—</span>';
 b.onclick=function(){if(b.getAttribute('aria-disabled')==='true')return;setPos(p);};
 posseg.appendChild(b);
 });
+}
+function buildTopbar(){
+buildPosSeg();
 var tabs=$('#facingtabs');
 NODES.forEach(function(n,i){
 var b=el('button',null,n.tabs);
@@ -6917,6 +6945,7 @@ note+=' <b>Straddled:</b> the preflop unit doubles, the straddler joins the fiel
 'range you 3-bet with, and it does not restructure who is allowed to act (BB still cannot open here).';
 }
 $('#tablenote').innerHTML=note;
+syncSeatsCtl();
 }
 function wireTableCtl(){
 if(!HAS_ENV){var s0=$('#tablesec');if(s0)s0.hidden=true;return;}
@@ -6975,6 +7004,7 @@ commitEnv(false);syncVP();
 announce('v1 identity point — '+DEPTH.ref+' big blinds, no rake, no straddle, random villains. Gate I22 '+
 'asserts every score here equals v1\'s, bit for bit.');
 };
+wireSeatsCtl();
 var tk=$('#depthticks');
 det.forEach(function(t){
 var n=el('div','tick',t===DEPTH.ref?'REF':String(t));
@@ -6982,6 +7012,91 @@ n.style.left=((t-DEPTH.min)/(DEPTH.max-DEPTH.min)*100)+'%';
 n.title=t+'bb';
 tk.appendChild(n);
 });
+}
+var RING_WHY='';
+function seatLabel(p){var m=POL&&POL.SEAT_DISPLAY;return(m&&m[p])||p;}
+var HAS_SEATS=!!(POL&&POL.seatsFor&&POL.nMax&&POL.positionDisabled&&POL.behindNonBlind
+&&POL.rhoAtSeats&&C.ladder&&C.ladder.ladder9);
+if(HAS_SEATS){
+var rg=(window.RING&&window.RING.cells)?window.RING
+:(MODEL.ring&&MODEL.ring.cells)?MODEL.ring:null;
+RING=(rg&&rg.meta)?rg:null;
+if(!RING){
+RING_WHY='this build carries no ring payload (data/ring.json): the N_eff 8 and 9 equity '
++'columns nine seats reaches at the iso node are not in it, and reading the seven-opponent '
++'column instead would be a measurement this file does not have.';
+}
+}
+var RKEYED=false;
+function ringKeyOf(d){
+if(!RKEYED){
+RKEYED=true;
+for(var i=0;i<CELLS.length;i++){
+try{Object.defineProperty(CELLS[i].d0,'__rk',{value:CELLS[i].key,configurable:true});}
+catch(e){}
+}
+}
+return d&&d.__rk;
+}
+if(HAS_SEATS){
+rhoAt=function(d,N){return POL.rhoAtSeats(d,N,S.seats,RING,ringKeyOf(d));};
+eqAt=function(d,N){return POL.eqAtSeats(d,N,S.seats,RING,ringKeyOf(d));};
+scoreOf=function(d,pos,N,shift){return POL.scoreCell(d,pos,N,shift,envArg(),RING,ringKeyOf(d)).S;};
+realization=function(pos,N,nu){return POL.realization(pos,N,nu,dEff(),S.seats);};
+posDisabledReason=function(pos,node,seats){
+return POL.positionDisabled(pos,node,seats==null?S.seats:seats)||'';
+};
+legalPos=function(node,seats){
+var L=POL.seatsFor(seats==null?S.seats:seats),o={},i;
+for(i=0;i<L.length;i++)o[L[i]]=posDisabledReason(L[i],node,seats)?0:1;
+return o;
+};
+}
+function applySeats(n){
+S.seats=n===9?9:6;
+POSITIONS=POL.seatsFor(S.seats);
+NP=POSITIONS.length;
+POSITIONS.forEach(function(p){NNB[p]=POL.behindNonBlind(p,S.seats);NBL[p]=POL.blindBehind(p,S.seats);});
+posseg.className=NP>6?'seg seg-wide':'seg';
+}
+function setSeats(n){
+n=n===9?9:6;
+if(!HAS_SEATS||n===S.seats||(n===9&&!RING))return;
+simCancelOnChange('the table size');
+var behind=POSITIONS.length-1-POSITIONS.indexOf(S.pos);
+applySeats(n);
+S.pos=POSITIONS[Math.max(0,NP-1-behind)];
+if(!legalPos(S.node)[S.pos]){
+var i=0;
+while(i<NP&&!legalPos(S.node)[POSITIONS[i]])i++;
+S.pos=POSITIONS[Math.min(i,NP-1)];
+}
+if(S.raiser&&seatsBefore(S.pos).indexOf(S.raiser)<0)S.raiser=null;
+buildPosSeg();
+commitEnv(false);
+announce('Table size '+n+'-max — '+NP+' seats, the clamp on N_eff moves to '
++nEffMax()+', and you are at '+seatLabel(S.pos)+'.');
+}
+function syncSeatsCtl(){
+var row=$('#seatsrow'),note=$('#seatsnote');
+if(!row)return;
+row.hidden=!HAS_SEATS;
+note.hidden=!(HAS_SEATS&&RING_WHY);
+if(!HAS_SEATS)return;
+note.innerHTML=RING_WHY?'<b>9-max unavailable</b> &mdash; '+RING_WHY:'';
+[6,9].forEach(function(n){
+var b=$('#seats'+n),off=n===9&&!RING;
+b.setAttribute('aria-pressed',S.seats===n?'true':'false');
+b.disabled=off;
+b.title=off?RING_WHY:n+'-max — '+POL.seatsFor(n).length+' seats, N_eff clamped at '+POL.nMax(n);
+});
+var tag=$('#tabletag');
+if(tag&&S.seats===9)tag.textContent='9-MAX · '+tag.textContent;
+}
+function wireSeatsCtl(){
+if(!HAS_SEATS)return;
+$('#seats6').onclick=function(){setSeats(6);};
+$('#seats9').onclick=function(){setSeats(9);};
 }
 var SIMTOKEN=0;
 var SIMRUN=null;
@@ -7882,6 +7997,7 @@ if(S.rake!==RAKE.preset)h+='&rake='+S.rake;
 if(S.rakeCap!==RAKE.capBB)h+='&cap='+S.rakeCap;
 if(S.straddle)h+='&str=1';
 }
+if(S.seats!==6)h+='&seats='+S.seats;
 if(HAS_VP){
 if(S.vp!==VP_DEFAULT)h+='&vp='+(S.vp?'1':'0');
 if(S.q!==QDEF)h+='&q='+S.q;
@@ -7904,6 +8020,7 @@ h.split('&').forEach(function(kv){
 var p=kv.split('=');if(p[0])q[p[0]]=decodeURIComponent(p.slice(1).join('=')||'');
 });
 function num(v){if(v==null||v==='')return null;var n=+v;return isFinite(n)?n:null;}
+if(q.seats==='9'&&HAS_SEATS&&RING)applySeats(9);
 if(POSITIONS.indexOf(q.pos)>=0)S.pos=q.pos;
 if(NODEBY[q.facing])S.node=q.facing;
 if(!legalPos(S.node)[S.pos])S.pos=S.node==='rfi'?'UTG':'HJ';
@@ -8385,7 +8502,8 @@ tr.onclick=function(){select(tr.dataset.key);setView('matrix');pulseCell(tr.data
 }
 var MEASURED_CONST={nuBarMeasured:1,coolerBarMeasured:1,nMax:1,mosaicTotal:1,cooler:1,villainLattice:1};
 var SOLVER_CONST={solver:1};
-var UNANCHORED={'rake.potScale':1,'sizing.min':1,'sizing.premiumCalibratedAt':1,'sizing.detents':1,'baselineQuant':1,'skill.blend':1,'skill.playsBetter':1,'skill.min':1,'skill.ref':1,'skill.max':1};
+var UNANCHORED={'rake.potScale':1,'sizing.min':1,'sizing.premiumCalibratedAt':1,'sizing.detents':1,'baselineQuant':1,'skill.blend':1,'skill.playsBetter':1,'skill.min':1,'skill.ref':1,'skill.max':1,
+'ladder.derived':1};
 function constHTML(v,p){
 if(v==null||typeof v!=='object')return String(v);
 if(Array.isArray(v))return v.length?v.map(function(x){return constHTML(x,'');}).join(', '):'—';
@@ -8395,23 +8513,28 @@ return'<span class="cf"><i>'+k+(UNANCHORED[q]?'<span class="tag-m tag-e">estimat
 '</i>'+constHTML(v[k],q)+'</span>';
 }).join('');
 }
-function extrapReach(){
-var fires=0,total=0,max=0,at='';
+function extrapReach(seats){
+seats=seats||S.seats;
+var fires=0,total=0,max=0,at='',by={};
+var LAD=POL&&POL.seatsFor?POL.seatsFor(seats):POSITIONS;
+var clamp9=POL&&POL.nMax?POL.nMax(seats):7;
 var raw0=(POL&&POL.nEff)
 ?function(st){return POL.nEff(st).raw;}
 :function(st){return nEffRaw(st.v,st.pos,st.node,st.limpers);};
 var strs=HAS_ENV?[false,true]:[false];
 for(var ni=0;ni<NODES.length;ni++){
-var node=NODES[ni].key,lp=legalPos(node);
-for(var pi=0;pi<POSITIONS.length;pi++){
-var pos=POSITIONS[pi];
+var node=NODES[ni].key,lp=legalPos(node,seats);
+for(var pi=0;pi<LAD.length;pi++){
+var pos=LAD[pi];
 if(!lp[pos])continue;
 var Ls=node==='limps'?[1,2,3,4]:[2];
+var row=by[pos+'|'+node]=[0,0,0];
 for(var si=0;si<strs.length;si++)for(var li=0;li<Ls.length;li++){
 for(var v=VMIN;v<=VMAX;v++){
-var raw=raw0({pos:pos,node:node,v:v/100,limpers:Ls[li],straddle:strs[si]});
-total++;
-if(raw>nEffMax()+0.0001)fires++;
+var raw=raw0({pos:pos,node:node,v:v/100,limpers:Ls[li],straddle:strs[si],seats:seats});
+total++;row[1]++;
+if(raw>clamp9+0.0001){fires++;row[0]++;}
+if(raw>row[2])row[2]=raw;
 if(raw>max){
 max=raw;
 at=NODEBY[node].label+' / '+pos+' / VPIP '+v+
@@ -8421,7 +8544,7 @@ at=NODEBY[node].label+' / '+pos+' / VPIP '+v+
 }
 }
 }
-return{fires:fires,total:total,max:max,at:at};
+return{fires:fires,total:total,max:max,at:at,by:by,clamp:clamp9};
 }
 function calibHTML(){
 var C0=MODEL.calibration;
@@ -8576,6 +8699,106 @@ DEPTH.ref+'bb · rake 0 · no straddle: the one setting where gate <b>I22</b> as
 'pot is exactly '+(RAKE.capBB/(RAKE.potBB||60)*100).toFixed(0)+'%, so every setting above it is identical. '+
 'The straddle is a transform, not a new measurement — its scope is in Known weaknesses below.</p>';
 }
+if(HAS_SEATS){
+var LD=C.ladder,sf=POL.seatsFor,sizes=[6,9];
+var lrow=function(label,fn){
+return'<tr><td>'+label+'</td>'+sizes.map(function(n){
+return'<td>'+fn(n)+'</td>';
+}).join('')+'</tr>';
+};
+var names=function(n){return sf(n).map(seatLabel).join(' · ');};
+var perSeat=function(n,f){return sf(n).map(f).join(' ');};
+var cx=extrapReach(9),c6=extrapReach(6);
+var dom=function(r){
+var t=0,k;
+for(k in r.by)if(k.slice(k.indexOf('|')+1)!=='3bet')t+=r.by[k][1];
+return t;
+};
+var d9=dom(cx),d6=dom(c6);
+html+='<h3>Table size &mdash; the seat ladder</h3>'+
+'<p>One array, two views. <code>seatsFor(seats)</code> is the whole of the axis and the set is '+
+'<b>{'+(LD.seats||[]).join(', ')+'}</b> &mdash; a set, not an integer: every additional size '+
+'is a fixture, a skill re-measurement and a UI surface of its own, so nothing here builds a '+
+'ladder generator that pretends otherwise. Six is the default and the identity: at six seats '+
+'<code>seatsFor(6)</code> is the very array this page has always used, by reference.</p>'+
+'<table class="tbl"><tr><th></th><th>6-max</th><th>9-max</th></tr>'+
+lrow('ladder',names)+
+lrow('non-blind seats behind',function(n){return perSeat(n,function(p){return POL.behindNonBlind(p,n);});})+
+lrow('blind seats behind',function(n){return perSeat(n,function(p){return POL.blindBehind(p,n);});})+
+lrow('nesting chain at RFI',function(n){return POL.nestChain('rfi',n).map(seatLabel).join(' &rarr; ');})+
+lrow('nesting chain at iso / vs raise',function(n){return POL.nestChain('limps',n).map(seatLabel).join(' &rarr; ');})+
+lrow('structurally illegal (position, node)',function(n){
+var out=[];
+sf(n).forEach(function(p){
+NODES.forEach(function(nd){
+if(POL.positionDisabled(p,nd.key,n))out.push(seatLabel(p)+'&thinsp;&times;&thinsp;'+nd.label);
+});
+});
+return out.join(', ');
+})+
+lrow('legal (position, node) pairs',function(n){
+var k=0;
+sf(n).forEach(function(p){NODES.forEach(function(nd){if(!POL.positionDisabled(p,nd.key,n))k++;});});
+return k+' of '+(sf(n).length*NODES.length);
+})+
+lrow('N_eff clamp',function(n){return POL.nMax(n);})+
+'</table>'+
+'<h4>The early-seat constants, and why they wear a badge</h4>'+
+'<p class="t-sm dim">The six legacy <code>baseRaise</code> and <code>baseR</code> values are '+
+'unchanged, bit for bit. The three seats the ladder gains are <b>derived by a named rule</b> '+
+'rather than typed: <code>baseRaise</code> is <b>'+LD.baseRaiseRule+'</b>, one factor of '+
+'<code>ladder.earlyStep</code> = '+LD.earlyStep+' per seat off the anchor seat, and '+
+'<code>baseR</code> is <b>'+LD.baseRRule+'</b>. The step is not a new number: '+LD.anchor+
+'. There is no nine-handed measurement behind the six values below, which is what the '+
+'<span class="tag-m tag-e">estimate</span> badge on <code>ladder.derived</code> in the '+
+'constants block says, and what <code>ladder.flag</code> names the gate for: '+LD.flag+'</p>'+
+'<table class="tbl"><tr><th>seat</th><th>baseRaise</th><th>baseR</th></tr>'+
+Object.keys(LD.derived.baseRaise).map(function(p){
+return'<tr><td>'+seatLabel(p)+'</td><td>'+LD.derived.baseRaise[p]+'</td><td>'+
+LD.derived.baseR[p]+'</td></tr>';
+}).join('')+'</table>'+
+'<h4>The ring &mdash; where the equity curve stops</h4>'+
+'<p class="t-sm dim">The Monte Carlo measured N = 1&hellip;'+NMAX+' and <code>cells[*].eq</code> '+
+'is byte-identical to what it always was. Nine seats reaches past it, so the N = 8 and 9 columns '+
+'are a <b>separate artifact</b>, read through <code>eqAtSeats</code> and never spliced into the '+
+'shipped arrays. '+
+(RING?'This build carries it: nMax <b>'+RING.meta.nMax+'</b>, '+
+(RING.meta.trials!=null?RING.meta.trials.toLocaleString()+' trials per cell, ':'')+
+(RING.meta.se&&RING.meta.se.cell!=null?'&plusmn;'+RING.meta.se.cell+' pt, ':'')+
+(RING.meta.seeds?[].concat(RING.meta.seeds).length+' seeds, ':'')+
+'generator <code>'+String(RING.meta.generatorHash).slice(0,8)+'</code>, content <code>'+
+String(RING.meta.contentHash).slice(0,8)+'</code>.'
+:'<b>This build does not carry it</b> &mdash; '+RING_WHY+' The 9-max control is '+
+'disabled by name rather than hidden, and the accessor fails closed rather than reading '+
+'the seven-opponent column.')+'</p>'+
+'<h4>Where the clamp bites &mdash; the extrapolated census, per (position, node)</h4>'+
+'<p class="t-sm dim">Swept live over the settings this page can be driven to at each size &mdash; '+
+'four nodes &times; legal seats &times; every integer VPIP &times; one to four limpers at the iso '+
+'node'+(HAS_ENV?' &times; straddle off and on':'')+', depth excluded because N_eff does not '+
+'read it, and vs 3-Bet excluded because N_eff is the constant 2 there. At six seats the clamp is '+
+c6.clamp+' and the badge fires at <b>'+c6.fires+'</b> of '+
+commas(d6)+' ('+(c6.fires/d6*100).toFixed(2)+'%). At nine the clamp <i>moves</i> '+
+'to '+cx.clamp+' rather than lifting, and the clamped share <b>falls</b> to <b>'+cx.fires+'</b> of '+
+commas(d9)+' ('+(cx.fires/d9*100).toFixed(2)+'%) &mdash; worst raw N_eff '+
+f2(cx.max)+' at '+cx.at+'. Every pair that clamps at all, at either size:</p>'+
+'<table class="tbl"><tr><th>seat &times; node</th><th>6-max</th><th>9-max</th><th>worst raw (9-max)</th></tr>'+
+(function(){
+var keys={},k;
+for(k in cx.by)if(cx.by[k][0])keys[k]=1;
+for(k in c6.by)if(c6.by[k][0])keys[k]=1;
+var ks=Object.keys(keys);
+if(!ks.length)return'<tr><td colspan="4">no setting at either size clamps</td></tr>';
+return ks.map(function(kk){
+var a=c6.by[kk],b=cx.by[kk],p=kk.split('|');
+return'<tr><td>'+seatLabel(p[0])+' &times; '+NODEBY[p[1]].label+'</td><td>'+
+(a?a[0]+' / '+a[1]:'&mdash;')+'</td><td>'+
+(b?b[0]+' / '+b[1]:'&mdash;')+'</td><td>'+(b?f2(b[2]):'&mdash;')+'</td></tr>';
+}).join('');
+})()+'</table>'+
+'<p class="t-sm dim">The badge lives on the N_eff readout beside the VPIP slider, for the '+
+'setting you are on. It is deliberately <b>not</b> a per-seat chip on the rail: this table is '+
+'where the reach is counted, and METHODOLOGY limitation 20 is where it is written down.</p>';
+}
 html+='<h3>Constants (rendered from the shipped data)</h3>'+
 '<p class="t-sm dim">Everything the model knows, in one object. <b>Opinion unless tagged</b> — the untagged rows are '+
 'authored constants whose source of truth is <code>policy.mjs</code>; the '+
@@ -8617,10 +8840,10 @@ html+='<h3>The equilibrium baseline &mdash; what <span class="tag-m">vs GTO</spa
 covd.map(function(c){
 return'<tr><td>'+c.pos+'</td><td>'+NODEBY[c.node].label+'</td><td>'+c.what+'</td></tr>';
 }).join('')+'</table>'+
-'<p class="t-sm dim">'+covd.length+' of '+cov2.length+' (position, node) pairs. The other '+
-(cov2.length-covd.length)+' carry the reason <b>&ldquo;'+bb2.notCovered+'&rdquo;</b> in the shipped '+
+'<p class="t-sm dim">'+covd.length+' of '+(POSITIONS.length*NODES.length)+' (position, node) pairs. The other '+
+(POSITIONS.length*NODES.length-covd.length)+' carry the reason <b>&ldquo;'+bb2.notCovered+'&rdquo;</b> in the shipped '+
 'block, and the colour mode reads it from there rather than saying it here: the baseline is heads-up, '+
-'six-max is deferred on the payoff&rsquo;s domain, and the mode disables itself by name at every seat the '+
+'the multiway domain is deferred on the payoff&rsquo;s, and the mode disables itself by name at every seat the '+
 'solve does not reach.</p>'+
 '<p class="t-sm dim">Tiers are quantized to <b>'+bb2.quant+'</b>'+
 (UNANCHORED['baselineQuant']?'<span class="tag-m tag-e">estimate</span>':'')+
@@ -9097,6 +9320,11 @@ setView:setView,runTour:runTour,atV1Point:atV1Point,
 RAIL:RAIL,MODES:MODES,
 railState:function(){return RAILST;},toggleSec:toggleSec,syncRail:syncRail,
 colorMode:function(){return{want:S.colorBy,active:activeMode(),caps:modeCaps()};},
+setSeats:setSeats,
+seatsState:function(){
+return{seats:S.seats,has:HAS_SEATS,ring:!!RING,why:RING_WHY,nMax:nEffMax(),
+rail:POSITIONS.slice(),pos:S.pos};
+},
 gtoState:function(){
 if(!BASE)return null;
 var a=BASE.at(S.pos,S.node,S.raiser||defaultRaiser());
