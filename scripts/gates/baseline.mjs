@@ -33,7 +33,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 
-import { TIER_RANK, solve } from '../lib/policy.mjs';
+import { TIER_RANK, solve, POSITIONS } from '../lib/policy.mjs';
 import { SIXMAX } from '../lib/cfr.mjs';
 import {
   ARTIFACT, NOT_HU_REASON, BASELINE_QUANT, domainLabelFor,
@@ -244,7 +244,7 @@ export function build(ctx) {
       }
     }
     /* ARMED: six seats must not read "GTO". */
-    const dArmed = domainLabelFor(['UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB']) === 'self-play fixed point'
+    const dArmed = domainLabelFor(POSITIONS) === 'self-play fixed point'
       && domainLabelFor(['SB', 'BB']) === 'GTO';
     if (!dArmed) bad.push('(d) the domain-label derivation is not armed: a six-seat surface does not read as a self-play fixed point');
 
@@ -350,7 +350,7 @@ export function build(ctx) {
       + `named reason "${NOT_HU_REASON}" as a SHIPPED DATUM — the page renders it, it does not `
       + `supply it. §5.7's split is a DERIVATION here rather than a string: ${nest.seats.length} `
       + `seats solved -> label ${JSON.stringify(block.domainLabel)}, and a six-seat surface would `
-      + `read ${JSON.stringify(domainLabelFor(['UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB']))} instead — so `
+      + `read ${JSON.stringify(domainLabelFor(POSITIONS))} instead — so `
       + `no multiway surface can be labelled "GTO" by omission, and none exists to be, because `
       + `nothing multiway was solved. `
       + `(e) baselineQuant ${block.quant}${block.quant === BASELINE_QUANT ? '' : ' (NOT the module default)'} `

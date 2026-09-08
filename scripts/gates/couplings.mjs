@@ -631,7 +631,7 @@ export function build(ctx) {
             }
           }
           if (node === '3bet') continue;
-          const chain = node === 'rfi' ? ['UTG', 'HJ', 'CO', 'BTN'] : ['HJ', 'CO', 'BTN'];
+          const chain = P.nestChain(node, 6);
           for (const vp of VPIP_GRID) {
             const inRange = (e) => e.tier === 'T1' || e.tier === 'T2' || (e.tier === 'T4' && (e.wouldBe === 'T1' || e.wouldBe === 'T2'));
             const sets = chain.map((pos) => {

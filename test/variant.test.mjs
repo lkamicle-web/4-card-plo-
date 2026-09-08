@@ -252,8 +252,20 @@ test('lite carries the METHODOLOGY §9.11 budgets, and full\'s are D9\'s — set
      ceiling is the defect the P3 red team caught in the manifest string (docs/refutations/P5.md,
      refuter 2). Either reading is far under the +5% the rule would allow (413 KB). `appCore` is NOT raised AND DID NOT MOVE — 358.3 KB before the section and 358.3 KB
      after it — which is the whole evidence that the raise bought this feature and nothing else. */
+  /* AND `modelCode` 54 -> 56 KB AT v4 S1, for the seat-ladder generalisation of policy.mjs
+     (V4-PLAN §2.1-2.4). The fourth raise, and the first this plan predicted would NOT be needed:
+     §2.7 said "shrink-first (the tables and both offenders go)" would pay for the additions, and
+     measured, it does not — deleting N_NB / N_BL / NEST_CHAIN, both seat-name offenders and the
+     old two-literal positionDisabled returned 470 B against 3,364 B added, +2,894 B net, itself
+     after 414 B of trimming. Measured 56,270 B = 55.0 KB; 56 KB is measured + 1.9%, tighter than
+     the +3.6% P4 held this same ceiling at and far inside the +8% margin this gate is calibrated
+     with (which would allow 58 KB). `appCore` is NOT raised and the reading moved 359.3 -> 359.5 KB:
+     the shell's duplicate POSITIONS / NNB / NBL / legalPos tables went, and the structural
+     functions that replaced them plus `nEffMax()` cost 209 B more than they returned. The full
+     variant's `modelCode` moves with it because the two artifacts inline the SAME module. The
+     byte-by-byte shrink-first record is in variant.mjs's own budgetSource, in the D6 idiom. */
   assert.deepEqual(VARIANTS.lite.budgets,
-    { total: 600 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024,
+    { total: 600 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 56 * 1024,
       blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024 } });
   assert.ok(VARIANTS.lite.budgets.app > VARIANTS.lite.budgets.appCore,
     'the raise is a raise: app must exceed the pre-raise ceiling core is still held to');

@@ -420,6 +420,7 @@ export function build(ctx) {
       solver: model.constants && model.constants.solver ? b(model.constants.solver) : 0,
       skill: model.constants && model.constants.skill ? b(model.constants.skill) : 0,
       evCut: model.constants && model.constants.evCut ? b(model.constants.evCut) : 0,
+      ladder: model.constants && model.constants.ladder ? b(model.constants.ladder) : 0,
       calibration: model.calibration ? b(model.calibration) : 0,
       total: b(model),
     };
@@ -581,16 +582,30 @@ export function build(ctx) {
     //                  is exactly what this gate's own rule forbids — a block gets its own reserved
     //                  sub-budget so that its bytes cannot be spent by anything else, and so that
     //                  nothing else's bytes can be spent by it.
+    //   meta  19 -> 20K   and total 145 -> 146K, RESERVED NOT GRANTED for the SIXTH time and by the
+    //   ladder 1K (new)   same rule, at v4 S1 for `constants.ladder` (V4-PLAN §2.1-2.3): the nine-seat
+    //                     ladder, the early-seat rule and its derived values. Measured 520 B, cap 1K.
+    //                     V4-PLAN §2.7 PREDICTED NO EDIT HERE — "the ladder constants land in the
+    //                     existing headroom, and BUD, BUD.total, CORE_BUDGET and core need no edit" —
+    //                     and that prediction is FALSIFIED, recorded rather than patched away: the
+    //                     block plus `straddle.seatDerivedFrom` is 557 B against 315 B of metaCore
+    //                     headroom, so `metaCore` measured 13,557 B of 13,312 B. Every field it
+    //                     carries is one §4's constants table requires, and the block is 287 B with
+    //                     BOTH prose fields emptied, so it cannot be squeezed under the old ceiling
+    //                     without deleting a documented constant. Raised by EXACTLY the sub-budget:
+    //                     `core` still faces the original 120K and `metaCore` the original 13K, so
+    //                     no pre-existing block gains one byte and none of its bytes can be spent by
+    //                     anything else — which is what the two core readings below prove.
     const BUD = {
-      cells: 65 * 1024, meta: 19 * 1024, order: 43 * 1024,
-      baseline: 12 * 1024, solver: 3 * 1024, skill: 1 * 1024, evCut: 2 * 1024,
-      calibration: 7 * 1024, total: 145 * 1024,
+      cells: 65 * 1024, meta: 20 * 1024, order: 43 * 1024,
+      baseline: 12 * 1024, solver: 3 * 1024, skill: 1 * 1024, evCut: 2 * 1024, ladder: 1 * 1024,
+      calibration: 7 * 1024, total: 146 * 1024,
     };
     // the pre-raise 120K and 13K, still binding — every reserved block subtracted, none of them granted
-    const CORE_BUDGET = BUD.total - BUD.baseline - BUD.solver - BUD.skill - BUD.evCut - BUD.calibration;
-    const META_CORE_BUDGET = BUD.meta - BUD.solver - BUD.skill - BUD.evCut;
-    const core = sizes.total - sizes.baseline - sizes.solver - sizes.skill - sizes.evCut - sizes.calibration;
-    const metaCore = sizes.meta - sizes.solver - sizes.skill - sizes.evCut;
+    const CORE_BUDGET = BUD.total - BUD.baseline - BUD.solver - BUD.skill - BUD.evCut - BUD.ladder - BUD.calibration;
+    const META_CORE_BUDGET = BUD.meta - BUD.solver - BUD.skill - BUD.evCut - BUD.ladder;
+    const core = sizes.total - sizes.baseline - sizes.solver - sizes.skill - sizes.evCut - sizes.ladder - sizes.calibration;
+    const metaCore = sizes.meta - sizes.solver - sizes.skill - sizes.evCut - sizes.ladder;
     /* THE PAGE'S CEILINGS, FROM ABOVE — the clause the P5 red team wrote down (see the header
        above `CEILING_MARGINS`). Everything before this line asserts that a payload is UNDER its
        ceiling; this asserts that the page's ceilings are not ABOVE the margins the documents claim
@@ -600,6 +615,7 @@ export function build(ctx) {
     const ok = sizes.cells <= BUD.cells && sizes.meta <= BUD.meta
       && sizes.order <= BUD.order && sizes.baseline <= BUD.baseline
       && sizes.solver <= BUD.solver && sizes.skill <= BUD.skill && sizes.evCut <= BUD.evCut
+      && sizes.ladder <= BUD.ladder
       && sizes.calibration <= BUD.calibration
       && metaCore <= META_CORE_BUDGET
       && core <= CORE_BUDGET && sizes.total <= BUD.total
@@ -613,11 +629,13 @@ export function build(ctx) {
       `solver constants ${(sizes.solver / 1024).toFixed(1)}K/${BUD.solver / 1024}K · ` +
       `skill axis ${(sizes.skill / 1024).toFixed(1)}K/${BUD.skill / 1024}K · ` +
       `EV band ${(sizes.evCut / 1024).toFixed(1)}K/${BUD.evCut / 1024}K · ` +
+      `seat ladder ${(sizes.ladder / 1024).toFixed(1)}K/${BUD.ladder / 1024}K · ` +
       `calibration ${(sizes.calibration / 1024).toFixed(1)}K/${BUD.calibration / 1024}K · ` +
       `total ${(sizes.total / 1024).toFixed(1)}K/${BUD.total / 1024}K ` +
       `(of which core ${(core / 1024).toFixed(1)}K/${CORE_BUDGET / 1024}K — the baseline block's ` +
       `${BUD.baseline / 1024}K, the solver block's ${BUD.solver / 1024}K, the skill block's ` +
-      `${BUD.skill / 1024}K, the EV band's ${BUD.evCut / 1024}K and the calibration verdict's ` +
+      `${BUD.skill / 1024}K, the EV band's ${BUD.evCut / 1024}K, the seat ladder's ` +
+      `${BUD.ladder / 1024}K and the calibration verdict's ` +
       `${BUD.calibration / 1024}K are reserved for them ` +
       `and grant no other block headroom, which is what the two core readings prove; ` +
       `pretty-printed ${(Buffer.byteLength(JSON.stringify(model, null, 1)) / 1024).toFixed(1)}K). ` +

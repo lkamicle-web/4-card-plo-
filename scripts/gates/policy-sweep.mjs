@@ -34,7 +34,7 @@ export function build(ctx) {
     // I6 positional nesting
     const bad = [];
     for (const node of ['rfi', 'limps', 'raise']) {
-      const chain = node === 'rfi' ? ['UTG', 'HJ', 'CO', 'BTN'] : ['HJ', 'CO', 'BTN'];
+      const chain = P.nestChain(node, 6);
       for (const vp of VPIP_GRID) {
         // membership = "in the aggressive range", which a near-boundary cell expresses as T4/MIX
         // over an underlying aggressive tier
