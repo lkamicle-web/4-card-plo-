@@ -62,7 +62,7 @@ import {
 } from './cfr.mjs';
 import { RESULT_KEYS } from './payoff.mjs';
 import { ARTIFACT as MATRIX_ARTIFACT, BOARDS, SEEDS } from './checkdown-matrix.mjs';
-import { POSITIONS, NODES } from './policy.mjs';
+import { NODES, nestChain, seatsFor } from './policy.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -487,14 +487,27 @@ export function tierOfRow(steps, tierOf, actions) {
 }
 
 /**
- * The full (pos, node) coverage table — all `POSITIONS × NODES`, every row saying whether the
+ * The full (pos, node) coverage table — all `seatsFor(seats) × NODES`, every row saying whether the
  * baseline answers it and, when it does not, WHY in the words §3.3 fixes.
  *
  * Built over the page's own vocabulary rather than over the solver's, so a node the page gains
  * later shows up here as uncovered rather than as absent. That is the difference between a map and
  * a list of what happened to be solved.
+ *
+ * THE TABLE SIZE IS A PARAMETER AND SIX IS INERT (V4-PLAN §2.6, §0.4). `coverageMap()` returns the
+ * same 24 rows in the same order it always has — the shipped payload and the shared-core block call
+ * it with no argument, so `data/equilibrium.json` and `model.baselineTiers.coverage` do not move a
+ * byte. `coverageMap(9)` is the SAME machinery over the nine-seat ladder: 36 rows, the same three
+ * covered by the solved HU tree (`SB|rfi`, `BB|raise`, `SB|3bet` — none of them a seat the ladder
+ * adds), and **33 uncovered, each carrying the same shipped `NOT_HU_REASON`**. That 33 is I36(d)'s
+ * datum re-read at nine seats: the denominator is ALL pos × node, not the legal subset, so it is 3
+ * of 36 and 33 — never 30, which is what counting only the legal pairs would give.
+ *
+ * The 12 rows nine seats adds are new to the COVERAGE table for the same reason they were always
+ * going to be: the baseline is heads-up, so no seat the ladder adds could be covered by it. §0.2
+ * decided that — no multiway baseline this run — and this function is where the decision is data.
  */
-export function coverageMap() {
+export function coverageMap(seats = 6) {
   /* A PROTOTYPE-LESS PLAIN OBJECT, not a Map, and the reason is I33 clause (g) — which flagged the
      Map this used to be, correctly. (g)'s detector looks for a cache being consulted (`new Map(`,
      `.get(`, `.has(`) with a KEY BEING BUILT beside it, because that is the shape of a payoff memo
@@ -505,7 +518,7 @@ export function coverageMap() {
   const covered = Object.create(null);
   for (const h of HU_NODES) covered[h.pos + '|' + h.node] = h;
   const out = [];
-  for (const pos of POSITIONS) {
+  for (const pos of seatsFor(seats)) {
     for (const node of NODES) {
       const h = covered[pos + '|' + node];
       out.push(h
@@ -696,7 +709,8 @@ export function anchorProblems(block) {
  *
  * §7.2 predicts "nesting fails at some seat pair" and calls the prediction expected-falsified. It is
  * NOT TESTABLE this milestone, and the reason is the one V3-PLAN §3.3's Adjudicated block froze in
- * `cfr.mjs`'s `SIXMAX.reopenVerdict` after evaluating the re-opening rule by measurement: the
+ * `cfr.mjs`'s `MULTIWAY_DEFERRAL.reopenVerdict` (named `SIXMAX` until v4 S2) after evaluating
+ * the re-opening rule by measurement: the
  * solved tree has exactly two seats, so there is no UTG/HJ/CO/BTN nesting for an equilibrium to
  * exhibit or to violate. The I15 precedent — a clause scoped to what was measured, never toleranced
  * into a pass.
@@ -707,7 +721,15 @@ export function anchorProblems(block) {
  */
 export function nestingReadiness(block) {
   const seats = [...new Set((block.coverage || []).filter((r) => r.covered).map((r) => r.pos))].sort();
-  const chain = ['UTG', 'HJ', 'CO', 'BTN'];
+  /* SIX-SEAT-SCOPED ON PURPOSE, and it stays that way at v4 (V4-PLAN §5.1's I36 row). The literal
+     `['UTG','HJ','CO','BTN']` is gone — it was one of the five re-typed NEST_CHAIN copies §2.1
+     deletes — but what replaces it is the SIX-seat chain, not `nestChain('rfi', seats)`. I36(b)'s
+     armed clause is "fails the day a payload covers two seats of the UTG/HJ/CO/BTN chain", and
+     generalising the chain here would silently change what that sentence means: at nine seats the
+     rfi chain is seven seats long, so a payload covering two of THOSE would be a different claim
+     from the one the clause was armed on. The baseline is heads-up at every table size (§0.2), so
+     the six-seat chain is the whole of what this readiness check has ever had to watch. */
+  const chain = nestChain('rfi', 6);
   const present = chain.filter((p) => seats.includes(p));
   return {
     seats,
@@ -1142,10 +1164,10 @@ export function buildEquilibrium({ model, payoff, matrixMeta = {}, iters = ITER_
     notes: {
       domain: 'heads-up. The solved tree has exactly two seats, SB (on the button) and BB. '
         + `Every other (pos, node) the page can render carries the named reason "${NOT_HU_REASON}" `
-        + 'in `coverage` — see V3-PLAN §3.3\'s adjudication 8 and cfr.mjs\'s SIXMAX record.',
+        + 'in `coverage` — see V3-PLAN §3.3\'s adjudication 8 and cfr.mjs\'s MULTIWAY_DEFERRAL record.',
       multiway: 'NONE. No multiway claim is made and no "self-play fixed point" surface exists, '
         + 'because nothing multiway was solved: the re-opening rule\'s leg (ii) fails at HEAD (no '
-        + 'measured k-way sampler exists) and cfr.mjs\'s SIXMAX.reopenVerdict records it.',
+        + 'measured k-way sampler exists) and cfr.mjs\'s MULTIWAY_DEFERRAL.reopenVerdict records it.',
       label: 'HU is labelled "GTO" — DERIVED from the seat count in `domain`, not typed here '
         + '(V3-PLAN §3.3, brief §5.7) — and, because the payoff `source` is '
         + '\'checkdown\', it is labelled "a game where postflop does not exist" at the same time. '

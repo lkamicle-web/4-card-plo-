@@ -66,9 +66,11 @@
 // exactly 0. Under a position-aware source it will not be, and the number is then a finding about
 // the payoff rather than a silent asymmetry the solver launders into a fixed point.
 //
-// SIX-MAX IS DEFERRED, AND THE DEFERRAL IS GATED BY ITS OWN EVIDENCE. S-A greenlit 6-max MCCFR on
-// the budget criterion by a factor of 5,400, so budget is NOT the reason it is absent here. The
-// reason is the payoff domain, and it is measured, not argued: see `SIXMAX` and `multiwayProbe`.
+// THE MULTIWAY SOLVER IS DEFERRED, AND THE DEFERRAL IS GATED BY ITS OWN EVIDENCE. S-A greenlit
+// multiway MCCFR on the budget criterion by a factor of 5,400, so budget is NOT the reason it is
+// absent here. The reason is the payoff domain, and it is measured, not argued: see
+// `MULTIWAY_DEFERRAL` and `multiwayProbe`. The reason is a property of the PAYOFF and not of the
+// table size, so it reads the same at nine seats as at six (V4-PLAN §0.2, §6).
 //
 // NODE-SIDE ONLY. Unlike payoff.mjs this module is not inlined into the page: P3 ships the solved
 // surface as `data/equilibrium.json` (full build only, gate D9), not the solver. So there is no
@@ -333,6 +335,13 @@ export const CAPS = Object.freeze({
     'no sixth raise — the cap closes the betting',
     'no postflop — every showdown is a checkdown of the preflop pot',
     'no card removal between the two players — chance is the product of marginals',
+    /* STILL SAYS `SIXMAX`, DELIBERATELY, AND IT IS FILED RATHER THAN LEFT (v4 S2, lane K). This
+       string is not prose: it SHIPS. It is copied verbatim into data/equilibrium.json's `caps`, into
+       data/model.json's `baselineTiers.caps` and into both built pages, and I35 clause (e) audits
+       the on-screen list against this array — so editing it here without regenerating those four
+       artifacts in the same step turns I35 red. Regeneration is a ceremony (S3) and data/model.json
+       is S3's/S5's file, not this lane's, so the rename stops at the code boundary and the shipped
+       sentence is repaired where the artifacts are rewritten. docs/spikes/V4-skill.md files it. */
     'no seats beyond the blinds — six-max is deferred, see SIXMAX',
   ]),
 });
@@ -868,45 +877,55 @@ function frequencies(avg, q, K) {
 }
 
 // ---------------------------------------------------------------------------
-// six-max: deferred, with the measurement that defers it
+// the multiway solver: deferred, with the measurement that defers it
 // ---------------------------------------------------------------------------
 
 /**
- * The 6-max deferral record.
+ * THE MULTIWAY-SOLVER DEFERRAL RECORD — renamed from `SIXMAX` at v4 S2, table-size-neutral.
  *
- * V3-PLAN §3.3 greenlights 6-max MCCFR on ONE criterion — S-A landing inside half its wall-time
- * budget — and S-A cleared it by 5,400x. So budget is not why this module has no 6-max solver, and
- * saying "deferred" without saying why would inherit a decision instead of making one.
+ * THE RENAME IS A RENAME, NOT A RE-OPENING (V4-PLAN §0.2, §6). Every leg of the evidence below is
+ * untouched and I35(d) re-checks it every run. What the old name got wrong is that it made a
+ * property of the PAYOFF sound like a property of a table size: the deferral is "no measured k-way
+ * sampler exists", which is true of three-handed play and of nine-handed play exactly as it is of
+ * six-handed play. With the seat axis shipping at v4, a record called `SIXMAX` would read as though
+ * nine seats were a different question. It is the same question, and the answer is the same.
+ *
+ * V3-PLAN §3.3 greenlights multiway MCCFR on ONE criterion — S-A landing inside half its wall-time
+ * budget — and S-A cleared it by 5,400x. So budget is not why this module has no multiway solver,
+ * and saying "deferred" without saying why would inherit a decision instead of making one.
  *
  * The reason is the payoff's DOMAIN, and it is measured rather than argued (`multiwayProbe`):
  *
  *   1. every multiway request comes back `supported:false` — the accessor's multiway door is a
  *      flagged fallback, not an answer;
- *   2. the shares of a six-handed pot do NOT sum to 1 (measured 1.233 on the shipped model), so the
- *      "game" is not constant-sum and a fixed point of it is a fixed point of something that is not
- *      the game;
+ *   2. the shares of a multiway pot do NOT sum to 1 (measured 1.233 on the shipped model, at
+ *      `multiwayProbe`'s own six-handed tuple size — the measurement keeps its seat count because a
+ *      measurement is not a claim), so the "game" is not constant-sum and a fixed point of it is a
+ *      fixed point of something that is not the game;
  *   3. hero's share is BIT-IDENTICAL across disjoint opponent sets — the multiway door reads hero's
  *      equity against RANDOM opponents, so no opponent's private cell enters any payoff. Every
  *      player's showdown value is independent of everybody else's hand.
  *
  * (3) is the one that settles it: MCCFR on payoffs that ignore the opponents' cards would converge,
- * quickly and correctly, to the equilibrium of a game in which the other five players' hands do not
- * exist. That is not a weaker baseline, it is a different question.
+ * quickly and correctly, to the equilibrium of a game in which the other players' hands do not
+ * exist. That is not a weaker baseline, it is a different question — and it is the same different
+ * question however many seats are dealt in.
  *
  * GATED, NOT PROSE. I35 re-measures all three every run and FAILS if any of them stops being true —
  * so the day a payoff source makes multiway supported and constant-sum, this deferral is forced
  * back open instead of quietly outliving its reason. The §5.7 labeling is unchanged and the
  * "the baseline is HU" caveat is P3's to ship on-screen.
  */
-export const SIXMAX = Object.freeze({
+export const MULTIWAY_DEFERRAL = Object.freeze({
   status: 'deferred',
   budgetCriterion: 'met — S-A landed at 11 ms against the 60,000 ms half-budget, inside by 5,400x',
   reason: 'the payoff accessor has no supported multiway domain: every multiway request is '
-    + 'supported:false, the six shares do not sum to 1, and hero\'s share does not depend on any '
-    + "opponent's cell. A fixed point of that is not a fixed point of six-max PLO.",
-  claimScope: 'fixed-point-only — if a 6-max solver is ever added here, nothing it produces may be '
-    + 'labelled GTO or equilibrium; §5.7 says HU is "GTO" and anything multiway is "self-play fixed '
-    + 'point", and I35 keeps that scope.',
+    + 'supported:false, the shares of a multiway pot do not sum to 1, and hero\'s share does not '
+    + "depend on any opponent's cell. A fixed point of that is not a fixed point of multiway PLO, "
+    + 'at six seats or at nine.',
+  claimScope: 'fixed-point-only — if a multiway solver is ever added here, nothing it produces may '
+    + 'be labelled GTO or equilibrium; §5.7 says HU is "GTO" and anything multiway is "self-play '
+    + 'fixed point", and I35 keeps that scope.',
   revisitWhen: 'a payoff source answers multiway requests with supported:true and constant-sum '
     + 'shares that depend on the opponents\' cells. I35 measures all three every run.',
 
@@ -914,7 +933,7 @@ export const SIXMAX = Object.freeze({
    * THE RE-OPENING RULE, evaluated ONCE by measurement at P3's B2 pre-stage and frozen here.
    *
    * V3-PLAN §14 item 5 resolved "IN" at phase 0 on a WALL-TIME criterion; §3.3's `Adjudicated
-   * (P3 launch)` block overrides that with the payoff DOMAIN and states the rule: 6-max may be
+   * (P3 launch)` block overrides that with the payoff DOMAIN and states the rule: a multiway solve may be
    * attempted only if ALL FOUR legs hold. This is that evaluation, recorded rather than repeated —
    * a rule re-litigated every phase is a rule nobody decided. Leg (ii) is the one that fails, it
    * fails structurally rather than narrowly, and building the k-way sampler that would satisfy it
@@ -961,13 +980,13 @@ export const SIXMAX = Object.freeze({
     Object.freeze({
       leg: 'iv',
       claim: 'inside the pipeline budget and D9',
-      verdict: 'HOLDS for the pairwise matrix; NOT EVALUABLE for 6-max',
+      verdict: 'HOLDS for the pairwise matrix; NOT EVALUABLE for a multiway solve',
       measured: 'METHODOLOGY states the pipeline budget as "6 minutes" hard against 188 s measured '
         + 'on a 4-core box (V3-PLAN §3.2 quotes the same budget as 688 cpu-s; METHODOLOGY is the '
         + 'living source of truth and its own words are quoted here). The two shipped matrices are '
         + 'a generated, committed artifact (data/checkdown-matrix.json, ~307 KB) built OUTSIDE that '
         + 'pipeline in ~21 s wall with the two seeds in parallel, and read back in milliseconds, so '
-        + 'they cost the pipeline nothing per run. A 6-max sampler\'s cost is unmeasured '
+        + 'they cost the pipeline nothing per run. A multiway sampler\'s cost is unmeasured '
         + 'because none exists, and D9 is not set at all — V3-PLAN §5.3 keeps full\'s budgets null '
         + 'until a real data/equilibrium.json exists — so this leg cannot be cleared in the '
         + 'direction that matters either.',
@@ -975,7 +994,7 @@ export const SIXMAX = Object.freeze({
   ]),
 
   /** the rule's own verdict: one failed leg is enough, and leg (ii) fails structurally */
-  reopenVerdict: 'UPHELD — leg (ii) fails, so SIXMAX and I35(d) stand. I36\'s positional-nesting '
+  reopenVerdict: 'UPHELD — leg (ii) fails, so MULTIWAY_DEFERRAL and I35(d) stand. I36\'s positional-nesting '
     + 'clause (UTG within HJ within CO within BTN) is NOT MEASURABLE in the HU domain: the solved '
     + 'tree has exactly two seats, SB and BB, so there is no UTG/HJ/CO/BTN nesting for an '
     + 'equilibrium to exhibit or to violate — scoped to the measurement (the I15 precedent), never '
@@ -983,7 +1002,7 @@ export const SIXMAX = Object.freeze({
 });
 
 /**
- * The evidence behind `SIXMAX`, measured live against whatever the accessor currently serves.
+ * The evidence behind `MULTIWAY_DEFERRAL`, measured live against whatever the accessor serves.
  *
  * Deterministic by construction — the tuples are strided across the live list rather than drawn at
  * random — so the gate's detail line is reproducible and a change in the number is a change in the
@@ -1019,9 +1038,10 @@ export function multiwayProbe(payoffFn, live, { seats = 6, tuples = 24 } = {}) {
 }
 
 /**
- * Is the 6-max deferral still justified by the payoff it was deferred over?
+ * Is the multiway-solver deferral still justified by the payoff it was deferred over?
  *
- * This is the teeth in `SIXMAX`. A deferral recorded as prose outlives its reason silently; this
+ * This is the teeth in `MULTIWAY_DEFERRAL`. A deferral recorded as prose outlives its reason
+ * silently; this
  * one is re-derived every run from a live measurement, and it FAILS when the reason stops holding.
  * All three facts must be true for the deferral to stand:
  *
@@ -1029,14 +1049,15 @@ export function multiwayProbe(payoffFn, live, { seats = 6, tuples = 24 } = {}) {
  *   - the seats' shares do not sum to 1 (so there is no zero-sum game to solve);
  *   - hero's share does not depend on the opponents' cells (so no opponent's hand is in any payoff).
  *
- * `hasSolver` is the other half of the same claim: if a 6-max solver IS present, the deferral is
+ * `hasSolver` is the other half of the same claim: if a multiway solver IS present, the deferral is
  * over and the caller must be making fixed-point-only claims instead. The two are reported
  * separately so the gate's message says which situation it is in.
  */
-export function sixmaxDeferralProblems(probe, hasSolver) {
+export function multiwayDeferralProblems(probe, hasSolver) {
   const out = [];
   if (hasSolver) {
-    out.push('a 6-max solver is present while SIXMAX still records the deferral — either the record '
+    out.push('a multiway solver is present while MULTIWAY_DEFERRAL still records the deferral — '
+      + 'either the record '
       + 'is stale or the solver is unlabelled; §5.7 allows only "self-play fixed point" for anything multiway');
     return out;
   }
@@ -1044,11 +1065,12 @@ export function sixmaxDeferralProblems(probe, hasSolver) {
   if (!(probe.tuples > 0)) out.push('the multiway probe measured nothing, so the deferral rests on no evidence');
   if (probe.supportedCount > 0) {
     out.push(`the payoff now answers ${probe.supportedCount} multiway request(s) with supported:true — `
-      + 'the domain reason for deferring 6-max no longer holds and the decision must be re-made');
+      + 'the domain reason for deferring the multiway solve no longer holds and the decision must '
+      + 'be re-made');
   }
   if (probe.worstShareDev !== null && !(probe.worstShareDev > 0)) {
     out.push('the multiway shares now sum to 1 — the multiway game is constant-sum, so the '
-      + 'not-a-game reason for deferring 6-max no longer holds');
+      + 'not-a-game reason for deferring the multiway solve no longer holds');
   }
   if (probe.opponentInvariant === false) {
     out.push("hero's multiway share now depends on the opponents' cells — the payoff carries "

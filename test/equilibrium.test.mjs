@@ -35,7 +35,7 @@ import {
   coverageMap, contentHash, sourceHash, matrixShipping, frequenciesFrom,
   domainLabelFor,
 } from '../scripts/lib/equilibrium.mjs';
-import { CONSTANTS, CAPS, ITER_CAP, EPSILON_BB, TWO_SEED_TOL_POT, labelFor, SIXMAX } from '../scripts/lib/cfr.mjs';
+import { CONSTANTS, CAPS, ITER_CAP, EPSILON_BB, TWO_SEED_TOL_POT, labelFor, MULTIWAY_DEFERRAL } from '../scripts/lib/cfr.mjs';
 import { TIER_RANK, POSITIONS, NODES } from '../scripts/lib/policy.mjs';
 import { VARIANTS } from '../scripts/lib/variant.mjs';
 import { stampConstants } from '../scripts/verify.mjs';
@@ -385,7 +385,7 @@ test('positional nesting is NOT MEASURABLE, and the clause knows when that stops
   assert.match(n.reason, /exactly two seats/);
   assert.match(n.reason, /never toleranced/);
   // the reason is quoted from the record I35(d) re-checks every run, not restated here
-  assert.match(String(SIXMAX.reopenVerdict), /NOT\s+MEASURABLE/i);
+  assert.match(String(MULTIWAY_DEFERRAL.reopenVerdict), /NOT\s+MEASURABLE/i);
   // ARMED: a coverage map claiming two seats of the chain flips it
   const grown = {
     ...BLOCK,

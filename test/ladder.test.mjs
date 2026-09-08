@@ -229,15 +229,48 @@ test('skill.mjs is re-keyed by (seats, pos, node) with the six-seat records unto
   assert.equal(six.interior, SK.WIDTH_INTERIOR_EXCEPTIONS);
   assert.equal(six.endpoint.length, 6);
   assert.equal(six.interior.length, 11);
-  // NINE IS `null`, NOT `[]`: an empty array asserts "measured, and there are none"; null says
-  // nobody has run METHODOLOGY §3.5's procedure yet, and R5's twelve pairs are lane K's to measure.
-  assert.equal(SK.widthExceptionsFor(9), null);
-  assert.equal(SK.WIDTH_EXCEPTIONS[9], null);
+  // NINE WAS `null` AT S1 AND IS MEASURED AT S2 (lane K, R5). S1's clause here asserted the `null`
+  // — an empty array would have asserted "measured, and there are none" — and what replaces it is
+  // the same claim in the other direction: the records exist, they are frozen arrays, and they are
+  // NOT `[]`. The refusal itself is kept and re-pointed at a size nobody has measured, which is the
+  // property S1 was actually pinning: `{6, 9}` is a SET, and 7 is not in it (V4-PLAN §0.2).
+  const nine = SK.widthExceptionsFor(9);
+  assert.equal(nine.endpoint, SK.WIDTH_ENDPOINT_EXCEPTIONS_9);
+  assert.equal(nine.interior, SK.WIDTH_INTERIOR_EXCEPTIONS_9);
+  assert.ok(Object.isFrozen(nine.endpoint) && Object.isFrozen(nine.interior));
+  assert.ok(nine.endpoint.length > 0 && nine.interior.length > 0);
+  assert.equal(SK.widthExceptionsFor(7), null);
   // and `widthProblems` refuses at an unmeasured size rather than passing vacuously
-  assert.equal(SK.widthProblems({}, SK.SKILL_GRID, 9).length, 1);
-  // the twelve pairs R5 names, derived rather than typed: the pairs legal at nine and not at six
+  assert.equal(SK.widthProblems({}, SK.SKILL_GRID, 7).length, 1);
+  // TWELVE NEW PAIRS, TWO DIFFERENT TWELVE (measured at S2, V4-PLAN §10 Q1). Both derivations are
+  // pinned here because they DISAGREE, and a run that pinned only one would hide it.
   const at = (seats) => new Set(SK.legalPairs(seats).map(({ pos, node }) => `${pos}|${node}`));
-  const six9 = at(6), nine = [...at(9)].filter((k) => !six9.has(k));
-  assert.equal(nine.length, 12);
-  assert.ok(nine.includes('LJ|limps') && nine.includes('LJ|raise'));
+  const six9 = at(6), byKey = [...at(9)].filter((k) => !six9.has(k));
+  assert.equal(byKey.length, 12);
+  assert.ok(byKey.includes('LJ|limps') && byKey.includes('LJ|raise'));
+  // by KEY it is the three new seat names at all four nodes — and NOT R5's enumeration, because
+  // `UTG|rfi` and `UTG|3bet` are legal at six seats already and so are not "newly made legal"
+  assert.deepEqual([...byKey].sort(), [
+    'LJ|3bet', 'LJ|limps', 'LJ|raise', 'LJ|rfi',
+    'UTG1|3bet', 'UTG1|limps', 'UTG1|raise', 'UTG1|rfi',
+    'UTG2|3bet', 'UTG2|limps', 'UTG2|raise', 'UTG2|rfi',
+  ]);
+  // by LADDER POSITION — the six-seat table sits at nine-max LJ..BB under the `i+3` embedding — it
+  // is R5's own enumeration, and it is the one that describes which measurements are new
+  const L6 = P.seatsFor(6), L9 = P.seatsFor(9);
+  const embedded = new Set([...at(6)].map((k) => {
+    const [pos, node] = k.split('|');
+    return `${L9[L6.indexOf(pos) + 3]}|${node}`;
+  }));
+  const byPosition = [...at(9)].filter((k) => !embedded.has(k));
+  assert.equal(byPosition.length, 12);
+  assert.deepEqual([...byPosition].sort(), [
+    'LJ|limps', 'LJ|raise',
+    'UTG1|3bet', 'UTG1|limps', 'UTG1|raise', 'UTG1|rfi',
+    'UTG2|3bet', 'UTG2|limps', 'UTG2|raise', 'UTG2|rfi',
+    'UTG|3bet', 'UTG|rfi',
+  ]);
+  // they agree on the count and on the two LJ pairs, and differ on exactly two pairs each way
+  assert.equal(byKey.filter((k) => !byPosition.includes(k)).length, 2);
+  assert.equal(byPosition.filter((k) => !byKey.includes(k)).length, 2);
 });
