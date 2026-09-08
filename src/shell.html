@@ -2179,21 +2179,27 @@ var NODES = [
   { key: '3bet', label: 'vs 3-Bet', tabs: 'vs 3-Bet', t1: '4-BET', t2: 'CALL', t3: 'CALL', agg: '4-BET', aggShort: '4-bet' }
 ];
 var NODEBY = {}; NODES.forEach(function (n) { NODEBY[n.key] = n; });
-var POSITIONS = ['UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
-var NNB = { UTG: 3, HJ: 2, CO: 1, BTN: 0, SB: 0, BB: 0 };
-var NBL = { UTG: 2, HJ: 2, CO: 2, BTN: 2, SB: 1, BB: 0 };
+/* The seat ladder comes from the injected policy when it is there, so the page and the model
+   cannot disagree about it; the six-seat literal survives ONLY as the marked legacy fallback for a
+   page with no POLICY (V4-PLAN §10 Q3 — that path is legacy-only by definition and never nine).
+   NNB / NBL / legalPos below are now STRUCTURAL functions of the ladder rather than three typed
+   tables: the last two seats of any ladder are the blinds, everything before them is not. */
+var POSITIONS = window.POLICY && window.POLICY.seatsFor ? window.POLICY.seatsFor(6)
+  : ['UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
+var NP = POSITIONS.length, NNB = {}, NBL = {};
+POSITIONS.forEach(function (p, i) { NNB[p] = Math.max(0, NP - 3 - i); NBL[p] = Math.min(2, NP - 1 - i); });
 var TIERNAME = { 1: 'strongest', 2: 'exploit', 3: 'passive', 4: 'mix', 5: 'fold' };
 var GLYPH = { 1: '▲▲', 2: '▲', 3: '●', 4: '◐', 5: '—' };
 
 function legalPos(node) {
-  if (node === 'rfi') return { UTG: 1, HJ: 1, CO: 1, BTN: 1, SB: 1, BB: 0 };
-  if (node === 'limps' || node === 'raise') return { UTG: 0, HJ: 1, CO: 1, BTN: 1, SB: 1, BB: 1 };
-  return { UTG: 1, HJ: 1, CO: 1, BTN: 1, SB: 1, BB: 1 };
+  var o = {}, i;
+  for (i = 0; i < NP; i++) o[POSITIONS[i]] = posDisabledReason(POSITIONS[i], node) ? 0 : 1;
+  return o;
 }
 function posDisabledReason(pos, node) {
-  if (window.POLICY && window.POLICY.positionDisabled) return window.POLICY.positionDisabled(pos, node) || '';
-  if (node === 'rfi' && pos === 'BB') return 'BB closes the unopened pot by checking';
-  if ((node === 'limps' || node === 'raise') && pos === 'UTG') return 'no one acts before UTG';
+  if (window.POLICY && window.POLICY.positionDisabled) return window.POLICY.positionDisabled(pos, node, 6) || '';
+  if (node === 'rfi' && pos === POSITIONS[NP - 1]) return pos + ' closes the unopened pot by checking';
+  if ((node === 'limps' || node === 'raise') && pos === POSITIONS[0]) return 'no one acts before ' + pos;
   return '';
 }
 function seatsBefore(pos) { return POSITIONS.slice(0, POSITIONS.indexOf(pos)); }
@@ -3150,10 +3156,11 @@ var NMAX = (function () {
   for (var i = 0; i < LIVE.length; i++) { var e = CELLS[LIVE[i]].d.eq; if (e && e.length) return e.length; }
   return 5;
 })();
-/* The FIELD-SIZE clamp is a separate number and is 7 in policy.mjs whatever the data carries, so
-   the badge fires on "past the model's own ceiling", not on "past this dataset". Held identical
-   here on purpose: N_EFF_MAX is policy's literal, NMAX is the array bound. */
-var N_EFF_MAX = 7;
+/* The FIELD-SIZE clamp is a separate number from NMAX and it now moves with the table size, so the
+   badge fires on "past the model's own ceiling", not on "past this dataset". Held identical to
+   policy on purpose: this IS policy.nMax(seats), where NMAX at :1181 is the equity-array bound and
+   stays 7 in both. `S.seats` is the table-size axis; absent, it reads 6 and this returns 7. */
+function nEffMax() { return window.POLICY && window.POLICY.nMax ? window.POLICY.nMax(S.seats || 6) : 7; }
 function interpAt(arr, N) {
   var hi = arr.length, x = clamp(N, 1, hi), i = Math.min(hi - 2, Math.floor(x) - 1);
   var f = x - (i + 1);
@@ -3172,7 +3179,7 @@ var AGGROWS = { AA_BIGPAIR: 1, AA_BROADWAY: 1, AA_CONNECTED: 1, AA_SMALLPAIR: 1,
 
 /* raw aggressive set for one seat (no nesting, no T2 split) */
 function rawAgg(v, pos, node, L, raiser) {
-  var N = clamp(nEffRaw(v, pos, node, L), 1, N_EFF_MAX);
+  var N = clamp(nEffRaw(v, pos, node, L), 1, nEffMax());
   var tighten = node === 'raise' ? C.tighten * (1 - wRaise(raiser || 'CO', v, 'rfi', L)) : 0;
   var sc = new Float64Array(NCELL), i, n = LIVE.length;
   for (i = 0; i < n; i++) { var r = CELLS[LIVE[i]]; sc[r.i] = scoreOf(r.d, pos, N, tighten); }
@@ -3199,7 +3206,11 @@ function evalKey(v, pos, node, L, raiser, mix) { return v + '|' + pos + '|' + no
 
 function aggNested(v, pos, node, L, raiser) {
   var base = rawAgg(v, pos, node, L, raiser);
-  var seats = ['UTG', 'HJ', 'CO', 'BTN'], idx = seats.indexOf(pos);
+  /* the nesting chain, from policy when it is there; the fallback is structural (every seat but
+     the two blinds), which is what the four-name literal here used to spell out. */
+  var seats = window.POLICY && window.POLICY.nestChain ? window.POLICY.nestChain(node, 6)
+    : POSITIONS.slice(0, NP - 2);
+  var idx = seats.indexOf(pos);
   if (idx > 0) {
     var a = new Uint8Array(base.agg);
     for (var k = 0; k < idx; k++) {
@@ -3542,7 +3553,7 @@ function derivedNumbers(ev) {
   var raw = ev.rawN, N = ev.N, node = S.node;
   if (POL && POL.derived) {
     var d = POL.derived(stateOf({ v: ev.v }),
-      ev.info || { raw: raw, N: N, extrapolated: raw > N_EFF_MAX + 0.0001 });
+      ev.info || { raw: raw, N: N, extrapolated: raw > nEffMax() + 0.0001 });
     /* `pot` is quoted in PREFLOP UNITS and `potBB` in big blinds; a straddle doubles the unit, so
        the bb figure is the one to print (policy.derived §8). Pre-v2 policies return only `pot`. */
     return { raw: d.nEff, N: d.nEffClamped, seeFlop: d.seeFlop, pot: d.potBB == null ? d.pot : d.potBB,
@@ -3554,7 +3565,7 @@ function derivedNumbers(ev) {
   else if (node === 'raise') pot = 2 * 3.5 + 1.5;
   else pot = 20.5;
   var u = S.straddle ? (STRAD.unit || 2) : 1;
-  return { raw: raw, N: N, seeFlop: raw, pot: pot * u, unit: u, clamped: raw > N_EFF_MAX + 0.0001 };
+  return { raw: raw, N: N, seeFlop: raw, pot: pot * u, unit: u, clamped: raw > nEffMax() + 0.0001 };
 }
 function tierLabel(t, node) {
   node = node || S.node;
@@ -5536,9 +5547,9 @@ function renderNumbers(host, rec) {
   s4.appendChild(el('div', 't-sm dim', 'This is a cell mean. ' + rec.row.label + ' spans a wide range of concrete hands — RUN2 alone runs from QJ97 to 6432. Use the hand lookup for a single hand.'));
   var s5 = sec(host, 'Constants in play');
   var tb4 = el('table', 'tbl');
-  /* the arrow is the CLAMP, and the clamp is N_EFF_MAX — the literal policy.nEff uses. It was
+  /* the arrow is the CLAMP, and the clamp is nEffMax() — policy.nMax(seats), not the array bound. It was
      hard-coded at v1's 5 here and printed "→ 5.00" on a page scoring at 7. */
-  tb4.innerHTML = '<tr><td>N_eff</td><td>' + f2(ev.rawN) + (ev.rawN > N_EFF_MAX + 0.0001 ? ' → ' + f2(ev.N) : '') + '</td></tr>' +
+  tb4.innerHTML = '<tr><td>N_eff</td><td>' + f2(ev.rawN) + (ev.rawN > nEffMax() + 0.0001 ? ' → ' + f2(ev.N) : '') + '</td></tr>' +
     '<tr><td>κ(N)</td><td>' + f2(C.kappa[0] + C.kappa[1] * (ev.N - 1)) + '</td></tr>' +
     '<tr><td>ν̄ reference</td><td>' + NUBAR + '</td></tr>' +
     '<tr><td>ν̄ measured pool</td><td>' + f2(measuredNuBar()) + '</td></tr>' +
@@ -8617,7 +8628,7 @@ function extrapReach() {
         for (var v = VMIN; v <= VMAX; v++) {
           var raw = raw0({ pos: pos, node: node, v: v / 100, limpers: Ls[li], straddle: strs[si] });
           total++;
-          if (raw > N_EFF_MAX + 0.0001) fires++;
+          if (raw > nEffMax() + 0.0001) fires++;
           if (raw > max) {
             max = raw;
             at = NODEBY[node].label + ' / ' + pos + ' / VPIP ' + v +
@@ -8953,10 +8964,10 @@ function renderMethod() {
       : null,
     (function () {
       var x = extrapReach();
-      return '<b>N_eff is clamped at ' + N_EFF_MAX + ', and the EXTRAPOLATED badge is live UI, not dead code.</b> ' +
-        'The Monte Carlo measures the equity curve over N = 1…' + NMAX + '; past ' + N_EFF_MAX + ' the score is read ' +
+      return '<b>N_eff is clamped at ' + nEffMax() + ', and the EXTRAPOLATED badge is live UI, not dead code.</b> ' +
+        'The Monte Carlo measures the equity curve over N = 1…' + NMAX + '; past ' + nEffMax() + ' the score is read ' +
         'off the end of it. ' +
-        (NMAX < N_EFF_MAX ? '<b>This dataset only reaches N = ' + NMAX + '</b>, ' + (N_EFF_MAX - NMAX) + ' short of the ' +
+        (NMAX < nEffMax() ? '<b>This dataset only reaches N = ' + NMAX + '</b>, ' + (nEffMax() - NMAX) + ' short of the ' +
           'clamp, so between them the ladder extrapolates without earning the badge — a v1 model under a v2 scoring ' +
           'layer, which the rebuild resolves. ' : '') +
         'Swept over every setting this page can be driven to — ' + commas(x.total) + ' of them, four ' +

@@ -10,6 +10,19 @@
 // number it uses appears in CONSTANTS below and is rendered by the page's Method view.
 
 export const POSITIONS = ['UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
+/**
+ * THE canonical nine-seat ladder (V4-PLAN §2.1). The six-seat table is this one with its first
+ * three seats empty: a seat is defined by how many non-blind and how many blind seats act behind
+ * it, so 6-max `UTG` (3 non-blind, 2 blinds behind) is structurally 9-max `LJ`. The 6-max ladder is
+ * NOT renamed — `POSITIONS` above is untouched and every legacy fixture row, URL state and gate id
+ * keeps its keys (§0.4). These nine keys appear nowhere else in the tree (gate I51(c)); every
+ * consumer takes its list from `seatsFor`. `UTG1` / `UTG2` are KEYS; the rail shows `SEAT_DISPLAY`.
+ */
+export const LADDER9 = ['UTG', 'UTG1', 'UTG2', 'LJ', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
+/** key -> rail label, for the two keys whose display form is not the key */
+export const SEAT_DISPLAY = { UTG1: 'UTG+1', UTG2: 'UTG+2' };
+/** the seat ladder at a table size. `seatsFor(6) === POSITIONS`, by reference, always. */
+export function seatsFor(seats) { return seats === 9 ? LADDER9 : POSITIONS; }
 export const NODES = ['rfi', 'limps', 'raise', '3bet'];
 
 /** tier ids, best action first */
@@ -370,6 +383,11 @@ export const CONSTANTS = {
     // and one seat tighter is 1/1.2990 = 0.770. The CO->BTN step (1.667x) is excluded on purpose:
     // it is the step §7.2 wanted pinned.
     seat: 0.77,
+    // v4 §2.3: `ladder.earlyStep` is the SAME number with the SAME anchor, promoted to name the
+    // opening ladder's early-seat step. This records the shared provenance WITHOUT making either a
+    // live reference to the other — `seat` stays a plain number so `seatWidthFactor` and gate I26
+    // read exactly what they read before — and I51(a) pins the two equal on the shipped constants.
+    seatDerivedFrom: 'ladder.earlyStep',
     // Seats keeping their unstraddled base. EMPTY, and that is V2-PLAN §7.2's "BTN keeps its 0.45"
     // FALSIFIED: pinned, the button's PAINTED range gets wider under a straddle at 7 of its 30
     // settings and its mean nu falls at 8. A straddle puts one more player behind the button; it
@@ -382,6 +400,32 @@ export const CONSTANTS = {
     noCardAbove9: 0.93, monotone: 0.95, threeFlush: 0.97, nutSuited: 1.03,
   },
   baseRaise: { UTG: 0.16, HJ: 0.20, CO: 0.27, BTN: 0.45, SB: 0.33, BB: 0.33 },
+  // ---- the table-size axis (V4-PLAN §2.1-2.3; the rules, not the numbers) ----------------------
+  // The six values above and in `baseR` are the WHOLE per-seat table. Nine seats needs three more
+  // of each and there is no nine-handed measurement anywhere in this repository to set them from,
+  // so they are DERIVED BY RULE and the rule is the constant. `earlyStep` is a second constant with
+  // the same value as `straddle.seat` and the SAME anchor, deliberately not a live reference: I26's
+  // whole job is to perturb `straddle.seat`, a perturbation above 1 would invert the nine-seat
+  // opening ladder I51(a) requires to be strictly increasing, and the two gates would fight. The
+  // equality is pinned instead, on the SHIPPED constants, so the two cannot drift.
+  ladder: {
+    seats: [6, 9],
+    ladder9: LADDER9,
+    earlyStep: 0.77,
+    baseRaiseRule: 'geometric',
+    // R1, decided by measurement and not by preference (§2.3, §3): both candidate rules were run
+    // through I51(a)'s monotonicity and nesting clauses on the score surface AND on the width
+    // surface (`depthWidthFactor` at d = 40 and d = 250); both passed, and the tie goes to flat —
+    // fewer new numbers, and no claim the model cannot back. 'step' is the recorded alternative:
+    // continue the ladder's own first step (baseR(LJ) - baseR(HJ) = -0.02) forward, giving
+    // 0.95 / 0.93 / 0.91. Readings for both are in docs/spikes/V4-ladder.md.
+    baseRRule: 'flat',
+    anchor: '1/sqrt(1.250*1.350) = 0.770 — METHODOLOGY §5.3, already carried by straddle.seat',
+    flag: 'early-seat baseRaise/baseR are EXTRAPOLATED from the six-seat ladder, no nine-handed '
+      + 'data — opinion, bounded by I51(a), badged estimate',
+    // filled below, from the rule, so that nothing here is a typed seventh number
+    derived: null,
+  },
   widthSlope: 0.35,
   isoValueFactor: 0.60,
   nutGate: [0.20, 0.10, 3.0],
@@ -473,18 +517,100 @@ export const CONSTANTS = {
   ],
 };
 
-// seats still to act, 6-max
-const N_NB = { UTG: 3, HJ: 2, CO: 1, BTN: 0, SB: 0, BB: 0 };
-const N_BL = { UTG: 2, HJ: 2, CO: 2, BTN: 2, SB: 1, BB: 0 };
-/** the nesting chain the positional-containment post-pass walks, per node */
-const NEST_CHAIN = { rfi: ['UTG', 'HJ', 'CO', 'BTN'], limps: ['HJ', 'CO', 'BTN'], raise: ['HJ', 'CO', 'BTN'], '3bet': [] };
+/* ---- the seat structure, as functions of ladder index (V4-PLAN §2.2) -------------------------
+   These four replaced the name-keyed tables `N_NB` / `N_BL` / `NEST_CHAIN` and the two-literal
+   `positionDisabled`. Each reproduces its table EXACTLY at six seats — that is not a hope, it is
+   `test/ladder.test.mjs`, which carries the deleted literals verbatim and compares against them.
+   The last two seats of any ladder are the blinds; everything before them is non-blind. */
+
+/** seats behind `pos` that are non-blind — the old `N_NB`, and 0 at every blind, at any size */
+export function behindNonBlind(pos, seats) {
+  const L = seatsFor(seats), i = L.indexOf(pos);
+  return i < 0 ? 0 : Math.max(0, L.length - 3 - i);
+}
+/** blind seats behind `pos` — the old `N_BL`: 2 for every non-blind seat, then 1, then 0 */
+export function blindBehind(pos, seats) {
+  const L = seatsFor(seats), i = L.indexOf(pos);
+  return i < 0 ? 0 : Math.min(2, L.length - 1 - i);
+}
+/** is `pos` one of the two blinds? */
+export function isBlind(pos, seats) {
+  const L = seatsFor(seats);
+  return L.indexOf(pos) >= L.length - 2;
+}
+/**
+ * The nesting chain the positional-containment post-pass walks, per node — the old `NEST_CHAIN`.
+ * rfi is every non-blind seat in ladder order; at `limps` and `raise` the first seat of the ladder
+ * is structurally absent (nobody acts before it), so the chain is the same minus that seat; the
+ * vs-3-bet node is heads-up by construction and nests nothing.
+ */
+export function nestChain(node, seats) {
+  if (node === '3bet') return [];
+  const L = seatsFor(seats);
+  return L.slice(node === 'rfi' ? 0 : 1, L.length - 2);
+}
 
 /** structurally unavailable (position, node) pairs */
-export function positionDisabled(pos, node) {
-  if (node === 'rfi' && pos === 'BB') return 'BB closes the unopened pot by checking';
-  if ((node === 'limps' || node === 'raise') && pos === 'UTG') return 'no one acts before UTG';
+export function positionDisabled(pos, node, seats) {
+  const L = seatsFor(seats);
+  if (node === 'rfi' && pos === L[L.length - 1]) return `${pos} closes the unopened pot by checking`;
+  if ((node === 'limps' || node === 'raise') && pos === L[0]) return `no one acts before ${pos}`;
   return null;
 }
+
+/**
+ * The opponent-count ceiling the SCORING layer clamps `N_eff` to, per table size. Six is FROZEN at
+ * 7: the 1.19 % of legacy settings that clamp today must keep clamping at exactly 7 (§2.2), and
+ * `nMax(6) + 0.0001 === 7.0001` bit-for-bit, so the `extrapolated` flag cannot move by an ulp.
+ * Nine is 9, which MOVES the clamp rather than removing it — R3's census measures the residue.
+ * This is not `meta.nMax`, which describes the shape of `cells` and stays 7 in both.
+ */
+export function nMax(seats) { return seats === 9 ? 9 : 7; }
+
+/**
+ * The per-seat opinion constants at a table size — `baseRaise` (the opening ladder) and `baseR`
+ * (the realization base). NOBODY TYPES A SEAT NUMBER (§2.3): the six legacy values stay bit-for-bit
+ * and the three early seats are DERIVED by a named rule that is itself a constant.
+ *
+ * At six seats this returns `CONSTANTS.baseRaise` and `CONSTANTS.baseR` BY REFERENCE, so every
+ * caller reads the very property it read before this function existed — the identity is structural,
+ * not a re-derivation that happens to agree.
+ *
+ * The nine-seat objects map each shared seat to its structural counterpart (9-max `LJ` is 6-max
+ * `UTG`, and so on down the ladder), then fill the three front seats from the rule:
+ *   `baseRaise`  geometric, one `ladder.earlyStep` per seat off `baseRaise(LJ)`.
+ *   `baseR`      `ladder.baseRRule`: 'flat' (inherit `LJ`) or 'step' (continue the ladder's own
+ *                first step, `baseR(LJ) - baseR(HJ)`, forward). R1 decided it by measurement.
+ *
+ * MEMOISED ON ITS INPUTS, not on `seats`: a gate that perturbs a legacy value must not be handed a
+ * stale object, which is `envKey`'s trap one level down. `earlyStep` is read from `ladder`, never
+ * from `straddle.seat` — they are two constants with equal values and one anchor (§2.3), pinned
+ * equal by I51(a) precisely so that I26's perturbation of the straddle cannot reach this ladder.
+ */
+const LADDER_C6 = { baseRaise: CONSTANTS.baseRaise, baseR: CONSTANTS.baseR };
+const LADDER_C9 = (() => {
+  const K = CONSTANTS, S = POSITIONS, N = LADDER9, o = N.length - S.length, L = K.ladder;
+  const baseRaise = {}, baseR = {};
+  const rs = L.baseRRule === 'step' ? K.baseR[S[0]] - K.baseR[S[1]] : 0;
+  for (let i = 0; i < N.length; i++) {
+    const j = i - o;                          // >= 0: a shared seat, by structure; < 0: derived
+    baseRaise[N[i]] = j < 0 ? K.baseRaise[S[0]] * Math.pow(L.earlyStep, -j) : K.baseRaise[S[j]];
+    baseR[N[i]] = j < 0 ? K.baseR[S[0]] - rs * j : K.baseR[S[j]];
+  }
+  return { baseRaise, baseR };
+})();
+export function ladderConstants(seats) { return seats === 9 ? LADDER_C9 : LADDER_C6; }
+
+/* The six derived numbers, published where the Method view reads them and `stampConstants` copies
+   them into model.json. Computed FROM the rule rather than typed beside it, so a rule change cannot
+   leave a stale table behind it, and `kind: 'estimate'` because that is exactly what they are. */
+CONSTANTS.ladder.derived = (() => {
+  const R = {}, B = {};
+  for (const p of LADDER9.slice(0, LADDER9.length - POSITIONS.length)) {
+    R[p] = LADDER_C9.baseRaise[p]; B[p] = LADDER_C9.baseR[p];
+  }
+  return { baseRaise: R, baseR: B, kind: 'estimate' };
+})();
 
 // ---------------------------------------------------------------------------
 // 0. the table environment — depth, rake, straddle
@@ -510,7 +636,11 @@ export const OPERATING_POINT = Object.freeze({
   //               is precisely the defect brief §5.1 records as limitation 17.
   //   sizing      the 3-bet size as a fraction of the pot-size raise (item 9). 1 = pot, and at
   //               s = 1 every threshold is returned by reference, not recomputed.
-  rakeDepth: false, depthWidth: false, sizing: CONSTANTS.sizing.ref,
+  //
+  //   seats       the v4 table-size axis (§2.1). 6 = the legacy ladder, and the axis is INERT
+  //               there: `nMax(6)` is 7, `seatsFor(6)` is `POSITIONS`, `ladderConstants(6)` returns
+  //               the legacy objects by reference, and the ring artifact is never read.
+  rakeDepth: false, depthWidth: false, sizing: CONSTANTS.sizing.ref, seats: 6,
 });
 
 /**
@@ -528,6 +658,13 @@ function sealEnv(e) {
   const D = CONSTANTS.depth, R = CONSTANTS.rake;
   const unit = e.straddle ? CONSTANTS.straddle.unit : 1;
   const pct = e.rakePct / 100;
+  /* `seats` is normalised to the SET {6, 9} (§0.2 — the axis is a set, not an integer) and SEALED
+     NON-ENUMERABLE, so `JSON.stringify(env)` emits exactly the axes it emitted before this axis
+     existed. That is not tidiness: `test/policy.test.mjs`'s v1-identity clause deep-equals a
+     serialised env against the four knobs, and an axis that is inert must not show up there. */
+  const seats = e.seats === 9 ? 9 : 6;
+  delete e.seats;
+  Object.defineProperty(e, 'seats', { value: seats });
   Object.defineProperty(e, '__env', { value: true });   // non-enumerable: JSON.stringify(e) is clean
   Object.defineProperty(e, 'dEff', {
     value: e.straddle ? Math.min(D.max, Math.max(D.min, e.d / unit)) : e.d,
@@ -572,9 +709,12 @@ export function envOf(s) {
   const rakeDepth = s.rakeDepth === true;
   const depthWidth = s.depthWidth === true;
   const sizing = (s.sizing == null || !isFinite(s.sizing)) ? SZ.ref : Math.min(SZ.max, Math.max(SZ.min, s.sizing));
+  // The v4 table-size axis. A SET, not a clamp: anything that is not the nine-seat ladder is the
+  // legacy six, so a stray `seats: 7` reads as 6 rather than inventing a ladder nothing measured.
+  const seats = s.seats === 9 ? 9 : 6;
   if (d === D.ref && rakePct === R.min && rakeCapBB === R.capBB && !straddle
-    && !rakeDepth && !depthWidth && sizing === SZ.ref) return DEFAULT_ENV;
-  return sealEnv({ d, rakePct, rakeCapBB, straddle, rakeDepth, depthWidth, sizing });
+    && !rakeDepth && !depthWidth && sizing === SZ.ref && seats === 6) return DEFAULT_ENV;
+  return sealEnv({ d, rakePct, rakeCapBB, straddle, rakeDepth, depthWidth, sizing, seats });
 }
 
 /**
@@ -592,7 +732,7 @@ export function envOf(s) {
 export function envKey(env) {
   const e = envOf(env);
   return `${e.d}|${e.rakePct}|${e.rakeCapBB}|${e.straddle ? 1 : 0}`
-    + `|${e.rakeDepth ? 1 : 0}|${e.depthWidth ? 1 : 0}|${e.sizing}`;
+    + `|${e.rakeDepth ? 1 : 0}|${e.depthWidth ? 1 : 0}|${e.sizing}|${e.seats}`;
 }
 
 /** is a UTG straddle posted? (V2-PLAN §3.3 ships the UTG form only) */
@@ -646,7 +786,7 @@ export function depthWidthFactor(pos, env) {
   if (e.depthWidth !== true) return 1;
   const D = CONSTANTS.depth;
   if (e.dEff === D.ref) return 1;
-  return baseRealization(pos, e.dEff) / baseRealization(pos, D.ref);
+  return baseRealization(pos, e.dEff, e.seats) / baseRealization(pos, D.ref, e.seats);
 }
 
 /**
@@ -760,9 +900,6 @@ export function cCall(v) { return 0.55 * Math.pow(v, 1.25); }
 export function cBlind(v) { return Math.min(0.95, 1.5 * cCall(v) + 0.10); }
 export function cLimper(v) { return Math.min(0.90, 0.45 + 0.50 * v); }
 
-/** seats behind hero that are non-blind, when hero faces an open from an earlier seat */
-function behindNonBlind(pos) { return N_NB[pos]; }
-
 /**
  * Expected opponents at a node, and the field size the equity curve is read at.
  *
@@ -787,24 +924,26 @@ export function nEff(state) {
   // button, which a straddle does not move — and the straddler is the seventh player: §3.3's
   // "de-facto UTG+straddler table". Nothing at the vs-3-bet node, which is heads-up by
   // construction.
-  const str = straddleActive(state);
+  const e = envOf(state), seats = e.seats, str = e.straddle === true;
+  const nb = behindNonBlind(pos, seats), bl = blindBehind(pos, seats);
   const c = cCall(v), cb = cBlind(v), cl = cLimper(v);
   let raw;
   if (node === 'rfi') {
-    raw = 1 + N_NB[pos] * c + N_BL[pos] * cb;
+    raw = 1 + nb * c + bl * cb;
     if (str) raw += cb;
   } else if (node === 'limps') {
-    raw = 1 + L * cl + N_NB[pos] * CONSTANTS.isoBehind * c + N_BL[pos] * cb;
+    raw = 1 + L * cl + nb * CONSTANTS.isoBehind * c + bl * cb;
     if (str) raw += cb;
   } else if (node === 'raise') {
-    raw = 1 + behindNonBlind(pos) * CONSTANTS.vsRaiseBehind * c
-            + N_BL[pos] * CONSTANTS.vsRaiseBlind * cb + 1;
+    raw = 1 + nb * CONSTANTS.vsRaiseBehind * c
+            + bl * CONSTANTS.vsRaiseBlind * cb + 1;
     if (str) raw += CONSTANTS.vsRaiseBlind * cb;
   } else {
     raw = 2; // vs 3-bet is treated heads-up; N_eff is not used for tiering
   }
-  const N = Math.min(7, Math.max(1, raw));
-  return { raw, N, extrapolated: raw > 7.0001 };
+  const nm = nMax(seats);
+  const N = Math.min(nm, Math.max(1, raw));
+  return { raw, N, extrapolated: raw > nm + 0.0001 };
 }
 
 // ---------------------------------------------------------------------------
@@ -869,14 +1008,14 @@ export function mDeep(nu, cooler, d) {
  * ECMAScript specifies `Math.pow` as "implementation-approximated" and does NOT require
  * `Math.pow(x, 1) === x`. Every shipping libm happens to special-case it; I22 does not rest on that.
  */
-export function baseRealization(pos, d) {
-  const b = CONSTANTS.baseR[pos];
+export function baseRealization(pos, d, seats) {
+  const b = ladderConstants(seats).baseR[pos];
   const e = 1 + CONSTANTS.depth.beta * depthU(d);
   return e === 1 ? b : Math.pow(b, e);
 }
 
-export function realization(pos, N, nu, d) {
-  return baseRealization(pos, d) * (1 - CONSTANTS.multiwayRealizationSlope * (N - 1) * (1 - nu));
+export function realization(pos, N, nu, d, seats) {
+  return baseRealization(pos, d, seats) * (1 - CONSTANTS.multiwayRealizationSlope * (N - 1) * (1 - nu));
 }
 
 /**
@@ -913,6 +1052,42 @@ export function rhoAt(rho, N) {
   return rho[i] + (rho[i + 1] - rho[i]) * f;
 }
 export function eqAt(eq, N) { return rhoAt(eq, N); }
+
+/* ---- the ring accessors (V4-PLAN §2.4) -------------------------------------------------------
+   `cells[*].eq` and `cells[*].rho` cover N = 1..7 and NOTHING splices the ring into them (§0.2):
+   `eq[]`, `vDelta[]` and `orderHash` stay byte-identical. Above 7 the columns come from the
+   SEPARATE artifact `data/ring.json`, handed in as a PAYLOAD parameter — this module loads no file
+   and imports nothing, so the page (and lane R's generator) supply it.
+
+   THE TRAP THESE CLOSE. `rhoAt` clamps silently at `rho.length`, so a nine-seat setting with
+   N_eff = 8.2 would read the N = 7 column and paint a tier off it with no error anywhere — which
+   is exactly the forbidden `cells` read at N > 7, invisible. These fail CLOSED instead. At
+   `seats = 6` they delegate on the first branch, so the six-seat path is the same code it was.
+
+   PAYLOAD SHAPE, which lane R generates and I52's tripwire perturbs:
+     ring = { meta: { nMax: 9, seeds, trials, se, generatorHash, contentHash },
+              cells: { '<row>|<col>': { eq: [N8, N9], vDelta: { '<v>': [N8, N9] } } } }
+   `key` is the cell key; every caller that reaches a cell already has it (`cellList`, `villainEq`).
+   vDelta above 7 is NOT wired here — see docs/spikes/V4-ladder.md's policyDelta for lane R: it is
+   bound up with `villainEq` returning 9-long arrays and lane R's `SIM_NMAX` / `validEqArray` arity
+   split, and a profiled cell is refused below rather than silently mixed with unprofiled columns. */
+function ringCols(cell, ring, key) {
+  const r = ring && ring.cells && ring.cells[key];
+  if (!r) throw new TypeError(`policy: N_eff over ${nMax(6)} at nine seats needs the data/ring.json payload for ${key}`);
+  if (cell.vpSource) throw new TypeError(`policy: ${key} is villain-profiled and the ring columns are not — refusing to mix`);
+  return r.eq;
+}
+/** equity at fractional N, reading the ring above the shipped span; delegates at six seats */
+export function eqAtSeats(cell, N, seats, ring, key) {
+  if (seats !== 9 || N <= nMax(6)) return eqAt(cell.eq, N);
+  return eqAt(cell.eq.concat(ringCols(cell, ring, key)), N);
+}
+/** the same for rho, which is `eq * players / 100` and so extends by the same rule `hydrate` uses */
+export function rhoAtSeats(cell, N, seats, ring, key) {
+  if (seats !== 9 || N <= nMax(6)) return rhoAt(cell.rho, N);
+  const n = cell.rho.length;
+  return rhoAt(cell.rho.concat(ringCols(cell, ring, key).map((e, i) => (e * (n + i + 2)) / 100)), N);
+}
 
 // ---------------------------------------------------------------------------
 // 2b. the villain profile — reading the VPIP lattice (V2-PLAN §2.3, §4)
@@ -1391,7 +1566,8 @@ export function widthFor(pos, node, v, env) {
     return g === 1 ? w : w * g;
   }
   const f = seatWidthFactor(pos, env);
-  const b = f === 1 ? K.baseRaise[pos] : K.baseRaise[pos] * f;
+  const BR = ladderConstants(envOf(env).seats).baseRaise;   // === K.baseRaise at six seats
+  const b = f === 1 ? BR[pos] : BR[pos] * f;
   const base = b * (1 + K.widthSlope * (v - 0.5));
   const w = node === 'limps' ? base * (1 + K.isoValueFactor * Math.max(0, v - 0.5)) : base;
   return g === 1 ? w : w * g;
@@ -1403,7 +1579,12 @@ export function width3For(pos, node, v, limpers, env) {
   if (node === 'raise') return K.wCall[0] + K.wCall[1] * v;
   if (node === 'limps') {
     const L = limpers == null ? 2 : limpers;
-    if (L >= 2 && (pos === 'BTN' || pos === 'SB' || pos === 'BB')) return K.limpWidth * widthFor(pos, node, v, env);
+    // OFFENDER RETIRED (V4-PLAN §2.2): the literal was `BTN || SB || BB`, and what it MEANS is
+    // "nobody non-blind is left to act behind you", which is the three of them at six seats and the
+    // same three at nine. ONE disjunct, not two: `blindBehind < 2` is redundant here — a blind's
+    // `behindNonBlind` is 0 at every table size, so the second clause could never fire on its own,
+    // and stating it would make the predicate say something other than its gloss.
+    if (L >= 2 && behindNonBlind(pos, envOf(env).seats) === 0) return K.limpWidth * widthFor(pos, node, v, env);
   }
   return 0;
 }
@@ -1425,15 +1606,15 @@ export function tightenFor(raiserPos, v, env) {
  * @param {object} [env] the table environment (depth / rake / straddle); defaults to v1's
  * @returns {{S:number, rho:number, mnut:number, mdeep:number, mplay:number, R:number}}
  */
-export function scoreCell(cell, pos, N, shift, env) {
+export function scoreCell(cell, pos, N, shift, env, ring, key) {
   const e = envOf(env);
-  let rho = rhoAt(cell.rho, N);
+  let rho = rhoAtSeats(cell, N, e.seats, ring, key);
   if (shift) rho -= shift * (1 - cell.nu);
   const rf = rakeRhoFactor(e);
   if (rf !== 1) rho *= rf;                                   // V2-PLAN §3.2's flat haircut
   const mn = mNut(cell.nu, N);
   const md = mDeep(cell.nu, cell.cooler, e.dEff);
-  const R = realization(pos, N, cell.nu, e.dEff);
+  const R = realization(pos, N, cell.nu, e.dEff, e.seats);
   return { S: 100 * rho * mn * cell.mplay * R * md, rho, mnut: mn, mdeep: md, mplay: cell.mplay, R };
 }
 
@@ -1491,7 +1672,7 @@ export function rankTable(model, pos, node, v, opts) {
   const rows = new Array(list.length);
   for (let i = 0; i < list.length; i++) {
     const it = list[i];
-    const sc = scoreCell(it.cell, pos, info.N, shift, env);
+    const sc = scoreCell(it.cell, pos, info.N, shift, env, o.ring, it.key);
     rows[i] = { key: it.key, cell: it.cell, combos: it.combos, ...sc };
   }
   rows.sort((a, b) => b.S - a.S);
@@ -1911,7 +2092,11 @@ function solve3bet(model, state) {
   // raking it would be a second opinion where §3.2 asked for arithmetic. It costs nothing
   // measurable — 0.50/(1-0.05) = 0.5263 is inside the same 4.3-point gap the depth term measured.
   const price = breakevenPrice(env), callFloor = callFloorAt(env);
-  const heroIP = state.pos === 'CO' || state.pos === 'BTN';
+  // OFFENDER RETIRED (V4-PLAN §2.2): the literal was `CO || BTN`, and what it MEANS is "at most one
+  // non-blind seat acts behind you, and you are not a blind" — CO and BTN at six seats and at nine.
+  // The `!isBlind` half is NOT redundant: SB and BB also have 0 non-blind seats behind them.
+  const seats = envOf(state).seats;
+  const heroIP = behindNonBlind(state.pos, seats) <= 1 && !isBlind(state.pos, seats);
   const cuts = vs3betCuts(model, state.mix, env);
   const freq = new Map(cuts.rows.map((r) => [r.key, r.cumMid]));
   const out = {};
@@ -2101,7 +2286,7 @@ function solveUncached(model, state, evP) {
       const ev = evCells(model, state, state.payoff, env, table.N, !!state.ip, evMixKOf(model));
       for (const k of [...active]) if (!ev.cells[k] || !ev.cells[k].keep) active.delete(k);
     }
-    const chain = NEST_CHAIN[node];
+    const chain = nestChain(node, env.seats);
     const ci = chain.indexOf(pos);
     if (ci > 0) {
       for (let i = 0; i < ci; i++) {
@@ -2312,7 +2497,7 @@ function whyLines(r, e, ctx) {
   }
   const env = envOf(ctx.env);
   const dE = env.dEff;
-  const rBase = baseRealization(ctx.pos, dE);
+  const rBase = baseRealization(ctx.pos, dE, envOf(ctx.env).seats);
   if (Math.abs(r.R - rBase) > 0.005 || Math.abs(rBase - 1) > 0.005) {
     push(r.R >= 1 ? 1 : -1,
       `realization ${r.R.toFixed(2)} at ${ctx.pos} with ${ctx.N.toFixed(1)} opponents`,

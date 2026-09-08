@@ -43,10 +43,10 @@ export function lobbyV(model) {
 }
 
 /** The 21 legal (position, node) pairs, in the sweep order `policy-sweep.mjs` uses. */
-export function legalPairs() {
+export function legalPairs(seats = 6) {
   const out = [];
   for (const node of P.NODES) {
-    for (const pos of P.POSITIONS) if (!P.positionDisabled(pos, node)) out.push({ pos, node });
+    for (const pos of P.seatsFor(seats)) if (!P.positionDisabled(pos, node, seats)) out.push({ pos, node });
   }
   return out;
 }
@@ -78,11 +78,11 @@ export function poolsAlong(model, grid = SKILL_GRID) {
  * bounding an axis whose whole anchor is "no new opinion". Each pair's own number is already
  * combo-weighted, which is the weighting the claim names.
  */
-export function widthTable(model, grid = SKILL_GRID) {
+export function widthTable(model, grid = SKILL_GRID, seats = 6) {
   const pools = poolsAlong(model, grid);
-  const pairs = legalPairs().map(({ pos, node }) => ({
+  const pairs = legalPairs(seats).map(({ pos, node }) => ({
     pos, node, key: `${pos}|${node}`,
-    w: pools.map((p) => P.solve(p.model, { pos, node, v: p.v, limpers: 2, raiserPos: SWEEP_RAISER }).width),
+    w: pools.map((p) => P.solve(p.model, { pos, node, v: p.v, limpers: 2, raiserPos: SWEEP_RAISER, seats }).width),
   }));
   const agg = grid.map((_, i) => pairs.reduce((a, r) => a + r.w[i], 0) / pairs.length);
   return { grid, pools, pairs, agg };
@@ -143,11 +143,34 @@ export const WIDTH_INTERIOR_EXCEPTIONS = Object.freeze([
 ]);
 
 /**
+ * THE TWO FROZEN RECORDS, RE-KEYED BY (seats, pos, node) — V4-PLAN §2.6, R5.
+ *
+ * The six-seat entries above are UNTOUCHED, bit for bit, and keep their own exported names because
+ * `scripts/gates/skill.mjs` and `test/skill.test.mjs` read them directly. What changes is that they
+ * are now reachable under a table size, and that nine seats is `null` rather than `[]`.
+ *
+ * `null` MEANS UNMEASURED, AND THAT IS THE WHOLE POINT. The twelve pairs the nine-seat ladder makes
+ * legal (`UTG|rfi`, `UTG|3bet`, `UTG1` x 4, `UTG2` x 4, `LJ|limps`, `LJ|raise` — note the two `LJ`
+ * pairs, which are new because the first-seat exclusion moves FORWARD, so a procedure keyed only to
+ * the new seat NAMES would silently skip them) need the same measurement METHODOLOGY §3.5 records
+ * for the six-seat lists. An empty array would assert "measured, and there are none"; `null` says
+ * "nobody has run this yet", and `widthProblems` refuses rather than passing vacuously.
+ */
+export const WIDTH_EXCEPTIONS = Object.freeze({
+  6: Object.freeze({ endpoint: WIDTH_ENDPOINT_EXCEPTIONS, interior: WIDTH_INTERIOR_EXCEPTIONS }),
+  9: null,
+});
+/** the frozen records at a table size, or `null` where nothing has been measured */
+export function widthExceptionsFor(seats) { return WIDTH_EXCEPTIONS[seats] || null; }
+
+/**
  * Re-derive both records and both monotonicity claims. Returns the problem lines; an empty array
  * is the gate passing.
  */
-export function widthProblems(model, grid = SKILL_GRID) {
-  const t = widthTable(model, grid);
+export function widthProblems(model, grid = SKILL_GRID, seats = 6) {
+  const EX = widthExceptionsFor(seats);
+  if (!EX) return [`the width exception records are UNMEASURED at ${seats} seats — see WIDTH_EXCEPTIONS`];
+  const t = widthTable(model, grid, seats);
   const out = [];
   const EPS = 1e-12;
 
@@ -165,7 +188,7 @@ export function widthProblems(model, grid = SKILL_GRID) {
 
   // (ii) the endpoint exceptions, against the frozen list — both directions
   const endpoint = t.pairs.filter((r) => r.w[r.w.length - 1] > r.w[0] + EPS).map((r) => r.key);
-  const wantE = WIDTH_ENDPOINT_EXCEPTIONS.join(' ');
+  const wantE = EX.endpoint.join(' ');
   if (endpoint.join(' ') !== wantE) {
     out.push(`the endpoint exception set moved — measured [${endpoint.join(' ')}], recorded [${wantE}]`);
   }
@@ -194,10 +217,10 @@ export function widthProblems(model, grid = SKILL_GRID) {
   for (const r of t.pairs) {
     for (let i = 1; i < r.w.length; i++) if (r.w[i] > r.w[i - 1] + EPS) interior.push(`${r.key}@${i}`);
   }
-  const wantI = [...WIDTH_INTERIOR_EXCEPTIONS].sort().join(' ');
+  const wantI = [...EX.interior].sort().join(' ');
   if ([...interior].sort().join(' ') !== wantI) {
     out.push(`the interior exception set moved — measured ${interior.length} `
-      + `[${[...interior].sort().join(' ')}], recorded ${WIDTH_INTERIOR_EXCEPTIONS.length} [${wantI}]`);
+      + `[${[...interior].sort().join(' ')}], recorded ${EX.interior.length} [${wantI}]`);
   }
   return out;
 }

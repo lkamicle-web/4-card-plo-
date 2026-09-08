@@ -125,9 +125,9 @@ export const VARIANTS = {
     name: 'lite',
     out: 'index.html',
     regions: ['data', 'taxonomy', 'policy', 'engine'],
-    budgets: { total: 600 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024,
+    budgets: { total: 600 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 56 * 1024,
       blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024 } },
-    budgetSource: 'METHODOLOGY §9.11, measured + ~5% at the v2 phase-4 end; app raised to 388K at '
+    budgetSource: 'modelCode raised 54K -> 56K at v4 S1 to pay for the seat-ladder generalisation of policy.mjs (V4-PLAN §2.1-2.4): measured 56,270 B = 55.0K against 53,376 B before it, cap 56K = measured + 1.9%, tighter than the +3.6% P4 held this same ceiling at and far inside D6\'s +8% bound. SHRINK-FIRST, MEASURED IN BYTES, because §2.7 predicted the deletions would pay for the additions and measured they do not: deleting N_NB / N_BL / NEST_CHAIN, both seat-name offenders and the old two-literal positionDisabled returned 470 B; the structural functions that replace them cost 757 B, ladderConstants and the nine-seat tables 534 B, constants.ladder 291 B, its derived block 229 B, the ring accessors and their threading 629 B, and the seats axis through env / nEff / widthFor / width3For / solve3bet / whyLines 924 B - 3,364 B added against 470 B removed, +2,894 B net. Trimmed 414 B BEFORE the raise, each measured: the anchor and flag prose cut from 340 B to 145 B (-195), ladderConstants\' input-keyed memo replaced by a build-once at module init (-130), SEAT_DISPLAY dropped from the ladder block (-22), seatLabel not shipped (-67). The residue is irreducible: every remaining byte is an exported name the plan\'s §2.2 table or §4 constants table requires. METHODOLOGY §9.11, measured + ~5% at the v2 phase-4 end; app raised to 388K at '
       + 'P3 to pay for the vs-GTO colour mode (measured 377,993 B = 369.1K + 5% = 387.6K, rounded '
       + 'up to the whole KB, 4.9% headroom), with appCore holding everything else to the 360K the '
       + 'app block faced before the raise — the mode is bracketed @block:gto and build.mjs compiles '
@@ -192,9 +192,9 @@ export const VARIANTS = {
     name: 'full',
     out: 'index-full.html',
     regions: ['data', 'taxonomy', 'policy', 'engine', 'eq'],
-    budgets: { total: 660 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024, eq: 73 * 1024,
+    budgets: { total: 660 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 56 * 1024, eq: 73 * 1024,
       blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024 } },
-    budgetSource: 'D9, P3, both HELD BELOW measured+5% rather than re-derived up to it (the P3 red '
+    budgetSource: 'modelCode raised 54K -> 56K at v4 S1 to pay for the seat-ladder generalisation of policy.mjs (V4-PLAN §2.1-2.4): measured 56,270 B = 55.0K against 53,376 B before it, cap 56K = measured + 1.9%, tighter than the +3.6% P4 held this same ceiling at and far inside D6\'s +8% bound. SHRINK-FIRST, MEASURED IN BYTES, because §2.7 predicted the deletions would pay for the additions and measured they do not: deleting N_NB / N_BL / NEST_CHAIN, both seat-name offenders and the old two-literal positionDisabled returned 470 B; the structural functions that replace them cost 757 B, ladderConstants and the nine-seat tables 534 B, constants.ladder 291 B, its derived block 229 B, the ring accessors and their threading 629 B, and the seats axis through env / nEff / widthFor / width3For / solve3bet / whyLines 924 B - 3,364 B added against 470 B removed, +2,894 B net. Trimmed 414 B BEFORE the raise, each measured: the anchor and flag prose cut from 340 B to 145 B (-195), ladderConstants\' input-keyed memo replaced by a build-once at module init (-130), SEAT_DISPLAY dropped from the ladder block (-22), seatLabel not shipped (-67). The residue is irreducible: every remaining byte is an exported name the plan\'s §2.2 table or §4 constants table requires. D9, P3, both HELD BELOW measured+5% rather than re-derived up to it (the P3 red '
       + 'team found total quoting a measurement taken before the vs-GTO block landed — '
       + 'docs/refutations/P3.md): total 634K bounds a page measured at 629,312 B (614.6K), 3.2% of '
       + 'headroom where a fresh measured+5% would give 646K; eq 73K = 74,752 B bounds a payload '
