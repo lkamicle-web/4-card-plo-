@@ -1,6 +1,18 @@
 # V4 S2 lane U — the Table control and the nine-seat rail
 
-Base `33a228f` (`v4-s1-base`, fast-forwarded into this worktree before any edit; `git diff v4-s1-base -- scripts/lib/policy.mjs` empty). Branch `worktree-wf_3c958a35-f26-5`.
+Base `c76720d` (`v4-s1-base`). Branch `worktree-wf_3c958a35-f26-5`.
+
+**Run 2 note — this lane was REBASED, not rebuilt.** The lane's three commits were authored on
+`33a228f`, the stash commit that carried S1's uncommitted policy work. Run 2 re-cut `v4-s1-base` one
+commit further on (`c76720d`), which adds the owner's R2 amendment to `docs/V4-PLAN.md` and the
+matching wording in `.claude/workflows/v4.js` **and nothing else** (`git diff --stat 33a228f
+c76720d` is those two files, 42 insertions). This lane's commits touch neither file, so
+`git rebase v4-s1-base` replayed all three with no conflict and the branch is now a strict
+descendant (`git merge-base --is-ancestor v4-s1-base HEAD` true). `git diff v4-s1-base --
+scripts/lib/policy.mjs` is empty, and all six of the other lanes' owned regions were re-checked
+byte-for-byte present after the replay — S1's `:2182-2199`, `:3202` and `:3155-3163`, lane R's
+`:1181`, `:1318-1330` and `:1407`. Every measurement below was RE-TAKEN on the rebased tree rather
+than carried over; two of them changed, and both changes are recorded in place.
 
 **Files written.** `src/shell.html` (lane U's lines only — S1's `:2182–2199` / `:3202` / `:3155–3156` and lane R's `:1181` / `:1318` / `:1407` are untouched, verified by diff), `smoke.mjs`, `browsers.mjs`, `test/ui-seats.test.mjs` (new), `index.html` + `index-full.html` (rebuilt, never hand-edited), this memo. **Nothing else** — no `policy.mjs`, no `variant.mjs`, no `build.mjs`, no `data/model.json`, no `gates/`, no `index.mjs`/`reserved.mjs`.
 
@@ -20,7 +32,35 @@ Base `33a228f` (`v4-s1-base`, fast-forwarded into this worktree before any edit;
 
 ### The one design decision this lane took that the plan did not spell out
 
-**Nine seats is refused, by name, on a build that does not carry `data/ring.json`.** Measured: **327 of the 6,336** nine-seat settings (**5.16 %**), *every one of them at the iso node*, drive `N_eff` above 7 — past the span `cells[*].eq` covers — where `policy.rhoAtSeats` fails closed with a `TypeError` naming the file. A page that offers a table size and then throws at one setting in twenty is worse than one that says why it cannot, so the 9-max button renders **disabled with the payload's absence as its reason** (lite's second solved depth is the precedent; V3-PLAN §8 item 15). The gate is on the **artifact**, not on the setting, so the failure is unreachable rather than rare. It lights up with no further edit the moment lane R's artifact lands — and `browsers.mjs` F4 and `smoke.mjs` 5b both fail loudly if it does not.
+**Nine seats is refused, by name, on a build that does not carry `data/ring.json`.** Measured: **328 of the 6,336** nine-seat settings (**5.18 %**), *every one of them at the iso node*, drive `N_eff` above 7 — past the span `cells[*].eq` covers — where `policy.rhoAtSeats` fails closed with a `TypeError` naming the file.
+
+> **Corrected on re-measurement (run 2).** Run 1's memo and the shell comment both said **327 /
+> 5.16 %**; the count is **328 / 5.18 %**, and the one setting between them is worth the sentence
+> because it is a boundary, not a rounding. Exactly one nine-seat setting — **LJ × iso × VPIP 65 ×
+> 4 limpers × straddled** — sits at `N_eff = 7.000096125804309`. `nEff`'s own `extrapolated` flag
+> tests `raw > nm + 1e-4` and reads it as NOT extrapolated; `rhoAtSeats` branches on
+> `N <= nMax(6)` with **no tolerance** and reads it as needing a ring column. The two disagree by
+> construction, and for "how many settings does the page need the ring for" the accessor's strict
+> reading is the operative one, because the accessor is the branch that throws. Per node, at nine
+> seats: iso **328 of 4,224**, RFI **0 of 1,056**, vs-raise **0 of 1,056**, vs-3-bet **0 of 1,188**
+> (`N_eff` is the constant 2 there) — so "every one of them at the iso node" is confirmed, and the
+> worst raw reading is **9.962**. The `extrapolated` census proper — `raw > 9`, which is what the
+> badge and R3 count — is **19 of 6,336 (0.30 %)** and reproduces S1's R3 figure exactly. The
+> **The shell comment at `src/shell.html:7059` still reads 327 / 5.16 %, and S3 should correct it
+> to 328 / 5.18 % during the rebuild it has to do anyway.** It was corrected here and then
+> DELIBERATELY REVERTED, which is worth recording because the reason is a trap the next lane will
+> hit too. The edit is comment-only: `grep -c '327 of the 6,336' index.html index-full.html` → 0,
+> 0, and the compiled shell is byte-identical across it (395,153 B lite / 395,229 B full, both
+> `IDENTICAL` through `compileShellScripts`). But **D11 pins the artifact to the SOURCE hash, not
+> to the compiled bytes**: touching one character of a comment moved the shell hash from
+> `1f317b16d18e6166…` to `0ad68828d81d35e1…` and D11 went red with *"index.html was built from
+> src/shell.html 1f317b16…, but the shell on disk is 0ad68828… — rebuild it"*. The artifacts
+> **cannot** be rebuilt on this tree: the build refuses on budget (§3 items 1 and 5) and
+> `--allow-over-budget` is refused by this environment's command classifier. So any edit to
+> `src/shell.html` here — even a zero-byte one — buys a SECOND red gate on top of the expected D9,
+> and D11 red reads as "the lane forgot to rebuild" to anyone triaging. Reverted, and the tree
+> returns to exactly one expected red. **S3 gets the free rebuild once `total` (full) is raised;
+> the one-character fix belongs in that same commit.** A page that offers a table size and then throws at one setting in twenty is worse than one that says why it cannot, so the 9-max button renders **disabled with the payload's absence as its reason** (lite's second solved depth is the precedent; V3-PLAN §8 item 15). The gate is on the **artifact**, not on the setting, so the failure is unreachable rather than rare. It lights up with no further edit the moment lane R's artifact lands — and `browsers.mjs` F4 and `smoke.mjs` 5b both fail loudly if it does not.
 
 ---
 
@@ -57,9 +97,14 @@ Gross shared cost before shrinking was **+683 B**; after, **+375 B**. The plan's
 |---|---|---|
 | **table-size toggle repaint, p95** (new) | 16 ms | **2.40 / 2.50 / 2.60 ms** over three runs of 8 rounds (16 toggles), chromium 1440×900 |
 | — its cold half | (excluded by the p95 gate, as the ON/OFF rows exclude theirs) | the **first** toggle costs **25.2–25.6 ms**: nine chips built, nine seats × the rail's per-seat width readout solved from an empty memo. Once per session, on a click rather than a drag |
-| slider-morph short sweep, p95 | 8 ms — **unmoved** | 1.60 ms (lite) / 1.20 ms (full) |
-| morph incl. layout, profile **ON**, p95 | 16 ms — **unmoved** | 12.30 ms (lite) / 13.10 ms (full) |
-| morph incl. layout, profile **OFF**, p95 | 4 ms — **unmoved** | 2.80 ms (lite) / 2.00 ms (full) |
+| slider-morph short sweep, p95 | 8 ms — **unmoved** | 1.10 ms (lite) / 1.00 ms (full) |
+| morph incl. layout, profile **ON**, p95 | 16 ms — **unmoved** | 12.90 ms (lite) / 12.80 ms (full) |
+| morph incl. layout, profile **OFF**, p95 | 4 ms — **unmoved** | 2.80 ms (lite) / 2.20 ms (full) |
+
+The three morph figures above are the **run-2 re-measurement** on the rebased tree; run 1 read
+1.60/1.20, 12.30/13.10 and 2.80/2.00 on the same budgets. Both runs pass, none of the three budgets
+moved, and the spread between the two runs (up to 0.6 ms on the ON row) is the machine, which is
+why these rows are gated on a p95 against a fixed budget and not on a delta between runs.
 
 The toggle figures were taken with a **harness-side synthetic ring** injected before load (a linear continuation of `eq[6]`, never committed, never shipped) because this worktree has no `data/ring.json`. The stub's *values* are meaningless and the quantity measured — style + layout after a re-solve of the whole rail — does not read them. The shipped `smoke.mjs` row does **not** stub anything: it drives the real buttons and is **RED here by construction**, naming the missing artifact. S3 re-runs it against lane R's real payload.
 
@@ -86,12 +131,35 @@ Layout, nine chips, `.seg.seg-wide` (the one new CSS rule, 9-max-only, in `@bloc
 
 ### Policy deltas filed (policy.mjs is frozen; S3 applies)
 
-1. **`solveUncached` drops `state.ring`.** `scripts/lib/policy.mjs:2251` builds `const opts = { limpers: state.limpers, raiserPos: state.raiserPos, env }` and hands it to `aggressiveSet` → `rankTable`, which reads `o.ring` at `:1675`. So `scoreCell` is called with `ring === undefined` on **every** solve and `rhoAtSeats` fails closed above N = 7. **Measured in the browser, not inferred:**
+1. **`solveUncached` drops `state.ring`.** `scripts/lib/policy.mjs:2258` on the re-cut `v4-s1-base`
+   (run 1's memo cited `:2251`; **locate it by content**, `const opts = { limpers: state.limpers,`,
+   because S3 applies four lanes' deltas serially and every one of them moves this file's line
+   numbers) builds `const opts = { limpers: state.limpers, raiserPos: state.raiserPos, env }` and hands it to `aggressiveSet` → `rankTable`, which reads `o.ring` at `:1675`. So `scoreCell` is called with `ring === undefined` on **every** solve and `rhoAtSeats` fails closed above N = 7. **Measured in the browser, not inferred:**
    - `POLICY.rankTable(MODEL, 'UTG1', 'limps', 0.9, { limpers: 4, env: { seats: 9, straddle: true }, ring })` → **ok**
    - `POLICY.solve(MODEL, { pos: 'UTG1', node: 'limps', v: 0.9, limpers: 4, straddle: true, seats: 9, ring })` → **throws** `policy: N_eff over 7 at nine seats needs the data/ring.json payload for AA_BIGPAIR|RB`
    - a nine-seat sweep of 108 states (9 seats × 4 nodes × VPIP {25,55,90}) with the payload present: **27 throw**, all of them iso.
    The fix is one line: `ring: state.ring` in that opts literal. The page already supplies it (`stateOf` sets `s.ring = RING`). Without it the 9-max UI is unusable even once `data/ring.json` exists.
-2. **S1's `vDeltaAtSeats` delta stands as filed** (docs/spikes/V4-ladder.md, the policyDelta paragraph) — re-filed here as a dependency, not a new finding. **Measured beside it, and it refines S1's expectation rather than confirming it:** `ringCols`' villain-profile refusal (`cell.vpSource` → throw) was **not reached** on the worst nine-seat setting at either the shipped `q` or an interpolated one — `profiledModel` returned the model itself (`moved === 0`, 0 of 145 cells carrying `vpSource`) on the probes run here, so the profiled path did not mix profiled and unprofiled columns because it had nothing profiled to mix. Recorded as *not reached*, **not** as *cannot happen*: lane R's vDelta work is what decides it.
+2. **`evCutUncached` drops `state.ring` too — a SECOND site, found on re-measurement (run 2), not
+   in run 1's memo.** `scripts/lib/policy.mjs:2022` builds the same literal as `solveUncached`,
+   `{ limpers: state.limpers, raiserPos: state.raiserPos, env }`, and hands it to the same
+   `aggressiveSet` → `rankTable` → `o.ring` chain at `:1675`. Measured in Node against a run-1
+   ring payload, on the state `stateOf` actually produces (`s.ring = RING`, `src/shell.html:2986`):
+
+   | call | with `state.ring` set |
+   |---|---|
+   | `P.solve(model, state)` | **throws** — `policy: N_eff over 7 at nine seats needs the data/ring.json payload for AA_BIGPAIR\|RB` |
+   | `P.evCut(model, state, payoff)` | **throws**, same message |
+   | `rankTable(…, { limpers, raiserPos, env })` — the literal as shipped | **throws** |
+   | `rankTable(…, { limpers, raiserPos, env, ring })` — the delta applied | **ok** |
+   | `P.solve(…)` at six seats | **ok** — untouched by any of this |
+
+   The two are NOT the same defect wearing one fix: `solveUncached` throws into the tier path,
+   which is fatal; `evCutUncached` throws into `evLayer`, which catches at `src/shell.html:3835`
+   and sets `out = null`. So the EV colour mode does not crash at nine seats — it **disables
+   itself by name** at the 328 ring-consulting settings, which is the quieter failure and the one
+   more likely to ship unnoticed. The fix is the same one line, `ring: state.ring`, in the second
+   literal. **Both deltas are needed; applying only the filed one leaves the EV mode dark.**
+3. **S1's `vDeltaAtSeats` delta stands as filed** (docs/spikes/V4-ladder.md, the policyDelta paragraph) — re-filed here as a dependency, not a new finding. **Measured beside it, and it refines S1's expectation rather than confirming it:** `ringCols`' villain-profile refusal (`cell.vpSource` → throw) was **not reached** on the worst nine-seat setting at either the shipped `q` or an interpolated one — `profiledModel` returned the model itself (`moved === 0`, 0 of 145 cells carrying `vpSource`) on the probes run here, so the profiled path did not mix profiled and unprofiled columns because it had nothing profiled to mix. Recorded as *not reached*, **not** as *cannot happen*: lane R's vDelta work is what decides it.
 
 ---
 
@@ -123,6 +191,25 @@ Layout, nine chips, `.seg.seg-wide` (the one new CSS rule, 9-max-only, in `@bloc
 - `node scripts/build.mjs --check` — **0/2 current**, refused on budget, message in §3 item 1. The artifacts committed here are what the build produces; registering the block changes budgets and not bytes, so S3's rebuild is byte-identical and `--check` goes green on the registration alone.
 - `node smoke.mjs` — **0/2**, one row each: the new 5b, red by construction with the ring absent. **The three morph rows are green and unmoved at 8 / 16 / 4 ms.**
 - `node browsers.mjs` — **2/2 variants green**, chromium + Firefox + WebKit, F1–F4 all green; F4 reads `ring payload absent · control DISABLED with its reason · rail 6 -> 6 -> 6, clamp 7 -> 7` in every engine and will read `live, round-trips` once the payload lands. Headless, Playwright-managed throwaway profiles, no installed browser touched.
+
+**All five re-run on the rebased tree (run 2) and every reading above reproduced**, including the
+four failing test names and the exact D9 string. Two things worth stating for S3 rather than
+leaving to be rediscovered:
+
+- **`node scripts/verify.mjs` leaves `data/model.json` dirty** — it stamps gate verdicts into the
+  file and rehashes it, so a run with D9 red writes `gates.D9: "FAIL"` and a moved `meta.hash`.
+  That file is S3's, not this lane's; it was restored with `git checkout -- data/model.json` and
+  the committed tree is pristine (`git status --short` empty). Anyone re-running the verifier here
+  must restore it too, or `test/equilibrium.test.mjs`'s artifact-hash check fails as a knock-on.
+- **The claim that registering the block cannot move a byte is now structural, not hopeful.**
+  `scripts/build.mjs` never calls `stripMarkedBlocks`; it imports `BLOCKS` for exactly four things
+  — the census call, the `blockReport` string, the "each need a cap" check and the per-block budget
+  loop — and `stripMarkedBlocks` is called only inside `blockCensus` (to measure a cut) and in
+  tests. So `BLOCKS` and `budgets.blocks` reach the *reported numbers and the budget comparison*
+  and never the emitted page. `--check` therefore goes green on S3's registration alone, with no
+  rebuild diff. (`--allow-over-budget` would have shown the same thing empirically; it is refused
+  by this environment's command classifier, so the question was settled by reading the emit path
+  instead, which is the stronger answer anyway.)
 
 ## 6. Residue, recorded
 
