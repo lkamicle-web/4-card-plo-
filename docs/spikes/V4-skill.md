@@ -232,9 +232,21 @@ through". Pinned in `test/skill-9max.test.mjs`.
    call; `legalPairs(9)` for the (c)/(e) sweeps; and **the `seats` argument threaded into the (e)
    probe's `P.solve` and `P.realization`** — without the latter the probe compares a nine-seat `R`
    against a seats-blind formula and reports 5,535 false mismatches. Measured target: **14,760**
-   readings, **0** mismatches, all 12 new pairs in scope including `LJ|limps` and `LJ|raise`. Until
-   that lands, `test/skill-9max.test.mjs` re-derives both records in both directions on every
-   `node --test` run, armed against a perturbed model.
+   readings, **0** mismatches. Until that lands, `test/skill-9max.test.mjs` re-derives both records in
+   both directions on every `node --test` run, armed against a perturbed model.
+
+   **THE BRIEF'S "all 12 new pairs" IS FALSIFIED FOR THE (e) PROBE, and the number is 9, not 12.**
+   Clause (e)'s reach scan opens with `if (node === '3bet') continue;` — *the vs-3-bet node is not
+   scored through `R`* — at BOTH table sizes, so three of the twelve (`UTG|3bet`, `UTG1|3bet`,
+   `UTG2|3bet`) are outside the probe by a pre-existing structural exclusion, not by anything this
+   lane did or failed to do. Measured, extended to nine seats: 24 non-3bet pairs scanned (15 at six),
+   **9 of the 12** new pairs reached — and `LJ|limps` and `LJ|raise`, the two the brief singles out
+   because a name-keyed procedure would skip them, ARE both among the 9. The other three are covered
+   instead by (c)/(d): `legalPairs(9)` puts all 33 pairs in the gate's pair list and
+   `widthProblems(model, SKILL_GRID, 9)` re-derives both records over all 33 in both directions, and
+   all three of those pairs carry an endpoint exception there. So the twelve ARE gated; what is 9
+   rather than 12 is the reach probe specifically. Today, unextended, the probe reaches **1** of the
+   12 (`UTG|rfi`, whose key is a six-seat key already).
 3. **METHODOLOGY (S5).** (a) the four `SIXMAX` sites §6 names — :3406, :3425, :3565 (I35), :3566 (I36)
    — become `MULTIWAY_DEFERRAL`; (b) §3.5's "five nut-gate releases" sentence is falsified as worded
    (§3.2 above) and needs the measured wording; (c) §3.5's exception paragraphs gain the nine-seat
@@ -245,13 +257,33 @@ through". Pinned in `test/skill-9max.test.mjs`.
    SIXMAX'` still names the old constant in four artifacts. Repairing it is a `cfr.mjs` one-liner plus
    the same regeneration as (1), and it must be done in ONE step or I35(e) goes red. It is table-size
    prose in a shipped surface, so §6's "table-size-neutral at all sites" is not finished until it is.
-5. **LANE F / registry prose.** `scripts/gates/reserved.mjs` mentions `SIXMAX` at :200, :306 and :316
+5. **LANE F / I51(c) — A COLLISION WITH NO SHARED FILE TO CATCH IT (S3 must adjudicate).** Lane F is
+   writing I51(c), "no new seat-name literal", in parallel and cannot see this lane's tree. This lane
+   necessarily ships **13 lines carrying `UTG1` / `UTG2` / `LJ` as string literals**, and every one of
+   them is a frozen MEASUREMENT RECORD or a test pinning a derivation against one — never a consumer
+   building a seat list, which is what the rule is actually about:
+   - `scripts/lib/skill.mjs` :170, :207, :208, :210 — the two nine-seat exception arrays. They are the
+     exact idiom of the six-seat arrays above them (`'UTG|3bet'`, `'BTN|limps@3'`), which I38(d) has
+     read since P4, and they are re-derived in BOTH directions by `widthProblems` on every run, so a
+     wrong literal here fails a gate rather than hiding in one.
+   - `test/skill-9max.test.mjs` :138-139 — the twelve pairs, pinned as the enumeration R5 names.
+   - `test/ladder.test.mjs` :250, :254-256, :268-270 — the two twelves, pinned so that their
+     *disagreement* (§2) cannot be silently lost. This follows S1's own precedent in this same file,
+     which "carries the deleted literals verbatim and compares against them".
+
+   **Recommendation:** I51(c)'s allowlist should read *records and their tests* alongside `LADDER9`,
+   `seatsFor`, the fixtures and the display map — the plan's list of exempt sites was written before
+   these records existed. If instead I51(c) is written as a bare scan of `scripts/` and `test/`, it
+   goes RED on integration against work that is correct, and neither lane's gates can see it coming
+   because F and K share no file. Flagged here because the contention registry has no other channel
+   for it.
+6. **LANE F / registry prose.** `scripts/gates/reserved.mjs` mentions `SIXMAX` at :200, :306 and :316
    (descriptions only, nothing executes them). Lane F is that file's single writer this run; the
    rename should ride along with the seven id registrations.
-6. **LANE U / page prose.** `src/shell.html:8868` says "six-max is deferred on the payoff's domain",
+7. **LANE U / page prose.** `src/shell.html:8868` says "six-max is deferred on the payoff's domain",
    which is the same table-size framing in the reader's own words, and :8844/:8866 derive the coverage
    sentence's denominator from the shipped 24-row map (§5).
-7. **No byte ceiling is claimed or needed by this lane** beyond (1)'s +22 B, which lands in the full
+8. **No byte ceiling is claimed or needed by this lane** beyond (1)'s +22 B, which lands in the full
    variant's `equilibrium` block (69.6 KB today) and not in `appCore`.
 
 ---
@@ -267,3 +299,5 @@ through". Pinned in `test/skill-9max.test.mjs`.
 | the nine-seat interior rises are the nut gate | METHODOLOGY §3.5, carried over | **falsified** — 4 of 11 cross the threshold at nine, 2 of 5 at six, 0 of 35 crossing cells were `gated` |
 | every exception is a property of the seat, so the six-seat entries carry over | implicit in "the ladder is inert at the shared seats" | **falsified in both directions** — the post-pass ERASES `UTG\|rfi@1` at its nine-seat position and CREATES three `raise@2` rises at shared seats |
 | the deferral record's reasoning survives the rename | §0.2, §6 | **held** — I35(d) green, all four legs and the verdict unmoved |
+| I38(e)'s reach scan "must see all 12 new pairs" | S2 lane K brief | **falsified as worded** — clause (e) skips the vs-3-bet node at BOTH sizes (`R` is null there), so the probe reaches **9 of 12**; `LJ\|limps` and `LJ\|raise` are both among the 9, and the 3 vs-3-bet pairs are gated by (c)/(d) over all 33 instead (§7 item 2) |
+| extending I38(e) to nine seats is a matter of passing `seats` | implicit | **held, with a trap measured** — `P.realization` must take `seats` too, or the probe reports **5,535** false mismatches out of 14,760 |
