@@ -42,6 +42,7 @@ import * as skill from './skill.mjs';
 import * as ev from './ev.mjs';
 import * as subcell from './subcell.mjs';
 import * as calibration from './calibration.mjs';
+import * as ring from './ring.mjs';
 import { CATALOG } from './reserved.mjs';
 
 export const REGISTRY = [
@@ -64,10 +65,15 @@ export const REGISTRY = [
   ev,            // I34 I39 I40                the P4 absolute-EV cut and its quarantine
   subcell,       // I47                        the P5 sub-cell top-N, and §2.4's autopsy
   calibration,   // I46                        the P5 primacy verdict, against the phase-0 bar
+  ring,          // I48 I49 I50 I51 I52 D12 D13   the v4 seat ladder, the 9-max fixture and the
+                 //   ring artifact (V4-PLAN §5.2). LAST, and its D12 clauses are DELEGATED to
+                 //   scripts/gates/ring-artifact.mjs, which must NOT be added to this list — it is
+                 //   a clause library that family calls, and registering it would emit D12 twice.
 ];
 
 /**
- * The frozen report order — 62 gates, D3 and I17 retired with the sub-bucket layer.
+ * The frozen report order — 69 gates (62 through v3, plus v4's seven), D3 and I17 retired with
+ * the sub-bucket layer.
  *
  * P1 lane I appends D10 and D11 at the END of the sequence rather than beside D6/D7 where their
  * family would otherwise sort. Deliberate: the note below says the report order is a thing
@@ -151,6 +157,27 @@ export const EXPECTED_IDS = [
   // is green because it asserts the verdict AGREES WITH THE PRE-REGISTERED BAR, which on today's
   // data means FAIL. Nothing in I46_CRITERIA moved; the gate refuses a fabricated 'pass'.
   'I46',
+  // v4's seat ladder (V4-PLAN §5.2; stage S2, lane F). APPENDED, for the ninth time and the same
+  // reason: 62 stays a strict prefix of 69, so the v3 report diffs against this one as seven added
+  // rows rather than as a re-ordering. Seven ids in ONE edit by ONE writer, which §7.2's contention
+  // registry requires rather than prefers: this literal and the families' declared sequence are
+  // compared at :161 and a mismatch makes the runner THROW rather than fail a gate, so two lanes
+  // appending two halves is a failure mode with no gate to catch it. D12's CLAUSES are lane R's and
+  // D13's CAPS are stage S3's; both ids are registered here anyway, because a gate id chosen after
+  // its feature is a gate written to pass and §5 reserved all seven before one existed.
+  //
+  // I48 IS CLAIMED DELIBERATELY. test/payoff-model.test.mjs:24 names I48 as an id it DECLINED to
+  // invent — "Inventing I48 here would be exactly what scripts/gates/reserved.mjs was written to
+  // prevent". That comment forbids choosing an id AFTER the feature; §5 reserved I48 BEFORE one,
+  // which is precisely the distinction reserved.mjs draws, so the two are not in conflict and the
+  // comment stands unedited. Skipping to I53 to dodge the question would have been the dishonest
+  // move: it would leave a hole in the sequence to hide a decision nobody wanted to write down.
+  //
+  // The family sits last of all because its inputs are produced by steps outside the runner, twice
+  // over: a frozen fixture a manual ceremony writes (data/tiers-9max.fixture.txt) and an artifact a
+  // separate generator writes (data/ring.json) — the rule that has kept the variants, baseline,
+  // subcell and calibration families at the tail since P1.
+  'I48', 'I49', 'I50', 'I51', 'I52', 'D12', 'D13',
 ];
 
 // Import-time consistency: what the families DECLARE must equal the frozen list. This is the

@@ -44,12 +44,18 @@ const passAll = PC_IDS.map((id) => ({ id, status: 'pass', detail: 'fabricated by
 // ---------------------------------------------------------------------------
 // 1. the family is wired the way a promotion is supposed to wire one
 // ---------------------------------------------------------------------------
-test('the family declares I46, and the registry appends it last', () => {
+test('the family declares I46, and the registry appended it at the v3 boundary', () => {
   assert.deepEqual(GATE.ids, ['I46']);
-  assert.equal(REGISTRY[REGISTRY.length - 1], GATE, 'the calibration family is not last');
-  assert.equal(EXPECTED_IDS[EXPECTED_IDS.length - 1], 'I46');
-  // 61 stays a strict prefix of 62 — the append rule the report has now used eight times.
-  assert.equal(EXPECTED_IDS.length, 62);
+  // I46 was LAST for the whole of v3 and is no longer: v4's seat-ladder family (V4-PLAN §5.2) was
+  // appended after it, which is the append rule working rather than a regression. What this test
+  // still pins is the thing that mattered — I46 sits at the END OF THE v3 PREFIX, so the report v3
+  // left behind is a strict prefix of this one and diffs as seven added rows, not a re-ordering.
+  const i = EXPECTED_IDS.indexOf('I46');
+  assert.equal(i, 61, 'I46 has moved inside the v3 prefix');
+  assert.deepEqual(EXPECTED_IDS.slice(i), ['I46', 'I48', 'I49', 'I50', 'I51', 'I52', 'D12', 'D13']);
+  assert.equal(REGISTRY[i === 61 ? REGISTRY.length - 2 : -1], GATE, 'the calibration family is not the last v3 family');
+  // 61 stays a strict prefix of 62 and 62 of 69 — the append rule, now used nine times.
+  assert.equal(EXPECTED_IDS.length, 69);
   assert.equal(CATALOG.find((e) => e.id === 'I46').status, 'live');
 });
 

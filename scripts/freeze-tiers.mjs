@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 // freeze-tiers.mjs — rewrite a tier baseline. A DELIBERATE MANUAL ACT, never part of a build.
 //
-//   node scripts/freeze-tiers.mjs [data/model.json] [--v2|--v3] [--out=path] [--force] [--check]
+//   node scripts/freeze-tiers.mjs [data/model.json] [--v2|--v3|--seats9] [--out=path] [--force] [--check]
 //
 //     (no flags)  writes the fixture only if it does not exist yet
 //     --v2        act on the v2 fixture (gate I32) instead of the v1 one (gate I22)
 //     --v3        act on the v3 DEFAULT fixture — the villain-profile-ON surface the page loads
 //                 into after item 8's B1 flip (V3-PLAN §5.1's third fixture)
+//     --seats9    act on the 9-MAX fixture (gate I49) — the same default surface at `seats = 9`
+//                 (V4-PLAN §2.5). The file does not exist before the v4 run; creating it is stage
+//                 S3's ceremony, performed once, in the open.
 //     --check     re-runs the pipeline and prints the diff against the current fixture; writes
 //                 nothing (this is what the gate asserts, in a form you can read)
 //     --force     overwrites an existing fixture, after printing exactly what changes
 //
-// THE THREE BASELINES.
+// THE FOUR BASELINES.
 //
 //   v1 / I22 — `data/tiers-v1.fixture.txt`. At the v1 operating point — depth 100bb, rake 0,
 //   straddle off, random villains — the pipeline paints the tier v1 painted, on every cell, at
@@ -30,10 +33,24 @@
 //   gate id for it, so it is pinned under `node --test` instead of inventing one — the same call
 //   `test/manifest.test.mjs` makes, for the same reason.
 //
+//   9max / I49 — `data/tiers-9max.fixture.txt`. The SAME 12 lanes and the same profile-ON state as
+//   the v3-default fixture, at `seats = 9`: 33 legal (position, node) pairs x 66 VPIP x 12 lanes =
+//   26,136 settings (V4-PLAN §2.5; the 33 is measured and confirms the plan's prediction exactly).
+//   UNLIKE the v3-default fixture it TAKES A GATE, and the divergence is deliberate: §5 reserved
+//   I49 *before* the fixture existed, which is the condition `tier-fixture-v3.mjs`'s header names
+//   as the thing it could not claim. The freeze prints the SUB-LADDER DIFF against the v3-default
+//   file — the evidence gate I50 is scored on.
+//
 // A gate is only worth anything while the fixture is older than the code it judges, so nothing
 // automatic may write these files: not verify.mjs, not generate-data.mjs, not build.mjs. If you
 // are running this with --force, you are asserting that a tier moved *and that it was supposed
 // to*. Say why in the commit message; the fixture diff is the evidence.
+//
+// `--force` IS NOT AUTHORISED ANYWHERE IN THE v4 RUN (V4-PLAN §0.4: option (c), a deliberate
+// re-freeze, is forbidden this run). The three legacy fixtures must show as UNMODIFIED and
+// `data/tiers-9max.fixture.txt` as ADDED across the whole run's commit range — that is gate
+// I48(a), which reads the shape of the diff rather than grepping a log, because `--force` is a CLI
+// flag and never appears in a commit message.
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, relative } from 'node:path';
@@ -42,6 +59,7 @@ import { fileURLToPath } from 'node:url';
 import * as TF from './lib/tier-fixture.mjs';
 import * as TF2 from './lib/tier-fixture-v2.mjs';
 import * as TF3 from './lib/tier-fixture-v3.mjs';
+import * as TF9 from './lib/tier-fixture-9max.mjs';
 import * as P from './lib/policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -145,10 +163,97 @@ const KINDS = {
       console.log('');
     },
   },
+  seats9: {
+    gate: 'I49',
+    what: 'the 9-MAX surface: the v3-default state at seats = 9 (V4-PLAN §2.5)',
+    path: TF9.FIXTURE_PATH,
+    load: (text) => TF9.parseFixture(text),
+    compare: (model, fx, n) => TF9.compareToFixture(model, fx, n, ringPayload()),
+    build(model, generated) {
+      const cells = TF9.fixtureCells(model);
+      const lanes = TF9.laneSpecs(model);
+      const settings = TF9.fixtureSettings(model, lanes);
+      const sweep = TF9.sweepTiers(model, cells, settings, new Map(lanes.map((L) => [L.id, L])), ringPayload());
+      return {
+        cells, sweep, lanes, settings,
+        text: TF9.encodeFixture({ model, cells, lanes, sweep, generated }),
+        scope: `${lanes.length} environment lanes [${lanes.map((L) => L.id).join(' ')}] x ` +
+          `${settings.length / lanes.length / (model.meta.vpip.max - model.meta.vpip.min + 1)} legal (node, position) pairs ` +
+          `at seats=${TF9.SEATS}, villain profile ${TF9.villainsField(model)}`,
+      };
+    },
+    /**
+     * THE CEREMONY'S EVIDENCE (V4-PLAN §2.5, and the input gate I50 is scored on). Two halves,
+     * deliberately of different kinds:
+     *
+     *   THE SUB-LADDER DIFF, taken between the two FROZEN FILES with no pipeline in the middle —
+     *   the `compareV1Containment` / `moveDiff` idiom for the third time. Which (lane, VPIP, cell)
+     *   readings differ between the 9-max row and its 6-max counterpart, over every shared seat
+     *   where the pair is legal at BOTH sizes.
+     *
+     *   THE NESTING CENSUS, which no frozen file can carry: how many cells the positional post-pass
+     *   unioned into each shared seat, and which FRONT SEAT carried each one. §5.2 requires every
+     *   excess cell to be explained by a front seat's own N_eff, so the explanation is enumerated
+     *   here rather than asserted.
+     */
+    report(built) {
+      const sixPath = resolve(ROOT, TF3.FIXTURE_PATH);
+      if (!existsSync(sixPath)) {
+        console.log(`  (no ${rel(sixPath)} to diff against — the sub-ladder diff is skipped)`);
+      } else {
+        const six = TF3.parseFixture(readFileSync(sixPath, 'utf8'));
+        const nine = TF9.parseFixture(built.text);
+        const d = TF9.subLadderDiff(nine, six, 12);
+        for (const p of d.problems) console.log(`  PROBLEM — ${p}`);
+        console.log('');
+        console.log(`THE SUB-LADDER DIFF — 6-max (${rel(sixPath)}) -> 9-max (this file), over the`);
+        console.log('shared seats only (the pair legal at both sizes, compared by LADDER POSITION):');
+        console.log(`  ${d.movedRows}/${d.rows} shared settings differ, ${d.movedCells} cell tiers`);
+        for (const [node, st] of d.byNode) {
+          const seats = [...st.bySeat.entries()].sort((a, b) => b[1] - a[1]).map(([s, n]) => `${s}:${n}`).join(' ');
+          console.log(`  ${node}: ${st.comparisons} comparisons, ${st.exact} exact, ${st.moved} differ, ` +
+            `${st.cells} cell tiers${seats ? ` — by seat ${seats}` : ''}`);
+        }
+        console.log('  examples:');
+        for (const e of d.examples) console.log(`    ${e}`);
+      }
+      console.log('');
+      const t = Date.now();
+      const c = TF9.nestingCensus(model, built.lanes, built.settings, { ring: ringPayload() });
+      console.log(`THE NESTING CENSUS — what the positional post-pass unions into each shared seat`);
+      console.log(`  (${((Date.now() - t) / 1000).toFixed(1)}s; ${c.refused} comparisons refused)`);
+      for (const p of c.problems) console.log(`  PROBLEM — ${p}`);
+      for (const [, st] of c.byPair) {
+        const fronts = [...st.byFront.entries()].sort((a, b) => b[1] - a[1]).map(([f, n]) => `${f}:${n}`).join(' ');
+        console.log(`  ${st.node}/${st.nine}(9) vs ${st.six}(6): ${st.comparisons} comparisons, ` +
+          `${st.exact} exact, ${st.strictSuper} strict superset, ${st.subsetViolations} SUBSET VIOLATIONS, ` +
+          `${st.unioned} unioned cells (worst ${st.worstUnioned}), ${st.unexplained} unexplained, ` +
+          `pre-nesting differs ${st.preDiff} (non-monotone ${st.widthNonMonotone})` +
+          (fronts ? ` — carried by ${fronts}` : ''));
+      }
+      console.log('');
+    },
+  },
 };
 
-const kind = KINDS[flag('v3') ? 'v3' : flag('v2') ? 'v2' : 'v1'];
-const kindFlag = flag('v3') ? ' --v3' : flag('v2') ? ' --v2' : '';
+/**
+ * The ring payload the nine-seat surface needs above `N_eff = 7`, read from disk ONCE.
+ *
+ * A PAYLOAD PARAMETER, NOT AN IMPORT: `policy.mjs` loads no file and imports nothing (V4-PLAN
+ * §2.4), so the ring reaches the accessors from here. Absent, this returns null and the pipeline
+ * FAILS CLOSED at the first setting that needs it — which is the correct behaviour and the one
+ * `tier-fixture-9max.mjs`'s header records the measurement for.
+ */
+let RING = undefined;
+function ringPayload() {
+  if (RING !== undefined) return RING;
+  const p = resolve(ROOT, 'data/ring.json');
+  RING = existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
+  return RING;
+}
+
+const kind = KINDS[flag('seats9') ? 'seats9' : flag('v3') ? 'v3' : flag('v2') ? 'v2' : 'v1'];
+const kindFlag = flag('seats9') ? ' --seats9' : flag('v3') ? ' --v3' : flag('v2') ? ' --v2' : '';
 const modelPath = resolve(ROOT, args.find((a) => !a.startsWith('--')) || 'data/model.json');
 const outPath = resolve(ROOT, opt('out') || kind.path);
 const rel = (p) => relative(ROOT, p);
@@ -189,7 +294,25 @@ if (exists && !flag('force')) {
 
 const t0 = Date.now();
 const generated = new Date().toISOString().slice(0, 10);
-const built = kind.build(model, generated);
+/* A DOMAIN THE PIPELINE CANNOT ANSWER IS A REFUSAL TO FREEZE, NOT A STACK TRACE. The nine-seat
+   surface reaches `N_eff > 7`, where the scoring layer reads `data/ring.json` through `eqAtSeats`
+   and FAILS CLOSED without it (V4-PLAN §2.4). Printing the census and exiting is the actionable
+   form of that: the alternative — writing the rows that did solve — would put a hole in a fixture
+   whose gate then passes over a domain nobody chose. */
+let built;
+try { built = kind.build(model, generated); } catch (e) {
+  if (e.name !== 'NineSeatIncomplete') throw e;
+  const c = e.census;
+  console.error(`refusing to freeze ${rel(outPath)} — the pipeline cannot answer the whole domain.`);
+  console.error('');
+  console.error(`  ${c.refused} of ${c.total} settings (${(100 * c.refused / c.total).toFixed(3)} %) refuse; ${c.solved} solve.`);
+  for (const line of c.lines) console.error(`  ${line}`);
+  console.error('');
+  console.error('  A fixture missing rows would make its gate assert a domain nobody chose, so nothing');
+  console.error('  is written. Supply the payload the refusals name, or land the policy changes they');
+  console.error('  point at, and run this again — the count above is the acceptance test.');
+  process.exit(1);
+}
 
 if (exists) {
   // --force. Print the damage before doing it.

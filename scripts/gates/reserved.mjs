@@ -455,6 +455,136 @@ export const CATALOG = [
       + 'the F3 consequence is green. The harness prints the caveat on every run: Playwright\'s '
       + 'WebKit is not Safari.app.',
   },
+  // ---------------------------------------------------------------------------
+  // V4-PLAN §5.2 — the seat ladder, the 9-max fixture and the ring artifact. Seven ids RESERVED IN
+  // THE PLAN BEFORE ANY OF THEIR FEATURES EXISTED and promoted together at stage S2 by lane F, the
+  // run's single writer of this file and of EXPECTED_IDS (§7.2's contention registry: a mismatch
+  // between the declared sequence and that frozen literal makes the runner THROW rather than fail a
+  // gate, so two lanes appending two halves is a failure mode with no gate to catch it).
+  //
+  // I48 IS CLAIMED DELIBERATELY, and this is the written record §5.2 asks for.
+  // `test/payoff-model.test.mjs:24` names I48 as an id it DECLINED to invent — "Inventing I48 here
+  // would be exactly what scripts/gates/reserved.mjs was written to prevent". That comment forbids
+  // choosing an id AFTER the feature, to fit code already written. V4-PLAN §5 reserved I48 BEFORE
+  // one, in the plan, with its claim written out — which is exactly the distinction this file
+  // draws. The two do not conflict, the comment stands unedited, and skipping to I53 to dodge the
+  // question would have been the dishonest move: a hole in the sequence hiding a decision nobody
+  // wanted to write down.
+  {
+    id: 'I48', status: 'live', runner: 'verify', phase: 'v4 S2', plan: 'V4-PLAN §0.4, §5.2',
+    claim: 'seat-axis inertness at six seats. (a) the three legacy fixtures are byte-UNCHANGED and '
+      + 'data/tiers-9max.fixture.txt is ADDED across the run\'s commit range — the SHAPE of the diff, '
+      + 'because --force is a CLI flag that never appears in a commit message and a `git log` grep is '
+      + 'therefore not the checkable artifact; (b) with data/ring.json zeroed on a copy the whole '
+      + 'seats-6 surface is byte-identical to the real build\'s, asserted through `rankTable` rather '
+      + 'than `solve`, which hands no ring down at all; (c) nMax(6) === 7 with `nMax(6) + 0.0001 === '
+      + '7.0001` bit-for-bit, and the seats-6 extrapolated count over V3-BRIEF :211\'s own re-derived '
+      + '3,960-setting domain is the RECOUNTED INTEGER 47 — because a percentage is not a gate.',
+    fails: 'a legacy fixture showing as modified whatever the log says; any read of the ring at six '
+      + 'seats; the clamp or the recounted integer moving.',
+    note: 'LIVE at v4 S2 (scripts/gates/ring.mjs). The 47 was re-derived and reproduces V3-BRIEF\'s '
+      + 'recorded 1.19 % exactly; at nine seats the clamp MOVES to 9 rather than lifting and the '
+      + 'clamped share FALLS to 19/6,336 = 0.300 %.',
+  },
+  {
+    id: 'I49', status: 'live', runner: 'verify', phase: 'v4 S2', plan: 'V4-PLAN §2.5, §5.2',
+    claim: 'the 9-max fixture reproduces on every run (`freeze-tiers.mjs --seats9 --check` empty) — '
+      + 'the same claim I32 makes for six seats, over 26,136 settings x 123 cells.',
+    fails: 'any tier move at nine seats; a widened or narrowed domain; the frozen seats=9 state no '
+      + 'longer being the state the pipeline would paint.',
+    prediction: '§2.5 predicted 33 legal (pos, node) pairs x 66 VPIP x 12 lanes = 26,136 settings. '
+      + 'MEASURED at S2: 33 pairs {rfi 8, limps 8, raise 8, 3bet 9} and 26,136 settings — confirmed '
+      + 'exactly. EXPECTED RED until stage S3\'s freeze ceremony creates the file, which §2.5 '
+      + 'requires not to exist before the run; the gate reports `fixture absent` and fails closed.',
+    note: 'THE DIVERGENCE FROM THE v3-DEFAULT FIXTURE IS DELIBERATE. tier-fixture-v3.mjs takes NO '
+      + 'gate id ("Inventing an id here would defeat the point of reserving them") because V3-PLAN '
+      + 'reserved none for it. V4-PLAN §5 reserved I49 before the fixture existed, which is the '
+      + 'condition that header names as the thing it could not claim.',
+  },
+  {
+    id: 'I50', status: 'live', runner: 'verify', phase: 'v4 S2', plan: 'V4-PLAN §3 R4, §5.2',
+    claim: 'the sub-ladder identity over EVERY SHARED SEAT WHERE THE PAIR IS LEGAL AT BOTH SIZES — '
+      + 'five at rfi (the last ladder seat is disabled at both), five at limps and raise (the '
+      + 'first-seat exclusion moves forward, so the fourth nine-seat chair has no six-seat '
+      + 'counterpart and its two pairs are I49\'s business), six at 3bet. (i) the tier reading, '
+      + 'diffed between the two FROZEN FILES with no pipeline in the middle; (ii) CONTAINMENT, '
+      + 'pre-registered with its direction — aggressive(9-max, seat) SUPERSET-OR-EQUAL '
+      + 'aggressive(6-max, seat), with equality MEASURED and every excess cell attributed to a named '
+      + 'front seat; (iii) the PRE-NESTING width, stated separately: more seats in front never '
+      + 'widens the target.',
+    fails: 'a SUBSET violation, an UNEXPLAINED excess cell, or a non-monotone pre-nesting width. A '
+      + 'strict superset is an EXPECTED OUTCOME and not a failure, and there is no tolerance.',
+    prediction: '§5.2 predicted the nesting post-pass would bite at rfi. TWO REFINEMENTS, RECORDED '
+      + 'RATHER THAN PATCHED (docs/spikes/V4-ladder.md §6, independently reproduced at S2): it bites '
+      + 'at limps and raise too, because the nesting chain at those nodes starts one seat later '
+      + 'rather than three; and `raise`, not `rfi`, is where it bites hardest. Measured at S2 on the '
+      + 'pre-display aggressive set: 16,272 comparisons, 0 subset violations, 0 unexplained excess '
+      + 'cells, 0 pre-nesting differences of any kind — so (iii)\'s monotone wording holds as '
+      + 'EQUALITY, which is stronger.',
+  },
+  {
+    id: 'I51', status: 'live', runner: 'verify', phase: 'v4 S2', plan: 'V4-PLAN §2.1, §2.3, §5.2',
+    claim: 'the ladder. (a) baseRaise strictly increasing along the non-blind ladder at BOTH sizes; '
+      + '`straddle.seat === ladder.earlyStep` on the SHIPPED constants (two constants, one anchor, '
+      + 'I26\'s perturbation exempt by name); baseR non-increasing toward the front under whichever '
+      + 'R1 rule ships, read on the score AND the width surface (d = 40 and d = 250 as well as the '
+      + 'reference depth); nesting over the whole nine-seat rfi chain at every VPIP and lane. '
+      + '(b) the two rewritten seat-literal offenders reproduce their deleted sets at six seats and '
+      + 'name the structurally equivalent sets at nine, as PREDICATES and in width3For\'s actual '
+      + 'branch behaviour. (c) no NEW seat-name literal: a lexical scan of scripts/, src/ and test/ '
+      + 'finds the three new keys only in an allowlist, failing on the first stray BY FILE:LINE, '
+      + 'with the six legacy keys\' count PINNED so it may fall and never rise.',
+    fails: 'a non-monotone ladder; the two anchored constants drifting apart; a laundered seat '
+      + 'literal; new code typing a seat name instead of reading seatsFor().',
+    note: 'GATED AS "NO NEW LITERAL", NOT "NO LITERAL", and docs/spikes/V4-ladder.md §10 is why: the '
+      + 'six legacy keys appear 331 times across 34 files and always did, so §5.2(c) read literally '
+      + 'is violated on the day it is written by code nobody is being asked to change. Comments are '
+      + 'stripped before the scan — prose about a seat is not a literal.',
+  },
+  {
+    id: 'I52', status: 'live', runner: 'verify', phase: 'v4 S2', plan: 'V4-PLAN §2.4, §5.2',
+    claim: 'the ring consumer. (a) at nine seats every N_eff in (7, 9] reads the ring columns '
+      + 'THROUGH `eqAtSeats` — perturb data/ring.json and those settings move, and ONLY those — '
+      + 'written against the accessor and never against `cells`, which stays byte-identical; '
+      + '(b) meta.nMax and the page\'s NMAX are still 7 while SIM_NMAX is 9; (c) the nine-seat '
+      + 'extrapolated census is recorded in constants.ladder.census and matches a LIVE RECOUNT.',
+    fails: 'a stale census, a setting above seven that does not move under perturbation, a setting '
+      + 'at or below seven that does, or a `cells` read at N > 7.',
+    note: 'The tripwire runs through `rankTable`, not `solve`: `aggressiveSet`\'s memo key does not '
+      + 'carry the ring payload, so a perturbation routed through the memoised path would be handed '
+      + 'the previous answer — `envKey`\'s own documented trap, one level down. EXPECTED RED at S2: '
+      + 'SIM_NMAX is lane R\'s and constants.ladder.census does not exist yet (policy.mjs is frozen '
+      + 'after S1, so it is filed as a policyDelta rather than patched).',
+  },
+  {
+    id: 'D12', status: 'live', runner: 'verify', phase: 'v4 S2', plan: 'V4-PLAN §2.4, §5.2',
+    claim: 'the ring artifact. (a) `generate-ring.mjs --check` byte-identical; (b) meta complete '
+      + '(seeds, trials, se, generatorHash, contentHash) and the two seeds\' N = 8, 9 columns agree '
+      + 'within 2 * se.cell on every cell; (c) the UNSHIPPED N = 1..7 prefix agrees with '
+      + 'cells[*].eq[0..6] within the same band — the free reproduction; (d) the `ring` artifact '
+      + 'budget pinned from above at ceil(measured * 1.05), whole-KB, in BOTH variants, because '
+      + 'D6\'s from-above clause explicitly excludes it; (e) the measured wall time within '
+      + 'ring.meta.wallBudget (300 s).',
+    fails: 'closed on each — a non-reproducing generator, an incomplete meta, two seeds that '
+      + 'disagree, a prefix that does not reproduce the shipped columns, an unpinned budget, or a '
+      + 'run over its pre-registered wall budget.',
+    note: 'ID REGISTERED BY LANE F, CLAUSES WRITTEN BY LANE R in scripts/gates/ring-artifact.mjs, '
+      + 'which scripts/gates/ring.mjs calls and which must NOT be added to REGISTRY — it is a clause '
+      + 'library, not a family, and registering it would emit D12 twice. Until it lands the gate '
+      + 'fails closed naming the absent module.',
+  },
+  {
+    id: 'D13', status: 'live', runner: 'verify', phase: 'v4 S2', plan: 'V4-PLAN §2.7, §5.2',
+    claim: 'the ring block. `@block:ring` present in BOTH variants; its cap bounded from above by '
+      + 'D6\'s blocks clause automatically (pageCeilingProblems iterates budgets.blocks, so a new '
+      + 'blocks.ring cap needs no gate edit); the equality pin app === appCore + sum(caps) holding '
+      + 'with `ring` in the sum in both variants; blocks.skill (page) and `core` (model.json\'s '
+      + '120 KB sub-budget) NOT raised; and any appCore / modelCode / full-total raise carrying its '
+      + 'shrink-first measurement in budgetSource.',
+    fails: 'a missing block, a silent raise, or a raise without its shrink-first sentence.',
+    note: 'ID REGISTERED BY LANE F; the block is lane U\'s and the caps are stage S3\'s in '
+      + 'scripts/lib/variant.mjs. Fails closed on the named absence until both land.',
+  },
 ];
 
 /** ids reserved for future phases — never in EXPECTED_IDS, never stamped into model.gates */
