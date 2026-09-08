@@ -272,6 +272,27 @@ ceiling and re-measuring the frozen layer. Neither is acceptable, so:
   `NEED = 5 + NMAX * 4` (`scripts/lib/mc.mjs:106`), and the ring runs **two** seeds:
   `2 × 113 × 9/7 ≈ 291 s`, rounded up to 300. It is measured at stage S2 and written into
   METHODOLOGY. It is **not** added to `generate-data.mjs`'s 188 s.
+
+> **Amended by the owner (2026-09-08, after run 1 — stage S2, lane R).** The derivation above is
+> **falsified by measurement** and is kept as written. Linear-in-villains holds for `runMulti`
+> (per-cell 19 → 22 ms, **1.16×**) and fails for `runMultiFiltered` (per-cell lattice
+> Σ 189 → 1,170 ms, **6.2×**): by the ninth villain 40 of 52 cards are dead, the VPIP-filtered
+> pools exhaust rejection sampling, and each exhaustion burns the full `RANGE_TRIES = 4,000`
+> before falling back to a random hand (v = 25 fallback rate 0.029 % → 5.744 %). End to end the
+> ring's two lattice stages ran 584.1 s and 599.1 s against the shipped S2L's 101 s (5.9×,
+> reproducing the per-cell ratio within 5 %); the two-seed wall was **1,213.6 s** at four workers.
+> R2's halving would give ≈ 622 s and eight workers gave 660.8 s, so neither meets 300 s and R2's
+> blocker clause fired as written. The budget is therefore **re-derived from the measured cost
+> model, stage by stage, in the same shape as the derivation it replaces**:
+> `2 × (12 × 1.16 + 101 × 6.2) ≈ 1,280 s`, pre-registered at **1,280 s**, measured at four
+> workers — the derivation's own regime; METHODOLOGY records that worker count cannot move a
+> number, so a larger count is a wall-clock trade, never a way to meet the budget. The lattice
+> ships at the full `generate-data` regime: no halving, no seed dropped. It remains a one-off cost
+> per change to the construction, never per model run or per verify, exactly as the checkdown
+> matrix's 21 s is. Run 1's evidence: `docs/spikes/V4-ring.md` §3.2 and §7 (lane R, branch
+> `worktree-wf_3c958a35-f26-4`). The finding beneath the number — 5.7 % of the ninth villain's
+> v = 25 draws are not from the range at all — is a measurement-layer limitation METHODOLOGY
+> carries beside limitation 20, not something the budget launders.
 - The build embeds it **as its own injected payload**, exactly on the `data/equilibrium.json`
   precedent (the full variant's `eq 73K` region, printed by the build census as its own region):
   a top-level `ring: N * 1024` budget row in **both** `VARIANTS.lite.budgets` and
@@ -399,6 +420,20 @@ the cap-sum equality), and `data/model.json` by exactly one addition, `constants
   recorded in `ring.meta.se`, badged on the surfaces that read it) rather than dropping a seed;
   if it still exceeds 300 s, that is a blocker, not a silent widening. The halving clause bites
   above the derivation's own value, never at it.
+
+> **Amended by the owner (2026-09-08, after run 1).** R2's blocker clause fired exactly as
+> written: the measured two-seed wall was 1,213.6 s, the halving remedy yields ≈ 622 s, and no
+> stage widened anything. The owner's adjudication, recorded here in the plan before the relaunch
+> and not through any stage's prose: the 300 s pre-registration rested on a cost model §2.4's
+> amendment records as falsified, so the budget is **re-derived, not chosen**, as
+> `2 × (12 × 1.16 + 101 × 6.2) ≈ 1,280 s` and pre-registered at **1,280 s** (four workers). The
+> rest of R2 stands unchanged with 1,280 s in place of 300 s: the halving clause bites only above
+> the derivation's own value, never at it; a measured run still above the budget after halving is
+> a blocker, not a silent widening; a seed is never dropped. `ring.meta.wallBudget` carries 1,280
+> and D12(e) judges against it; METHODOLOGY records the falsified derivation beside the amended
+> one. The D12(b)/(c) agreement band is **not** amended: run 1's treatment stands — the reading
+> is reported against the pre-registered 2.0 marked falsified, and the clauses assert bias,
+> spread, the 5·se per-cell bound and `eq[N = 9] ≤ eq[N = 8]` at zero tolerance.
 - **R3 — the `extrapolated` census**: at nine seats the clamp is 9. The share of settings with
   `raw > 9` is measured and recorded per (pos, node); if any pair is clamped at more than half its
   66 VPIP points, that reading goes into the Method view's Table size section (§2.6) and into
@@ -439,7 +474,7 @@ the cap-sum equality), and `data/model.json` by exactly one addition, `constants
 | `constants.nMax` (existing) | 7 | unchanged — describes `cells` | I52 |
 | `ring.meta.nMax` | 9 | §2.4 | D12, I52 |
 | `ring.meta.trials`, `.se`, `.seeds` | as `generate-data` (or R2's halving, recorded) | §2.4 | D12(b), D12(c) |
-| `ring.meta.wallBudget` | **300 s** | R2, derived: `2 × 113 s × 9/7 ≈ 291 s` rounded up (§2.4) | D12(e) |
+| `ring.meta.wallBudget` | ~~**300 s**~~ → **1,280 s** (owner amendment, after run 1) | R2 as amended: `2 × (12 × 1.16 + 101 × 6.2) ≈ 1,280 s` from the measured per-kernel cost model (§2.4's amendment); the original `2 × 113 s × 9/7 ≈ 291 s` derivation is falsified and kept as written | D12(e) |
 | `blocks.ring` (page block) | measured + 5 %, whole KB | D6's from-above clause applies **automatically** — `pageCeilingProblems` iterates `budgets.blocks` (`gates/data.mjs:255`), so no gate edit | D13 |
 | `ring` (artifact budget, both variants) | measured + 5 %, whole KB | **D12(d)** — D6's from-above clause excludes `eq` and the `model.json` sub-budgets, so this pin is D12's | D12(d) |
 
@@ -552,7 +587,7 @@ equity column; (c) **the unshipped `N = 1..7` prefix agrees with `cells[*].eq[0.
 `2 · se.cell` on every cell** (the free reproduction); (d) the **`ring` artifact budget** — the
 top-level per-variant row, not a `model.json` sub-budget — pinned from above at
 `ceil(measured × 1.05)`, whole-KB, in both variants, because D6's from-above clause explicitly
-excludes it; (e) the measured wall time ≤ `ring.meta.wallBudget` (300 s). *Fails* closed on each.
+excludes it; (e) the measured wall time ≤ `ring.meta.wallBudget` (300 s as written; **1,280 s** after the owner's R2 amendment). *Fails* closed on each.
 
 **D13 — the ring block.** `@block:ring` present in **both** variants; its cap bounded from above
 by D6's blocks clause (`pageCeilingProblems` iterates `[...BLOCKS, ...Object.keys(budgets.blocks)…]`
