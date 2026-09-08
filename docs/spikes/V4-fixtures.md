@@ -1,9 +1,21 @@
 # V4 S2 lane F — the fourth fixture kind and the I48–I52 gates. What S3 and the red team read.
 
-Base `33a228f` (S1's `v4-s1-base`, fast-forwarded; `git diff v4-s1-base -- scripts/lib/policy.mjs`
-empty). Branch `worktree-wf_3c958a35-f26-6`. At return: `verify` **64/69** with the five reds §5.2
-requires, `node --test test/*.test.mjs` **717/717**, `build --check` **2/2 current**, `git status`
-carries no `data/` change and no `data/tiers-9max.fixture.txt`.
+Base `c76720d` — the tip of S1's `v4-s1-base`, which carries **the owner's R2 amendment**
+(`ring.meta.wallBudget` re-derived to 1,280 s after run 1) as well as the ladder.
+`git diff v4-s1-base -- scripts/lib/policy.mjs` is empty. Branch `worktree-wf_3c958a35-f26-6`.
+At return: `verify` **64/69** with the five reds §5.2 requires, `node --test test/*.test.mjs`
+**717/717**, `build --check` **2/2 current**, `git status` carries no `data/` change and no
+`data/tiers-9max.fixture.txt`.
+
+> **Rebased (stage S2, lane F).** This worktree was cut from `33a228f`, one commit *behind*
+> `v4-s1-base`, so lane F's first two commits sat on a tree whose `docs/V4-PLAN.md` and
+> `.claude/workflows/v4.js` still carried the **falsified 300 s** wall budget rather than the
+> owner's amended 1,280 s. `policy.mjs` was identical either way — S1's ladder rode in on the
+> `33a228f` stash commit, and `c76720d` adds *only* the amendment — so nothing lane F built was
+> affected, but the tree S3 merges would have silently reverted an owner decision. Repaired with
+> `git rebase v4-s1-base` (clean; lane F touches neither file). **Any lane whose worktree predates
+> `c76720d` has the same reversal in it and must rebase before S3 merges** — a fast-forward is
+> refused, because the two histories diverged rather than trailing.
 
 ---
 
@@ -173,6 +185,19 @@ It prints the settings count, the scope line, the **sub-ladder diff** against
 `data/tiers-v3-default.fixture.txt` (§2.5's committed evidence) and the **nesting census** of §2.4.
 Expect a file between 809.2 and 844.6 KB. Then re-run `verify.mjs` **without** `--no-write` so the
 seven stamps land, and re-run `build --check`.
+
+**The order matters, and getting it wrong looks like a byte-ceiling failure.** `verify.mjs` writes
+`model.gates` into `data/model.json` on every completing run, and `build.mjs:185` refuses to build a
+model carrying any verdict that is not `pass` — it reads the **stamped** verdicts, never a live gate
+run. So while the five reds are open, a `verify.mjs` immediately followed by `build --check` reports
+`0/2 variants current · STALE: lite, full` with `model gates did not pass: I49, I50, I52, D12, D13`.
+That is the stamp, not the build: `git checkout -- data/model.json` and `--check` is **2/2 current**
+again, which is how this lane's green was taken. Two consequences for S3:
+
+- **Every lane must revert `data/model.json` after running the verifier.** It is S3's file under
+  §7.2, and a lane that leaves it stamped ships a 7-verdict diff nobody assigned it.
+- **The order at the close is freeze → verify → build**, never verify → build, and once the reds are
+  green the trap disappears on its own because every stamp is then `pass`.
 
 ---
 
