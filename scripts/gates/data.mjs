@@ -125,34 +125,52 @@ const margin = (factor, anchors) => Object.freeze({ factor, anchors: Object.free
 
 export const CEILING_MARGINS = Object.freeze({
   total: margin(1.05, [
-    at(SRC.B, 470, 'Each budget below is that measurement plus about 5%, rounded'),
-    at(SRC.B, 485, 'TOTAL 600 KB'),
-    at(SRC.M, 2363, 'measurement plus about 5 %, the same rule the phase-3 numbers were set by'),
+    at(SRC.B, 498, 'Each budget below is that measurement plus about 5%, rounded'),
+    at(SRC.B, 513, 'TOTAL 600 KB'),
+    at(SRC.M, 2695, 'measurement plus about 5 %, the same rule the phase-3 numbers were set by'),
     at(SRC.V, 224, 'DELIBERATELY far below the 686K a fresh measured+5% would give'),
   ]),
   app: margin(1.05, [
     at(SRC.V, 159, 'far under the +5% this rule would allow (413K)'),
-    at(SRC.M, 2522, '+5 % is 387.6, rounded up to the whole KB: **388 KB**'),
-    at(SRC.M, 2620, 'under the +5 % this rule would allow (413 KB)'),
+    at(SRC.M, 2861, '+5 % is 387.6, rounded up to the whole KB: **388 KB**'),
+    at(SRC.M, 2959, 'under the +5 % this rule would allow (413 KB)'),
   ]),
   appCore: margin(1.05, [
     at(SRC.V, 104, 'the app payload MINUS the `@block:gto` region — the pre-raise ceiling'),
-    at(SRC.B, 470, 'Each budget below is that measurement plus about 5%, rounded'),
-    at(SRC.B, 489, 'APP 360 KB (was 345). Measured 344.8, headroom 4.4%'),
-    at(SRC.M, 2363, 'measurement plus about 5 %, the same rule the phase-3 numbers were set by'),
+    at(SRC.B, 498, 'Each budget below is that measurement plus about 5%, rounded'),
+    at(SRC.B, 517, 'APP 360 KB (was 345). Measured 344.8, headroom 4.4%'),
+    at(SRC.M, 2695, 'measurement plus about 5 %, the same rule the phase-3 numbers were set by'),
     at(SRC.M, 254, 'a removal that does not move the ceiling'),
   ]),
   modelCode: margin(1.08, [
     at(SRC.V, 119, 'DELIBERATELY BELOW the 8% margin this gate was calibrated'),
     at(SRC.V, 136, 'calibrated +8%, which would give 56K'),
-    at(SRC.B, 499, 'measurement plus about 8%, the margin this gate was originally calibrated with'),
-    at(SRC.M, 2412, 'that measurement plus about 8 %'),
+    at(SRC.B, 527, 'measurement plus about 8%, the margin this gate was originally calibrated with'),
+    at(SRC.M, 2751, 'that measurement plus about 8 %'),
   ]),
   blocks: margin(1.05, [
     at(SRC.V, 140, 'a per-block ceiling at measured+5%'),
-    at(SRC.M, 2569, 'at measured+5 % rounded up to the whole KB'),
-    at(SRC.M, 2600, '4,844 B + 5 % = 5,087 B, rounded up to the whole KB'),
-    at(SRC.M, 2636, '5,313 B + 5 % = 5,579 B, rounded up to the whole KB'),
+    at(SRC.M, 2908, 'at measured+5 % rounded up to the whole KB'),
+    at(SRC.M, 2939, '4,844 B + 5 % = 5,087 B, rounded up to the whole KB'),
+    at(SRC.M, 2975, '5,313 B + 5 % = 5,579 B, rounded up to the whole KB'),
+  ]),
+  /* THE TWO v4 ROWS (V4-PLAN §2.7, §5.1; stage S5). They are CITE rows: neither the ring block's
+     cap nor the ring artifact's budget is enforced from here — `blocks.ring` is bounded by the
+     `blocks` row above, whose clause iterates the whole block table rather than a fixed list, and
+     the artifact row is D12(d)'s pin, because D6's from-above clause excludes `eq` and the
+     model.json sub-budgets and this is the same kind of row. What these two add is the thing
+     `citationProblems` is for: the +5 % both of them were set by is now held to the lines that
+     document it, in variant.mjs's own manifest and in METHODOLOGY §9.11, so a factor edited in one
+     place and not the other fails on the run that does it. `gates/ring-artifact.mjs`'s
+     RING_CEILING_FACTOR keeps reading `blocks.factor`, so there is still exactly one shipped copy of
+     1.05 — which is what the S4 red team's finding on that constant was about. */
+  ring: margin(1.05, [
+    at(SRC.V, 173, 'ring 20K is NEW and is the ARTIFACT budget'),
+    at(SRC.M, 3062, 'the ring artifact\'s budget is that measurement plus 5 %, rounded up to the whole KB'),
+  ]),
+  'blocks.ring': margin(1.05, [
+    at(SRC.V, 173, 'blocks.ring 11K is NEW and is TIGHTER THAN ITS OWN RULE'),
+    at(SRC.M, 3054, 'the ring block\'s cap is that measurement plus 5 %, rounded up to the whole KB'),
   ]),
 });
 
@@ -201,6 +219,23 @@ export function citationProblems(margins = CEILING_MARGINS, readSource) {
 
 /** measured × factor, rounded UP to the whole KB — the idiom every §9.11 derivation uses. */
 export const ceilingBound = (measured, factor) => Math.ceil((measured * factor) / 1024) * 1024;
+
+/* D6's model.json sub-budgets, AT MODULE SCOPE SINCE STAGE S4 so that a gate outside this family can
+   assert one of them was not raised. They were a local `const` inside `build()` and D13's catalog
+   entry claims "`blocks.skill` (page) and `core` (model.json's 120 KB sub-budget) NOT raised" — a
+   claim D13 could not make, because the numbers were unreachable; a refuter raised `BUD.total`
+   146 -> 156K and shipped verify 69/69 green with D6 printing "of which core 116.1K/130K", caught
+   only by a regex in a test (docs/refutations/V4.md). Nothing about the values moves. */
+export const MODEL_SUB_BUDGETS = Object.freeze({
+  cells: 65 * 1024, meta: 20 * 1024, order: 43 * 1024,
+  baseline: 12 * 1024, solver: 3 * 1024, skill: 1 * 1024, evCut: 2 * 1024, ladder: 1 * 1024,
+  calibration: 7 * 1024, total: 146 * 1024,
+});
+const B_ = MODEL_SUB_BUDGETS;
+/** the pre-raise 120 KB `core`, every reserved block subtracted and none of them granted */
+export const MODEL_CORE_BUDGET = B_.total - B_.baseline - B_.solver - B_.skill - B_.evCut - B_.ladder - B_.calibration;
+/** the pre-raise 13 KB `metaCore`, the same way */
+export const MODEL_META_CORE_BUDGET = B_.meta - B_.solver - B_.skill - B_.evCut - B_.ladder;
 
 const K = (b) => `${(b / 1024).toFixed(1)}K`;
 const KB = (b) => `${b / 1024}K`;
@@ -596,14 +631,16 @@ export function build(ctx) {
     //                     `core` still faces the original 120K and `metaCore` the original 13K, so
     //                     no pre-existing block gains one byte and none of its bytes can be spent by
     //                     anything else — which is what the two core readings below prove.
-    const BUD = {
-      cells: 65 * 1024, meta: 20 * 1024, order: 43 * 1024,
-      baseline: 12 * 1024, solver: 3 * 1024, skill: 1 * 1024, evCut: 2 * 1024, ladder: 1 * 1024,
-      calibration: 7 * 1024, total: 146 * 1024,
-    };
+    //                     S6 (the fix round) MOVED, DID NOT RAISE: `straddle.seatDerivedFrom` became
+    //                     `ladder.anchorSharedWith` so §0.4's model delta sits wholly inside the new
+    //                     block. That is ~37 B crossing FROM the metaCore side (straddle is not a
+    //                     reserved block) INTO `ladder`, which metaCore subtracts — so metaCore FALLS
+    //                     and `ladder` rises, both in the safe direction, and no ceiling here moves.
+    //                     The falsification above stands as measured at S1 and is not patched away.
     // the pre-raise 120K and 13K, still binding — every reserved block subtracted, none of them granted
-    const CORE_BUDGET = BUD.total - BUD.baseline - BUD.solver - BUD.skill - BUD.evCut - BUD.ladder - BUD.calibration;
-    const META_CORE_BUDGET = BUD.meta - BUD.solver - BUD.skill - BUD.evCut - BUD.ladder;
+    const CORE_BUDGET = MODEL_CORE_BUDGET;
+    const META_CORE_BUDGET = MODEL_META_CORE_BUDGET;
+    const BUD = MODEL_SUB_BUDGETS;
     const core = sizes.total - sizes.baseline - sizes.solver - sizes.skill - sizes.evCut - sizes.ladder - sizes.calibration;
     const metaCore = sizes.meta - sizes.solver - sizes.skill - sizes.evCut - sizes.ladder;
     /* THE PAGE'S CEILINGS, FROM ABOVE — the clause the P5 red team wrote down (see the header
@@ -643,7 +680,8 @@ export function build(ctx) {
       `PAGE CEILINGS FROM ABOVE (release consolidation; docs/refutations/P5.md §3's first repair, ` +
       `measured/cap≤cap-bound): ${page.lines.join('; ') || 'not measured'} — ` +
       `bound = measured × margin rounded up to the whole KB; margins, each quoted from the line it cites: ` +
-      [['total', 'total'], ['app', 'app'], ['appCore', 'core'], ['modelCode', 'model code'], ['blocks', 'blocks']]
+      [['total', 'total'], ['app', 'app'], ['appCore', 'core'], ['modelCode', 'model code'], ['blocks', 'blocks'],
+        ['blocks.ring', 'ring block'], ['ring', 'ring artifact']]
         .map(([k, label]) => `${label} +${Math.round((CEILING_MARGINS[k].factor - 1) * 100)}% (${CEILING_MARGINS[k].cite})`)
         .join(' · ') +
       `; ${page.anchors} cited lines re-read this run and each still carries its phrase; a documented ceiling ` +

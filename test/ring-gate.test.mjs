@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 
 import { ringProblems, injectedForm, RING_CEILING_FACTOR } from '../scripts/gates/ring-artifact.mjs';
 import { serialize, bandsFor, summarise, SEEDS, RING_NMAX, WALL_BUDGET, OUTLIER_SIGMA } from '../scripts/lib/ring.mjs';
-import { ceilingBound } from '../scripts/gates/data.mjs';
+import { ceilingBound, CEILING_MARGINS, citationProblems } from '../scripts/gates/data.mjs';
 
 const SE = { cell: 0.16, latt: 0.16 };
 const V = [25, 40, 55, 70, 90];
@@ -26,14 +26,22 @@ function goodRing(edit = (b) => b) {
   const bands = bandsFor(SE);
   const cells = {};
   const agree = { twoSeed: [], prefix: [] };
+  /* THE SUMMARY AND THE PER-CELL RECORD ARE ONE MEASUREMENT — in the fixture too, since S4's red
+     team added the clause that says so (docs/refutations/V4.md). Before that the `agree` arrays and
+     the `meta.*` summaries here were unrelated numbers, which is a file no honest generator could
+     have written: `summarise` is fed the very deltas `agree` records, alternating in sign so the
+     bias and spread clauses stay in their passing range. */
+  const rows = { twoSeed: [], prefix: [] };
   KEYS.forEach((key, i) => {
     const vDelta = {};
     for (const v of V) vDelta[v] = [-1.2, -1.4];
     cells[key] = { eq: [30 - i, 28 - i], vDelta };
-    agree.twoSeed.push(0.4 + i * 0.1);
-    agree.prefix.push(0.5 + i * 0.1);
+    const a = +(0.4 + i * 0.1).toFixed(2), b = +(0.5 + i * 0.1).toFixed(2);
+    agree.twoSeed.push(a);
+    agree.prefix.push(b);
+    rows.twoSeed.push({ d: (i % 2 ? -1 : 1) * a * bands.seDiff, at: `${key} N=8` });
+    rows.prefix.push({ d: (i % 2 ? -1 : 1) * b * bands.seDiff, at: `${key} N=3` });
   });
-  const rows = [{ d: 0.05, at: 'x N=8' }, { d: -0.04, at: 'y N=9' }];
   const meta = {
     kind: 'test', plan: 'V4-PLAN §2.4', generator: 'scripts/generate-ring.mjs',
     generatorHash: 'GEN', kernelHash: 'KERN', contentHash: '',
@@ -42,8 +50,8 @@ function goodRing(edit = (b) => b) {
     cells: KEYS.length, wallBudget: WALL_BUDGET, wallSec: 250,
     model: { hash: 'h', orderHash: 'o', nMax: 7 },
     band: bands,
-    twoSeed: summarise(rows, bands.seDiff, SE.cell),
-    prefix: summarise(rows, bands.seDiff, SE.cell),
+    twoSeed: summarise(rows.twoSeed, bands.seDiff, SE.cell),
+    prefix: summarise(rows.prefix, bands.seDiff, SE.cell),
     agreeOrder: 'index-aligned',
   };
   const body = edit({ meta, cells, agree });
@@ -256,12 +264,81 @@ test('the pre-registered 2·se.cell reading is REPORTED, and marked FALSIFIED wh
   /* a worst |delta| of 0.5 pt is 3.13 · se.cell — past §5.2's 2.0, inside the 5σ outlier line */
   const breach = summarise([{ d: 0.5, at: 'x N=8' }, { d: -0.02, at: 'y N=9' }], bands.seDiff, SE.cell);
   assert.ok(breach.worstSE > 2 && breach.worstSigma < OUTLIER_SIGMA, 'the fixture is in the gap the finding lives in');
-  const { problems, readings } = run(goodRing((b) => { b.meta.prefix = breach; return b; }));
+  const { problems, readings } = run(goodRing((b) => {
+    b.meta.prefix = breach;
+    // the per-cell record moves with the summary — S4's consistency clause, and what a generator does
+    b.agree.prefix = b.agree.prefix.map(() => +(breach.worst / bands.seDiff).toFixed(2));
+    return b;
+  }));
   assert.deepEqual(problems, [], 'a breach of the FALSIFIED band is not a gate failure');
   assert.ok(readings.some((r) => /prefix worst .* FALSIFIED/.test(r)),
     `the falsification must stay on the report, got: ${readings.join(' | ')}`);
   // and when it holds, it says so rather than going quiet
   const held = summarise([{ d: 0.1, at: 'x' }], bands.seDiff, SE.cell);
-  const r2 = run(goodRing((b) => { b.meta.prefix = held; return b; }));
+  const r2 = run(goodRing((b) => {
+    b.meta.prefix = held;
+    b.agree.prefix = b.agree.prefix.map(() => +(held.worst / bands.seDiff).toFixed(2));
+    return b;
+  }));
   assert.ok(r2.readings.some((r) => /prefix worst .* held/.test(r)));
+});
+
+// -- STAGE S4's RED-TEAM CLAUSES -----------------------------------------------------------------
+// Each was written because a refuter shipped the perturbation below GREEN (docs/refutations/V4.md).
+
+test('(b) the se must be the trial count\'s, at the published rounding', () => {
+  // Three refuters moved `se.cell` 0.16 -> 0.40 with a self-consistent `band` and shipped a
+  // 2.5x-wider outlier line green; another halved `trials.latt` with nothing noticing. `se` was
+  // checked for `> 0` and against nothing else, while every band in D12 is derived from it.
+  fires(goodRing((b) => { b.meta.trials.cell = 1000; return b; }),
+    /meta\.se\.cell is 0\.16 and 1000 trials give 50\/sqrt\(n\) = 1\.58/);
+  fires(goodRing((b) => {
+    b.meta.se = { ...b.meta.se, cell: 0.4 };
+    b.meta.band = bandsFor(b.meta.se);
+    return b;
+  }), /the standard error and the trial count in this file describe different measurements/);
+  // R2's halve-the-lattice fallback stays legal: halved trials carrying the se they imply passes
+  const halved = goodRing((b) => {
+    b.meta.trials = { ...b.meta.trials, latt: 50000 };
+    b.meta.se = { ...b.meta.se, latt: +(50 / Math.sqrt(50000)).toFixed(2) };
+    return b;
+  });
+  assert.deepEqual(run(halved).problems, [], 'R2\'s documented fallback must not be gated out');
+});
+
+test('(b)/(c) the summary and the per-cell record it summarises must be one measurement', () => {
+  // A refuter replaced `agree.twoSeed` and `agree.prefix` with all-0.01 — flatly contradicting the
+  // `worst` the same file reports two lines above — and D12 passed on every clause.
+  fires(goodRing((b) => { b.agree.twoSeed = b.agree.twoSeed.map(() => 0.01); return b; }),
+    /the summary and the record it summarises are not the same measurement/);
+  fires(goodRing((b) => { b.agree.prefix = b.agree.prefix.map(() => 0.01); return b; }),
+    /meta\.prefix records worst/);
+});
+
+test('(c) the ring\'s recorded villain order must be the model\'s own', () => {
+  // `meta.model.orderHash` was inert: fabricated values passed every clause, so the artifact could
+  // claim to have been measured against a model whose ordering it never saw. The whole-file
+  // `meta.model.hash` is deliberately still not asserted — it moves on any authorised stamp into
+  // data/model.json and would force a ~21-minute regeneration that changes no measured column.
+  const modelMeta = { orderHash: 'o' };
+  const bad = goodRing((b) => { b.meta.model = { ...b.meta.model, orderHash: 'ZZZZ' }; return b; });
+  const { problems } = ringProblems(bad.body, bad.raw, LIVE, budgetsFor(bad.raw), MODEL_CELLS, modelMeta);
+  assert.ok(problems.some((p) => /the ring's villain pools were built from a different shipped order/.test(p)),
+    problems.join('; '));
+  const ok = goodRing();
+  const okP = ringProblems(ok.body, ok.raw, LIVE, budgetsFor(ok.raw), MODEL_CELLS, modelMeta).problems;
+  assert.deepEqual(okP, [], okP.join('; '));
+  const fabricatedWholeFile = goodRing((b) => { b.meta.model = { ...b.meta.model, hash: '0'.repeat(64) }; return b; });
+  assert.deepEqual(ringProblems(fabricatedWholeFile.body, fabricatedWholeFile.raw, LIVE,
+    budgetsFor(fabricatedWholeFile.raw), MODEL_CELLS, modelMeta).problems, []);
+});
+
+test('(d) the ring row\'s +5% factor is D6\'s own, held to D6\'s citations', () => {
+  // The factor lived in this gate module as a second, uncited copy of 1.05, OUTSIDE the generator
+  // hash: three refuters moved it to 1.60 and every gate and all 25 tests here stayed green (this
+  // file computes the bound FROM the constant), which would have let the ring cap reach 29K while
+  // D12(d) called it "inside its documented margin".
+  assert.equal(RING_CEILING_FACTOR, CEILING_MARGINS.blocks.factor);
+  const cites = citationProblems();
+  assert.deepEqual(cites.problems, [], cites.problems.join('; '));
 });

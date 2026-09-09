@@ -124,16 +124,19 @@ test('the real shell compiles, and its numbers are the ones the build reports', 
   const shell = stripOnlyBlocks(readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8'), 'full').text;
   const r = compileShellScripts(shell, { label: 'src/shell.html' });
   assert.equal(r.blocks, 3, 'bridge + simulate engine + application');
-  /* FIVE spliced regions since P3: `eq` joined data/taxonomy/policy/engine (V3-PLAN §5.3). Under
-     `lite` there would be four, which is the point of the seam — the count is asserted per variant
-     rather than as a constant of the shell. */
-  assert.deepEqual(r.skipped, ['inject', 'inject', 'inject', 'inject', 'inject'],
-    'data, taxonomy, policy, engine and eq are all spliced, not compiled');
+  /* SIX spliced regions since v4 S3: `ring` joined data/taxonomy/policy/engine/eq (V4-PLAN §2.4).
+     Under `lite` there are FIVE, not four — the ring ships in BOTH variants, because lite keeps
+     Simulate and Simulate at nine seats needs the nine-column width — so the seam that separates
+     the two counts is `eq` alone, exactly as it was, and the ring is the first region since the
+     split that does NOT widen the gap between them. The count is asserted per variant rather than
+     as a constant of the shell, which is what makes that readable here. */
+  assert.deepEqual(r.skipped, ['inject', 'inject', 'inject', 'inject', 'inject', 'inject'],
+    'data, taxonomy, policy, engine, ring and eq are all spliced, not compiled');
   assert.deepEqual(
     compileShellScripts(stripOnlyBlocks(readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8'), 'lite').text,
       { label: 'src/shell.html' }).skipped,
-    ['inject', 'inject', 'inject', 'inject'],
-    'lite never sees the eq region at all — D10\'s build-time half',
+    ['inject', 'inject', 'inject', 'inject', 'inject'],
+    'lite never sees the eq region at all — D10\'s build-time half — but it does carry the ring',
   );
   assert.ok(r.after < r.before * 0.85, `${r.before} -> ${r.after} is a real saving`);
   for (const m of ['@inject:data', '@end:data', '@inject:taxonomy', '@end:taxonomy',

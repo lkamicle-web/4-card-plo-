@@ -1130,6 +1130,13 @@ input[type=range]:hover::-webkit-slider-thumb{background:#fff}
 /* @end:engine */
 </script>
 
+<!-- the ring artifact, both variants; scripts/lib/variant.mjs's ringInjectedForm documents the
+     seam, and why the block ASSIGNS MODEL.ring rather than declaring a name of its own -->
+<script>
+/* @inject:ring */
+/* @end:ring */
+</script>
+
 <!-- the full-only equilibrium payload; scripts/lib/variant.mjs documents the seam -->
 <!-- @only:full -->
 <script>
@@ -7098,7 +7105,7 @@ function wireTableCtl() {
    seats too, they cost ~90 B, and pretending otherwise would be filing shared code under a name.
 
    WHY THE 9-max BUTTON CAN BE DISABLED. Nine seats moves the N_eff clamp from 7 to 9 (§2.2) and
-   327 of the 6,336 nine-seat settings — 5.16 %, every one of them at the iso node — read N_eff
+   328 of the 6,336 nine-seat settings — 5.18 %, every one of them at the iso node — read N_eff
    above 7, where `cells[*].eq` stops. Those columns are `data/ring.json` (§2.4), a separate
    artifact, and `policy.rhoAtSeats` FAILS CLOSED without it rather than clamping to the N = 7
    column and painting a tier off the wrong number. So a build that does not carry the ring cannot
@@ -8841,7 +8848,10 @@ var UNANCHORED = { 'rake.potScale': 1, 'sizing.min': 1, 'sizing.premiumCalibrate
   /* V4-PLAN §4: the six early-seat numbers are EXTRAPOLATED from the six-seat ladder by a named
      rule and no nine-handed measurement stands behind them. They ship gated (I51(a)) and flagged
      (`constants.ladder.flag`), which is what the badge says out loud. */
-  'ladder.derived': 1 };
+  'ladder.derived': 1,
+  /* S4's red team: R1's flat-vs-step choice is INERT on every gated surface — 'step' ships with
+     I49's 3.2M frozen tiers byte-identical — so the rule is a preference, badged as one. */
+  'ladder.baseRRule': 1 };
 /* v2 put four nested blocks into `constants`; JSON.stringify rendered them as one-line blobs */
 function constHTML(v, p) {
   if (v == null || typeof v !== 'object') return String(v);

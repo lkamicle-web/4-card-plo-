@@ -228,9 +228,51 @@ the one default that moved — the villain profile, now ON at load — got its o
 
 ---
 
+## What v4 added
+
+**One axis, and it is inert where it has to be.** `seats ∈ {6, 9}`, default **6-max**: a Table
+control beside depth / rake / straddle, a nine-chip position rail
+(`UTG · UTG+1 · UTG+2 · LJ · HJ · CO · BTN · SB · BB`), and every surface the six-seat ladder was
+live on — all four nodes, the VPIP slider, the villain profile, the skill dial, the EV mode, the
+sub-cell top-N, hand search, Simulate, the Method view — following it, in both artifacts. At
+`seats = 6` nothing moved: the three frozen fixtures (**I22**, **I32** and the v3-default) reproduce
+byte for byte, with **no `freeze-tiers.mjs --force` anywhere in the run's history**, which is what
+makes this an axis rather than a re-freeze.
+
+- **No seat number was typed.** One canonical nine-seat array and a set of structural functions —
+  "how many non-blind and how many blind seats act behind this one" — replaced every name-keyed
+  table, and the six-seat list is returned *by reference* so the legacy path is the legacy path.
+  Six-max `UTG` **is** nine-max `LJ`, which is what makes the two ladders comparable at all. Gate
+  **I51** holds the ladder to it, including a lexical scan for a new seat-name literal anywhere in
+  `scripts/`, `src/` or `test/`.
+- **33 legal (position, node) pairs at nine seats**, against 21 at six, from the same three
+  structural exclusions — no node turned out to carry a fourth.
+- **The early-seat constants are DERIVED, badged `estimate`, and limitation 20 says so.**
+  `baseRaise` extends the model's own geometric step `0.77 = 1/√(1.250 · 1.350)` — already carried
+  by `straddle.seat` — to give `UTG+2 · UTG+1 · UTG` = 0.1232 · 0.094864 · 0.0730; `baseR` is flat.
+  Nothing nine-handed was ever measured for either, the red team's alternative anchor reads
+  *tighter* than what ships, and the flat/step choice is a **preference**: measured, the rejected
+  rule reproduces the 3,214,728 frozen nine-seat tiers byte-identically.
+- **A fourth artifact, `data/ring.json`** (gate **D12**): the `N = 8` and `N = 9` equity columns for
+  all 123 non-empty cells, measured beside `data/model.json` rather than inside it, under two named
+  seeds, so `cells[*].eq` and `orderHash` stay byte-identical to v3. It is read only above
+  `N_eff = 7` and only at nine seats. Its unshipped `N = 1..7` prefix is its own falsifier: it must
+  agree with the shipped columns, independently seeded.
+- **A fourth frozen fixture, `data/tiers-9max.fixture.txt`** (gate **I49**): **26,136 settings ×
+  123 cells = 3,214,728 tiers**, created once and reproduced on every run.
+- **Seven new gates** — I48 (the axis is inert at six), I49 (the fixture), I50 (the sub-ladder
+  identity, containment at three nodes with its direction pre-registered), I51 (the ladder), I52
+  (the ring consumer), D12 (the artifact) and D13 (its block and ceilings) — taking the verifier
+  from 62 to **69**.
+
+What v4 did **not** do: 7-max and 8-max (see backlog item 16), any multiway baseline or GTO label at
+nine seats, any regeneration of the measured layer, and any change to the three frozen baselines.
+
+---
+
 ## Known limitations and v3.1 backlog
 
-The standing limitations — nineteen of them, each with its measurement — are
+The standing limitations — twenty of them, each with its measurement — are
 [`docs/METHODOLOGY.md` §10](docs/METHODOLOGY.md). This is the **one consolidated list** of what
 v3 deferred, cut, or recorded rather than repaired, with where each item is written down — the
 five refutation records' recorded-not-acted findings included, each with its standing. Nothing on
@@ -238,42 +280,42 @@ it is scheduled, and nothing is scheduled anywhere else.
 
 1. **Depth→width ships OFF.** Turning it on is a default move, so it is a `freeze-tiers.mjs
    --force` ceremony with a printed move-diff, and P5 did not exercise it. A v3.1 decision —
-   METHODOLOGY §5.1 (lines 1113–1124).
+   METHODOLOGY §5.1 (lines 1445–1456).
 2. **The squeeze / multiway 3-bet node was cut**, on two measurements rather than a preference:
    its payload would overrun lite's `cells` budget, and the multiway payoff it needs is measured
    absent. It moves to v3.1 with solver results in hand; nothing was built for it, and gate id
-   I45 stays reserved — METHODOLOGY limitation 19 (:3355, :3419); V3-PLAN §4 item 11 (:1287,
+   I45 stays reserved — METHODOLOGY limitation 19 (:3792, :3856); V3-PLAN §4 item 11 (:1287,
    :1317).
 3. **Nothing multiway may be labelled GTO or equilibrium** — heads-up is "GTO", anything multiway
    is a "self-play fixed point". The claim-scope rule carries forward unchanged to whatever v3.1
-   builds — METHODOLOGY :3426.
+   builds — METHODOLOGY :3863.
 4. **A 6-max / multiway baseline is absent, not badged.** Every multiway payoff request comes back
    `supported:false`, so there is no multiway game to be a fixed point of; re-opening needs a
    measured k-way sampler (`SIXMAX` leg ii), which is itself an unwritten measurement —
-   METHODOLOGY :3406–3419 and gate I35(d) (:3565); V3-PLAN :1312.
+   METHODOLOGY :3843–3856 and gate I35(d) (:4057); V3-PLAN :1312.
 5. **The calibration verdict is FAIL and unpassable by construction** — no lawful, hero-visible,
    assigned corpus exists; 7 of 8 criteria unevaluable, PC-8 passes. The bar comes alive
-   unchanged the day such a corpus exists — METHODOLOGY §0 (:68), limitation 18 (:3289, :3301).
+   unchanged the day such a corpus exists — METHODOLOGY §0 (:68), limitation 18 (:3726, :3738).
 6. **The successor experiment limitation 18 names is not built:** a *prospective randomised A/B
    test on the marginal cells*, run by a player against their own play — the one design that
    would test the ordering against money without a corpus. Out of scope for v3, and nothing here
-   starts it — METHODOLOGY limitation 18 (:3320–3321).
+   starts it — METHODOLOGY limitation 18 (:3757–3758).
 7. **The plays-better half of the skill dial is not built.** `constants.skill.playsBetter` is
    `null`, bounded by gate I38(e) on its *reach* rather than its size, because nothing here
    measures postflop play; for the same reason I37's "divergence ≈ 0 at pool = baseline" clause is
-   recorded rather than passed — METHODOLOGY §3.5 (:617, :666), the I37 row (:3569).
+   recorded rather than passed — METHODOLOGY §3.5 (:617, :694), the I37 row (:4061).
 8. **The 3-bet premium is held constant** at its pot-sized calibration and flagged; only the
-   price moves with the sizing — METHODOLOGY limitation 8 (:3052), §7 (:1723).
+   price moves with the sizing — METHODOLOGY limitation 8 (:3467), §7 (:2055).
 9. **Recorded, not acted on (the P1 red team) — six findings**, `docs/refutations/P1.md` (:76).
    Three were overtaken later: the exhausted `app` budget, by P3's paid raise with `appCore`
-   holding the pre-raise ceiling (METHODOLOGY §9.11, :2522); the cold-sweep diagnosis of the
+   holding the pre-raise ceiling (METHODOLOGY §9.11, :2861); the cold-sweep diagnosis of the
    layout morph row, withdrawn on measurement at the P2 pre-stage (`smoke.mjs`, "WHY THERE ARE
    TWO ROWS", :124); and the Method view's Known weaknesses, now rendered from
-   `constants.limitations` (`src/shell.html:8969`). One is closed at the release consolidation's
+   `constants.limitations` (`src/shell.html:9375`). One is closed at the release consolidation's
    fix round: §9.11's caption, which said all three budgets sat at +5 % while the model code sits
-   at +8 % (METHODOLOGY :2362). Two stand: `depth.beta`'s tighter consequence under I42(d),
+   at +8 % (METHODOLOGY :2694). Two stand: `depth.beta`'s tighter consequence under I42(d),
    roughly [0.15, 0.55], is not written down — its row still gives `|β| < 1` as the bound
-   (METHODOLOGY :964); and a limitation's `of` / `fix` fields are checked for existence only
+   (METHODOLOGY :1296); and a limitation's `of` / `fix` fields are checked for existence only
    (`scripts/gates/couplings.mjs:67`).
 10. **Recorded, not acted on (the P2 red team) — eight findings**, `docs/refutations/P2.md`
     (:129). Two were overtaken: `ITER_CAP`'s margin is now quoted against the worst seed, ~3x not
@@ -300,7 +342,7 @@ it is scheduled, and nothing is scheduled anywhere else.
     the release consolidation (:1767).
 13. **`N = 6` example hands per cell is inherited, not chosen, and nothing bounds it.** It is the
     Example-hands convention the top-N adopts (`scripts/generate-data.mjs:353`); bounding it would
-    mean naming a constant this layer does not own — METHODOLOGY §8.1 (:1871), P5's refutation
+    mean naming a constant this layer does not own — METHODOLOGY §8.1 (:2203), P5's refutation
     record §3.
 14. **Two byte ceilings are still open from above** after the release consolidation closed the
     rest: `eq` (73 KB; D9 asserts its floor only) and D6's own `model.json` sub-budgets, whose
@@ -308,13 +350,19 @@ it is scheduled, and nothing is scheduled anywhere else.
     rather than as a rule. `total`, `app`, `core`, the model code and the five block caps are
     bounded from above by gate D6 — which also refuses a documented ceiling absent from the table
     and re-reads every cited margin line each run — and pinned to `app = core + Σ caps` by
-    `test/variant.test.mjs` — METHODOLOGY §9.11 (:2643–2705).
+    `test/variant.test.mjs` — METHODOLOGY §9.11 (:2982–3044).
 15. **Any further dependency needs a named consumer and a memo; the default answer is no.**
-    Playwright is the sole, dev-time one — METHODOLOGY :2717; V3-PLAN §9 (:2260).
-16. **7-max and 9-max seat ladders are deferred to v4**; 5-card PLO and street-by-street postflop
-    realization are out of scope by decision — V3-PLAN §13 (:2430); METHODOLOGY :3468.
+    Playwright is the sole, dev-time one — METHODOLOGY :3132; V3-PLAN §9 (:2260).
+16. **CLOSED at v4 — 9-max shipped as an axis; 7-max and 8-max are OUT by decision, not deferred
+    again.** The seat axis is the **set** `{6, 9}`, not an integer, and the residue is stated as the
+    decision it is: every additional table size costs a fixture ceremony, a skill-exception
+    re-measurement and a UI surface of its own, so nothing in v4 builds a ladder generator that
+    pretends otherwise. The code keys off `seats`, so a later `{6, 7, 9}` is a data change, but no
+    7-seat list, fixture or control ships and none is scheduled. 5-card PLO and street-by-street
+    postflop realization remain out of scope by decision — V4-PLAN §0.2, §9; METHODOLOGY limitation
+    20 and the disposition line beside it.
 17. **F3 — a hidden tab suspending `requestAnimationFrame` — cannot be measured headless**, and
-    stays a recorded limitation of the browser gate — METHODOLOGY limitation 15 (:3175);
+    stays a recorded limitation of the browser gate — METHODOLOGY limitation 15 (:3612);
     `smoke.mjs`.
 
 ---
@@ -354,11 +402,32 @@ Node ≥ 22, **zero npm dependencies** anywhere in the repo — stdlib only (`no
 
 ```bash
 node scripts/generate-data.mjs          # enumerate, measure, derive, emit data/model.json
-node scripts/verify.mjs                 # 62 gates: D1-D11 (no D3), V1-V6, B, I1-I16, I18-I47 (no I17, no I45)
+node scripts/verify.mjs                 # 69 gates: D1-D13 (no D3), V1-V6, B, I1-I16, I18-I52 (no I17, no I45)
 node scripts/build.mjs                  # compile src/shell.html -> index.html
+node scripts/build.mjs --variant=full   # ... and index-full.html, the same page plus the solver payload
 node --test test/*.test.mjs             # evaluator, taxonomy and policy unit tests
 node smoke.mjs                          # headless browser gate (Playwright, if installed)
 ```
+
+Three artifacts are generated **outside** that pipeline, each by its own script, each with its own
+seeds and its own `--check` that rebuilds it and refuses to write on a byte difference. They are
+one-off costs per change to the construction, never per model run and never per verify:
+
+```bash
+node scripts/generate-checkdown-matrix.mjs   # data/checkdown-matrix.json  — ~21 s wall
+node scripts/generate-equilibrium.mjs        # data/equilibrium.json       — ~2 s wall
+node scripts/generate-ring.mjs               # data/ring.json              — 1,280 s wall BUDGET
+```
+
+`generate-ring.mjs` measures the `N = 8` and `N = 9` equity columns the nine-seat axis reads, and its
+wall budget is **its own** — gate D12(e) judges the measured wall against `ring.meta.wallBudget`, and
+it is **not** part of `generate-data.mjs`'s 188 s. The number is derived rather than chosen, and the
+derivation it replaced is recorded as falsified: v4 pre-registered 300 s from `2 × 113 × 9/7`, on the
+assumption that cost scales about linearly in villain count, and measurement showed that holds for
+random villains (1.16×) and fails badly for VPIP-filtered ones (**6.2×**, because by the ninth
+villain 40 of 52 cards are dead and rejection sampling exhausts). Re-derived from the measured
+per-kernel cost model, `2 × (12 × 1.16 + 101 × 6.2) ≈ 1,280 s` at four workers; measured **1,255.4 s**
+— METHODOLOGY §3.6.
 
 `generate-data.mjs` runs the verifier itself at the end and refuses to emit if any gate fails.
 Useful flags: `--fast` (÷10 trials, ≈25 s, for CI — `build.mjs` refuses to inject a fast
@@ -404,22 +473,37 @@ diffs against. `--source=` and `--out=` move either end elsewhere.
 ## Repo layout
 
 ```
-index.html              GENERATED — the whole product in one offline file
-src/shell.html          the hand-authored source of that page: markup, CSS, app JS
-data/model.json         committed generator output (183 KB, diffable, reviewable)
+index.html              GENERATED — the lite artifact, the whole product in one offline file
+index-full.html         GENERATED — the same page plus data/equilibrium.json (the solved strategies)
+src/shell.html          the hand-authored source of BOTH pages: markup, CSS, app JS
+data/
+  model.json            committed generator output (the measured grid and the constants)
+  checkdown-matrix.json the pairwise checkdown payoff the solver consumes
+  equilibrium.json      the CFR+ baseline, full-only
+  ring.json             the N = 8 / N = 9 equity columns the nine-seat axis reads
+  tiers-*.fixture.txt   four frozen tier fixtures: v1, v2, v3-default and 9max
 scripts/
   generate-data.mjs     the pipeline
+  generate-checkdown-matrix.mjs · generate-equilibrium.mjs · generate-ring.mjs
+                        the three out-of-pipeline artifacts, each with its own seeds and --check
+  freeze-tiers.mjs      the SOLE fixture writer (--v2 / --v3 / --seats9 / --check)
   verify.mjs            the gate runner: walks the registry, times it, formats the report
   gates/                the gates themselves, one file per family — index.mjs is the registry
-                        data · engine · structure · policy-sweep · fixtures · payoff
-                        measurement · depth · env
-  build.mjs             compiles src/shell.html + model + policy -> index.html
+                        and reserved.mjs the id ledger: data · engine · structure · policy-sweep
+                        fixtures · payoff · measurement · depth · env · couplings · baseline
+                        solver · skill · ev · subcell · calibration · variants · ring
+                        ring-artifact
+  build.mjs             compiles src/shell.html + model + policy -> index.html (--variant=full
+                        for the second artifact; --check for a byte-for-byte staleness test)
   lib/                  eval5 · taxonomy · mc · villains · villain-range · policy · equity-ref
-                        payoff · jsmin · shell-compile · order-pack · sim-bundle · sim-kernel
-                        sim-worker
+                        payoff · cfr · equilibrium · ring · skill · variant · block-census
+                        jsmin · shell-compile · order-pack · sim-bundle · sim-kernel · sim-worker
 test/                   node --test unit tests
 docs/METHODOLOGY.md     the full technical honesty document
+docs/V2-PLAN.md · V3-PLAN.md · V4-PLAN.md · spikes/ · refutations/
+                        the release plans, annotated in place, and the measurement records
 smoke.mjs               headless load + interaction gate
+browsers.mjs            the same gates in Firefox and WebKit
 ```
 
 ## Contributing

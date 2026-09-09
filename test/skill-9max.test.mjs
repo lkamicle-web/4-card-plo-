@@ -195,4 +195,11 @@ test('the multiway deferral is renamed, not re-opened — I35(d)\'s legs are unt
   assert.ok(!/6-max|six-max/.test(MULTIWAY_DEFERRAL.reason + MULTIWAY_DEFERRAL.claimScope
     + MULTIWAY_DEFERRAL.revisitWhen + MULTIWAY_DEFERRAL.reopenVerdict),
   'the deferral record still describes itself by a table size');
+  /* AND THE NEUTRALITY IS ASSERTED POSITIVELY, not only as a banned spelling — S4's red team
+     (docs/refutations/V4.md). A refuter rewrote "at six seats or at nine" to "at six seats only",
+     which reverses the whole justification for the rename, and I35 stayed green and so did this
+     test: a filter on the words `6-max` / `six-max` cannot see a sentence that scopes the deferral
+     BACK to one table size in different words. The reason must say the nine-seat table is covered. */
+  assert.match(MULTIWAY_DEFERRAL.reason, /at six seats or at nine/,
+    'the deferral no longer states that its reason covers the nine-seat table');
 });

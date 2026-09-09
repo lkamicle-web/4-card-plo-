@@ -52,7 +52,9 @@ import * as TF from '../lib/tier-fixture.mjs';
 import * as TF2 from '../lib/tier-fixture-v2.mjs';
 import * as TF3 from '../lib/tier-fixture-v3.mjs';
 import * as TF9 from '../lib/tier-fixture-9max.mjs';
+import * as SK from '../lib/skill.mjs';
 import { VARIANTS } from '../lib/variant.mjs';
+import { MODEL_SUB_BUDGETS, MODEL_CORE_BUDGET, MODEL_META_CORE_BUDGET } from './data.mjs';
 import { stripComments } from './payoff.mjs';
 import { ROOT } from './_shared.mjs';
 
@@ -94,6 +96,13 @@ function censusOf(seats) {
   const nm = P.nMax(seats);
   let domain = 0, clamped = 0, worst = 0, worstAt = '';
   const byPair = new Map();
+  /* R3's ESCALATION THRESHOLD IS DEFINED OVER VPIP POINTS, NOT SETTINGS, so the two are counted
+     separately: `byPair` is the shipped record (one count per clamped setting, which is what
+     `constants.ladder.census.byPair` carries) and `vpipOf` is the quantity R3's "more than half its
+     66 VPIP points" rule reads. A pair clamped at one VPIP under four limper counts and both
+     straddle states scores 8 settings and 1 VPIP point, so scoring the rule on settings would fire
+     early; I52(c) scores it on the points. */
+  const vpipOf = new Map();
   for (const node of P.NODES) {
     if (node === '3bet') continue;
     for (const pos of L) {
@@ -104,14 +113,20 @@ function censusOf(seats) {
             const env = P.envOf({ straddle, seats });
             const r = P.nEff({ node, pos, v: vp / 100, limpers, env });
             domain++;
-            if (r.extrapolated) { clamped++; byPair.set(`${pos}|${node}`, (byPair.get(`${pos}|${node}`) || 0) + 1); }
+            if (r.extrapolated) {
+              clamped++;
+              const key = `${pos}|${node}`;
+              byPair.set(key, (byPair.get(key) || 0) + 1);
+              if (!vpipOf.has(key)) vpipOf.set(key, new Set());
+              vpipOf.get(key).add(vp);
+            }
             if (r.raw > worst) { worst = r.raw; worstAt = `${node}/${pos}/v${vp}/${limpers}limp/straddle${straddle ? 1 : 0}`; }
           }
         }
       }
     }
   }
-  return { seats, clamp: nm, domain, clamped, worst, worstAt, byPair };
+  return { seats, clamp: nm, domain, clamped, worst, worstAt, byPair, vpipOf };
 }
 
 /** the ring payload as shipped, or null. A PAYLOAD parameter — policy.mjs loads no file (§2.4). */
@@ -180,8 +195,17 @@ export function diffShapeProblems(rows, legacy, nine) {
  * has to be made and recorded, not assumed by a gate that was written to be quiet about it.
  */
 export const ALLOW = new Map([
-  ['scripts/lib/policy.mjs', 'LADDER9 and SEAT_DISPLAY — the definition and the display map'],
+  ['scripts/lib/policy.mjs', 'LADDER9, SEAT_DISPLAY and constants.ladder.census — the definition, the display map and the frozen R3 record I52(c) recounts live'],
   ['test/ladder.test.mjs', 'the six-seat identity witness, which carries the deleted literals verbatim'],
+  // ADDED AT STAGE S3, in the open, which is what the pin's note below asked for. These three are
+  // the category the rule is NOT about: a FROZEN MEASUREMENT RECORD keyed 'pos|node', and the tests
+  // that pin one. §1's own table calls the exception lists "measured, not derivable"; none of them
+  // is a consumer building a seat list, which is what §2.1 forbids. And they are not trusted for
+  // being allowlisted: `widthProblems(model, SKILL_GRID, seats)` re-derives both records in BOTH
+  // directions on every run, so a wrong key in one fails I38 rather than hiding behind I51.
+  ['scripts/lib/skill.mjs', 'WIDTH_*_EXCEPTIONS_9 — the nine-seat skill-dial records (R5), measured not derivable, re-derived in both directions by widthProblems on every run'],
+  ['test/skill-9max.test.mjs', 'the test that pins those records and R5\'s twelve pairs, in the idiom test/ladder.test.mjs is allowlisted for'],
+  ['test/ui-seats.test.mjs', 'the page\'s own assertions: the seat names are the search terms the test looks FOR, plus the SEAT_DISPLAY pin'],
 ]);
 
 /**
@@ -194,12 +218,20 @@ export const ALLOW = new Map([
 export function scanSeatLiterals(files, allow) {
   const NEW_KEYS = P.LADDER9.filter((k) => !P.POSITIONS.includes(k));
   const strays = [];
-  let legacyHits = 0, legacyFiles = 0;
+  let legacyHits = 0, legacyFiles = 0, allowedHits = 0, allowedFiles = 0;
   for (const { file, src } of files) {
     let hits = 0;
     for (const k of P.POSITIONS) hits += (src.match(new RegExp(`\\b${k}\\b`, 'g')) || []).length;
+    /* THE ALLOWLIST EXEMPTS THE RATCHET TOO, and it has to, or the resolution the pin's own note
+       prescribes ("add the file to ALLOW with its reason, never move this number") could not
+       resolve anything: a record file would clear the stray scan and still push the count up.
+       The exempted total is COUNTED AND REPORTED beside the ratchet, so nothing is hidden by
+       being allowed — a reader sees both halves and the files that carry the second one. */
+    if (allow.has(file)) {
+      if (hits) { allowedHits += hits; allowedFiles++; }
+      continue;
+    }
     if (hits) { legacyHits += hits; legacyFiles++; }
-    if (allow.has(file)) continue;
     const lines = src.split('\n');
     for (let i = 0; i < lines.length; i++) {
       for (const k of NEW_KEYS) {
@@ -207,7 +239,7 @@ export function scanSeatLiterals(files, allow) {
       }
     }
   }
-  return { strays, legacyHits, legacyFiles, scanned: files.length, newKeys: NEW_KEYS };
+  return { strays, legacyHits, legacyFiles, allowedHits, allowedFiles, scanned: files.length, newKeys: NEW_KEYS };
 }
 
 /** `git` output as text, or null when git cannot answer (which is a FAIL, never a pass) */
@@ -401,6 +433,7 @@ export function build(ctx) {
     // (the first-seat exclusion moves forward, so LJ has no six-seat counterpart — LJ|limps and
     // LJ|raise are I49's business), and all six at `3bet`. Twenty-one pairs.
     const bad = [];
+    const clauses = { contain: [], exact: [], superPairs: 0, equalPairs: 0 };
     censusOnce();
     if (censusErr) bad.push(`(ii/iii) the nesting census could not run: ${censusErr}`);
     let totals = { cmp: 0, exact: 0, sup: 0, sub: 0, uni: 0, unex: 0, pre: 0, nonmono: 0, ref: 0 };
@@ -415,6 +448,35 @@ export function build(ctx) {
       if (totals.unex) bad.push(`(ii) ${totals.unex} excess cells are carried by no front seat — unexplained`);
       if (totals.nonmono) bad.push(`(iii) ${totals.nonmono} settings where more seats in front WIDENED the pre-nesting target`);
       if (totals.cmp === 0) bad.push('(ii) the census made zero comparisons — the shared-pair enumeration is empty');
+
+      /* (iv) THE PER-NODE CLAUSE LIST, PRE-REGISTERED BEFORE THE FREEZE (stage S3, §5.2, R4).
+         (ii) says "containment somewhere"; this says WHERE, and it is the half that can fail on a
+         surface where (ii) passes. Every shared seat is sorted into one of two clauses by the ONLY
+         seats-in-front term R4's enumeration found — its index in `nestChain(node, 9)`:
+
+           index > 0   CONTAINMENT. Seats in front exist and the post-pass unions them in, so a
+                       strict superset is an EXPECTED reading and equality is MEASURED, not assumed.
+           index <= 0  EXACT. Absent from the chain, or first in it: there is no seat in front for
+                       the post-pass to union, so a single unioned cell means the cascade reached a
+                       seat the enumeration says it cannot, and THAT IS A FAILURE.
+
+         Which is: SB exact at rfi (outside the chain), SB and BB exact at limps and raise, all six
+         exact at 3bet (the chain is empty there) — eleven pre-registered-exact pairs against ten
+         under containment. The sort is STRUCTURAL, from `nestChain` itself, so no seat name is
+         typed here and a ladder that changed shape would move the clause list with it rather than
+         leaving a stale literal behind (I51(c)). */
+      for (const [, st] of census.byPair) {
+        const ci = P.nestChain(st.node, 9).indexOf(st.nine);
+        if (ci > 0) { clauses.contain.push(`${st.node}/${st.nine}`); if (st.strictSuper) clauses.superPairs++; else clauses.equalPairs++; continue; }
+        clauses.exact.push(`${st.node}/${st.nine}`);
+        if (st.strictSuper || st.unioned) {
+          bad.push(`(iv) ${st.node}/${st.nine} is PRE-REGISTERED EXACT — it is at index ${ci} of `
+            + `nestChain('${st.node}', 9), so no seat acts in front of it — yet ${st.strictSuper} of `
+            + `${st.comparisons} settings paint a strict superset (${st.unioned} excess cells from `
+            + `${[...st.byFront.keys()].join(',') || 'no named front seat'}). The post-pass has reached a `
+            + 'seat R4\'s enumeration says it cannot, and the enumeration is what I50 is scored on');
+        }
+      }
     }
 
     // (i) the tier clause, off the two frozen artefacts
@@ -443,7 +505,12 @@ export function build(ctx) {
       + `(ii) ${totals.cmp} comparisons: ${totals.exact} exact, ${totals.sup} strict superset (an EXPECTED `
       + `outcome, not a failure), ${totals.sub} subset violations, ${totals.uni} excess cells of which `
       + `${totals.unex} unexplained; ${totals.ref} refused. (iii) pre-nesting differs in ${totals.pre} `
-      + `settings, of which ${totals.nonmono} non-monotone. Unioned: ${perPair || 'none'}`
+      + `settings, of which ${totals.nonmono} non-monotone. (iv) the pre-registered clause list, `
+      + `${clauses.contain.length + clauses.exact.length} shared pairs over 7 per-node clauses + 3 cross-cutting = `
+      + `10 asserted: CONTAINMENT [${clauses.contain.join(' ')}] — of which ${clauses.superPairs} measured `
+      + `STRICT SUPERSET and ${clauses.equalPairs} measured EQUAL, both expected readings; EXACT `
+      + `[${clauses.exact.join(' ')}] — zero unions required, and every one of them is at index <= 0 of its `
+      + `own nine-seat chain. Unioned: ${perPair || 'none'}`
       + (bad.length ? ` — ${bad.join('; ')}` : ''));
     } },
 
@@ -456,7 +523,7 @@ export function build(ctx) {
 
     // (a1) baseRaise strictly increasing along the NON-BLIND ladder, at BOTH sizes.
     let step = 0;
-    for (const seats of [6, 9]) {
+    for (const seats of K.ladder.seats) {
       const L = P.seatsFor(seats), BR = P.ladderConstants(seats).baseRaise;
       for (let i = 0; i < L.length - 3; i++) {
         step++;
@@ -471,14 +538,19 @@ export function build(ctx) {
     if (!Object.is(K.straddle.seat, K.ladder.earlyStep)) {
       bad.push(`(a) straddle.seat ${K.straddle.seat} !== ladder.earlyStep ${K.ladder.earlyStep} — the two constants sharing one anchor have drifted`);
     }
-    if (K.straddle.seatDerivedFrom !== 'ladder.earlyStep') {
-      bad.push(`(a) straddle.seatDerivedFrom is ${JSON.stringify(K.straddle.seatDerivedFrom)} — the provenance of the shared anchor is gone`);
+    /* The provenance string, asserted BY VALUE beside the equality — two clauses, not one: the
+       equality catches drift in the number, this catches the record of WHY there are two names for
+       it being deleted or re-pointed. It reads `ladder.anchorSharedWith`, which is where S6's fix
+       round moved it from `straddle.seatDerivedFrom` so that §0.4's model delta stays inside
+       `constants.ladder`; the clause is otherwise the one S1 wrote, violator test included. */
+    if (K.ladder.anchorSharedWith !== 'straddle.seat') {
+      bad.push(`(a) ladder.anchorSharedWith is ${JSON.stringify(K.ladder.anchorSharedWith)} — the provenance of the shared anchor is gone`);
     }
     // (a3) baseR non-increasing toward the front under whichever R1 rule ships, read on BOTH the
     // score surface and the WIDTH surface (`depthWidthFactor` reads baseR through baseRealization),
     // i.e. in the d = 40 and d = 250 lanes as well as at the reference depth.
     let brRead = 0;
-    for (const seats of [6, 9]) {
+    for (const seats of K.ladder.seats) {
       const L = P.seatsFor(seats);
       for (const d of [K.depth.min, K.depth.ref, K.depth.max]) {
         for (let i = 0; i < L.length - 3; i++) {
@@ -491,6 +563,125 @@ export function build(ctx) {
     if (!['flat', 'step'].includes(K.ladder.baseRRule)) bad.push(`(a) ladder.baseRRule is ${JSON.stringify(K.ladder.baseRRule)} — R1 admits 'flat' or 'step' and nothing else`);
     if (K.ladder.baseRaiseRule !== 'geometric') bad.push(`(a) ladder.baseRaiseRule is ${JSON.stringify(K.ladder.baseRaiseRule)}, not 'geometric'`);
     if (!K.ladder.derived || K.ladder.derived.kind !== 'estimate') bad.push('(a) ladder.derived is not badged kind:\'estimate\' — the early-seat numbers are extrapolation and must say so');
+
+    /* -- (a5) THE PUBLISHED TABLE IS THE RULE'S OUTPUT, AND THE NAMED RULE IS THE ARITHMETIC THAT RAN
+       ADDED AT STAGE S4's RED TEAM (docs/refutations/V4.md). Three refuters found the same hole from
+       three directions. `constants.ladder.derived` is COPIED out of `LADDER_C9` at module init and
+       then compared with nothing, so a table typed over it after the computation ships with every
+       gate green while the Method view prints numbers the live ladder does not run. And
+       `baseRaiseRule` is a LABEL that `ladderConstants` never reads — the geometric step is written
+       into `LADDER_C9`'s loop — so an arithmetic or linear ladder shipped under the name 'geometric'
+       passed I51(a) IN FULL, monotonicity clause included, and only the frozen fixture objected; a
+       fixture is a change detector, not a claim checker, and on the day one is legitimately re-frozen
+       the label and the arithmetic part company with nothing to notice.
+       THE REPAIR IS I41(f)'s: compose the ladder from the NAMED rule inside the gate, character for
+       character as `LADDER_C9` spells it, and `Object.is`-compare it with what shipped. */
+    const S6 = P.POSITIONS, N9 = K.ladder.ladder9 || [], FRONT = N9.slice(0, Math.max(0, N9.length - S6.length));
+    const nine = P.ladderConstants(9);
+    const pub = K.ladder.derived || {};
+    for (const half of ['baseRaise', 'baseR']) {
+      const table = pub[half] || {};
+      if (Object.keys(table).join(' ') !== FRONT.join(' ')) {
+        bad.push(`(a) ladder.derived.${half} publishes [${Object.keys(table)}] and the derived seats are [${FRONT}]`);
+        continue;
+      }
+      for (const q of FRONT) {
+        if (!Object.is(table[q], nine[half][q])) {
+          bad.push(`(a) ladder.derived.${half}.${q} publishes ${table[q]} where ladderConstants(9) runs `
+            + `${nine[half][q]} — the block the Method view prints is a stale copy of the rule it names`);
+        }
+      }
+    }
+    const rs = K.ladder.baseRRule === 'step' ? K.baseR[S6[0]] - K.baseR[S6[1]] : 0;
+    for (let i = 0; i < FRONT.length; i++) {
+      const q = FRONT[i], j = i - FRONT.length;
+      if (K.ladder.baseRaiseRule === 'geometric') {
+        const want = K.baseRaise[S6[0]] * Math.pow(K.ladder.earlyStep, -j);
+        if (!Object.is(nine.baseRaise[q], want)) {
+          bad.push(`(a) baseRaiseRule names 'geometric' and ${q} reads ${nine.baseRaise[q]}, but ${-j} `
+            + `earlyStep(s) off baseRaise(${S6[0]}) is ${want} — the published rule is not the arithmetic that ran`);
+        }
+      }
+      const wantR = K.baseR[S6[0]] - rs * j;
+      if (!Object.is(nine.baseR[q], wantR)) {
+        bad.push(`(a) baseRRule names '${K.ladder.baseRRule}' and baseR(${q}) reads ${nine.baseR[q]}, but the `
+          + `named rule gives ${wantR} — the rule name is a label over an arithmetic nobody checked`);
+      }
+    }
+    // ...and the anchor sentence's OWN arithmetic, re-derived from the live table rather than read.
+    // `earlyStep` is the geometric mean of baseRaise's first two steps, so the middle seat cancels
+    // and it is arithmetically sqrt(baseRaise[CO]/baseRaise[UTG]) inverted — recomputed here, at the
+    // published rounding, so the constant cannot outlive the table it is a ratio of.
+    const st1 = K.baseRaise[S6[1]] / K.baseRaise[S6[0]], st2 = K.baseRaise[S6[2]] / K.baseRaise[S6[1]];
+    const reStep = Number((1 / Math.sqrt(st1 * st2)).toFixed(2));
+    if (!Object.is(K.ladder.earlyStep, reStep)) {
+      bad.push(`(a) ladder.earlyStep is ${K.ladder.earlyStep} and 1/sqrt(${st1.toFixed(3)}*${st2.toFixed(3)}) `
+        + `= ${reStep} at the published rounding — the step has drifted from the two baseRaise steps it IS`);
+    }
+
+    /* -- (a6) THE ANCHOR AND THE FLAG, ASSERTED BY CONTENT (P1's defect, P3's repair) --------------
+       ADDED AT STAGE S4's RED TEAM. Both strings render VERBATIM in the Method view's Table-size
+       section, and the only check on either was `test/ladder.test.mjs`'s `anchor.length > 40 &&
+       flag.length >= 60`: two refuters replaced them with same-or-greater-length sentences saying the
+       OPPOSITE of the truth ("measured on a nine-handed corpus of 4M hands") and shipped 69/69 green.
+       That is the P1 `rake.potScale` finding — a false formula published beside a true constant — on
+       the one constant whose whole job is to say the numbers are NOT measured. So the anchor must
+       carry the two step ratios and the value COMPOSED FROM THE LIVE TABLE (I41(f)'s idiom), and the
+       flag must name what it flags, the gate that bounds it and the badge it wears (I38(f)'s). */
+    const A = typeof K.ladder.anchor === 'string' ? K.ladder.anchor : '';
+    for (const piece of [st1.toFixed(3), st2.toFixed(3), K.ladder.earlyStep.toFixed(3)]) {
+      if (A.indexOf(piece) < 0) {
+        bad.push(`(a) ladder.anchor does not carry ${piece}, which the live baseRaise table makes the `
+          + `anchor's own arithmetic: ${JSON.stringify(A)}`);
+      }
+    }
+    const F = typeof K.ladder.flag === 'string' ? K.ladder.flag : '';
+    if (F.length < 60) bad.push('(a) ladder.flag is missing or a stub — the admission that legitimises the block is not shipped');
+    else for (const nm of ['baseRaise', 'baseR', 'baseRRule', 'I51', 'estimate']) {
+      if (F.indexOf(nm) < 0) bad.push(`(a) ladder.flag does not name ${nm}`);
+    }
+
+    /* -- (a7) THE BADGE, AND THE SIZES THE SET IS ALLOWED TO NAME ---------------------------------
+       ADDED AT STAGE S4's RED TEAM, both legs from refuted claims. (i) The Method view's `estimate`
+       chip comes from `src/shell.html`'s own `UNANCHORED` map, and deleting `'ladder.derived'` from it
+       left verify 69/69 green with only a regex in `test/ui-seats.test.mjs` firing — weaker than both
+       precedents the plan cites, since `baselineQuant`'s badge is gated by `gates/baseline.mjs` (e)
+       and `skill.*`'s by `gates/skill.mjs` (f). `ladder.baseRRule` joins it, because S4 measured R1
+       inert on every gated surface (docs/refutations/V4.md) and §6's answer to an unanchorable
+       constant is gated + flagged + badged. (ii) `constants.ladder.seats` was asserted NOWHERE:
+       `[6, 7, 9]` shipped green, and a size with no ladder, no fixture and no width-exception record
+       could be declared in the shipped constants and rendered in the Method view. A declared size
+       must have a MEASURED width-exception record — `widthExceptionsFor` returns null at every other
+       size and `widthProblems` refuses there rather than passing vacuously, which is the property
+       that makes the record the right thing to ask for. */
+    let shellSrc = null;
+    try { shellSrc = readFileSync(resolve(ROOT, 'src/shell.html'), 'utf8'); } catch (e) {
+      bad.push(`(a) src/shell.html is unreadable, so the Method view's badge cannot be checked: ${e.message}`);
+    }
+    if (shellSrc) {
+      const map = /var UNANCHORED = \{([^}]*)\}/.exec(shellSrc);
+      if (!map) bad.push('(a) src/shell.html no longer carries the UNANCHORED badge map — every flagged constant would render unbadged');
+      else for (const path of ['ladder.derived', 'ladder.baseRRule']) {
+        if (map[1].indexOf(`'${path}'`) < 0) bad.push(`(a) ${path} is flagged but not badged in the Method view`);
+      }
+      if (!/UNANCHORED\[q\][^;]*tag-e[^;]*estimate/.test(shellSrc)) {
+        bad.push('(a) nothing in src/shell.html reads UNANCHORED where constants render — the badge map '
+          + 'is a lookup table with no consumer, so every flagged constant renders like a measured one');
+      }
+      for (const leg of ['LD.anchor', 'LD.flag']) {
+        if (shellSrc.indexOf(leg) < 0) {
+          bad.push(`(a) the Method view no longer renders ${leg} — §6's flagged idiom is named + LABELLED `
+            + '+ badged + gated, and this is the labelled leg');
+        }
+      }
+    }
+    for (const s9 of (K.ladder.seats || [])) {
+      if (!SK.widthExceptionsFor(s9)) {
+        bad.push(`(a) constants.ladder.seats declares ${s9} seats and there is no MEASURED width-exception `
+          + 'record at that size — a table size with no measurement behind it may not be declared '
+          + '(scripts/lib/skill.mjs WIDTH_EXCEPTIONS; widthProblems refuses rather than passing there)');
+      }
+    }
 
     // (a4) NESTING AT rfi, over the whole nine-seat chain, at every VPIP and lane.
     const nest = P.nestChain('rfi', 9);
@@ -520,14 +711,14 @@ export function build(ctx) {
       const L = P.seatsFor(seats), n = L.length;
       return { limp: [L[n - 3], L[n - 2], L[n - 1]], ip: [L[n - 4], L[n - 3]] };
     };
-    for (const seats of [6, 9]) {
+    for (const seats of K.ladder.seats) {
       const w = want(seats);
       if (limpBranch(seats).join(' ') !== w.limp.join(' ')) bad.push(`(b) width3For's limp branch names [${limpBranch(seats)}] at ${seats} seats, not [${w.limp}]`);
       if (heroIP(seats).join(' ') !== w.ip.join(' ')) bad.push(`(b) solve3bet's heroIP names [${heroIP(seats)}] at ${seats} seats, not [${w.ip}]`);
     }
     // ...and the BEHAVIOUR, not only the predicate: width3For must actually take the limp branch
     // for exactly that set. `limpWidth * widthFor` is the branch's whole body.
-    for (const seats of [6, 9]) {
+    for (const seats of K.ladder.seats) {
       const env = P.envOf({ limpers: 2, raiserPos: TF9.RAISER, seats });
       for (const pos of P.seatsFor(seats)) {
         if (P.positionDisabled(pos, 'limps', seats)) continue;
@@ -571,7 +762,25 @@ export function build(ctx) {
     // R5's measured skill-dial exception lists are the one place a rise may turn out to be right —
     // §1's table calls them "measured, not derivable" — and that is a decision for stage S3 to take
     // in the open, by adding the file to ALLOW above with its reason, never by moving this number.
-    const LEGACY_PIN = 655;
+    //
+    // STAGE S3 TOOK THAT DECISION AND THE GATE FIRED FIRST, which is the mechanism working. On the
+    // merged tree the count read 688 over 40 files against this pin's 655, and the +33 is measured
+    // file by file: lane K's nine-seat records in scripts/lib/skill.mjs (+19) and the test that pins
+    // them (+11), lane K's two derivations of "the twelve" in test/ladder.test.mjs (+2, already
+    // allowlisted), lane U's page assertions in test/ui-seats.test.mjs (+5), and — a genuine FALL,
+    // recorded because it is the direction this ratchet exists for — scripts/lib/equilibrium.mjs
+    // (-4), where the re-typed NEST_CHAIN literal became `nestChain('rfi', 6)`. Every riser is a
+    // frozen measurement record or a pin on one, so all three files went onto ALLOW above with
+    // their reasons, and the allowlist now exempts this count as well as the stray scan — without
+    // that, the note above prescribes a resolution that could not resolve anything.
+    //
+    // AND THE PIN IS TIGHTENED RATHER THAN LEFT WHERE IT WAS: over the 35 files it now guards the
+    // count measures 487, so 655 would have held with 168 of slack — a ratchet that cannot bite for
+    // 168 occurrences is not a ratchet. 487 is this scanner's own reading on the tree it runs
+    // against, the same rule the number it replaces was set by. Moving this pin DOWN is the
+    // opposite act to the one the note forbids; the 201 occurrences inside the five allowlisted
+    // files are counted and PRINTED beside it, so the exemption hides nothing.
+    const LEGACY_PIN = 487;
     if (legacyHits > LEGACY_PIN) {
       bad.push(`(c) the six legacy seat keys now appear ${legacyHits} times across ${legacyFiles} files, `
         + `above the pinned ${LEGACY_PIN} — new code is adding seat-name literals rather than reading seatsFor()`);
@@ -584,7 +793,8 @@ export function build(ctx) {
       + `under rule '${K.ladder.baseRRule}', rfi nesting ${nestChecks - nestBad}/${nestChecks} over the nine-seat chain. `
       + `(b) width3For's limp branch names [${limpBranch(6)}] at six and [${limpBranch(9)}] at nine; solve3bet's heroIP [${heroIP(6)}] / [${heroIP(9)}]. `
       + `(c) ${strays.length} stray new-seat literals in ${scanned} files; the six legacy keys appear ${legacyHits} times `
-      + `across ${legacyFiles} files against a pin of ${LEGACY_PIN} that may only fall`
+      + `across ${legacyFiles} files against a pin of ${LEGACY_PIN} that may only fall, plus ${scan.allowedHits} more `
+      + `inside the ${scan.allowedFiles} allowlisted files (records and their pins, each named with its reason)`
       + (bad.length ? ` — ${bad.join('; ')}` : ''));
     } },
 
@@ -657,16 +867,51 @@ export function build(ctx) {
     const shellPath = resolve(ROOT, 'src/shell.html');
     let shell = null;
     try { shell = readFileSync(shellPath, 'utf8'); } catch (e) { bad.push(`(b) src/shell.html unreadable: ${e.message}`); }
-    let simN = null, pageN = null;
+    /* SIM_NMAX IS EVALUATED, NOT GREPPED, AND THAT IS STRONGER THAN THE CLAUSE IT REPLACES.
+       This clause was first written as `/\bSIM_NMAX\s*=\s*(\d+)/` === 9 — a lexical match on a
+       typed width. Lane R shipped the split with NO width literal on purpose: `setSimSeats(seats)`
+       asks `constants.ladder.seats` whether it recognises the count and then asks `policy.nMax` for
+       the width, so the page gains neither a seat literal nor a width literal (I51(c) would have
+       had to allowlist one). Against that shell the old detector reported "declares no SIM_NMAX" —
+       a gate failing on correct work, and a gate that a dead `var SIM_NMAX = 9` would have passed.
+       So the source is EXTRACTED AND RUN: the width must read 9 at nine seats, must still read the
+       array bound at six, and must refuse a table size the ladder does not name. Fail-closed —
+       an extraction that does not parse is a FAIL, never a skip. */
+    let simN = null, pageN = null, simSix = null, simBogus = null;
     if (shell) {
-      const m1 = /\bSIM_NMAX\s*=\s*(\d+)/.exec(shell);
       const m2 = /\bvar\s+NMAX\s*=\s*([^;]+);/.exec(shell);
-      simN = m1 ? Number(m1[1]) : null;
       pageN = m2 ? m2[1].trim() : null;
-      if (simN === null) bad.push('(b) src/shell.html declares no SIM_NMAX — lane R\'s §2.4 split (the simulator reaches nine, the array bound stays seven) has not landed');
-      else if (simN !== 9) bad.push(`(b) SIM_NMAX is ${simN}, not 9`);
       if (pageN === null) bad.push('(b) src/shell.html no longer declares `var NMAX` — the array bound the page reads off meta.nMax is gone');
       else if (!/meta\.nMax/.test(pageN)) bad.push(`(b) the page's NMAX is \`${pageN}\`, not read from meta.nMax — the array bound has been divorced from the data`);
+
+      const decl = /\bvar\s+SIM_NMAX\s*=\s*([^;]+);/.exec(shell);
+      const fi = shell.indexOf('function setSimSeats');
+      if (!decl) {
+        bad.push('(b) src/shell.html declares no SIM_NMAX — lane R\'s §2.4 split (the simulator reaches nine, the array bound stays seven) has not landed');
+      } else if (fi < 0) {
+        bad.push('(b) src/shell.html declares SIM_NMAX but no setSimSeats — a simulation width that cannot follow the table is the six-seat width wearing a new name');
+      } else {
+        let depth = 0, end = -1;
+        for (let i = shell.indexOf('{', fi); i < shell.length; i++) {
+          if (shell[i] === '{') depth++;
+          else if (shell[i] === '}' && --depth === 0) { end = i + 1; break; }
+        }
+        if (end < 0) bad.push('(b) setSimSeats never closes — src/shell.html does not parse');
+        else {
+          const src = `var SIM_NMAX = ${decl[1]};\n${shell.slice(fi, end)}\nreturn { get w() { return SIM_NMAX; }, set: setSimSeats };`;
+          try {
+            const P9 = { CONSTANTS: { ladder: P.CONSTANTS.ladder }, nMax: P.nMax };
+            const R = new Function('window', 'NMAX', src)({ POLICY: P9 }, model.meta.nMax);
+            simN = R.set(9); simSix = R.set(6); simBogus = R.set(7);
+            if (simN !== 9) bad.push(`(b) setSimSeats(9) returns ${simN}, not 9 — the simulator does not reach nine seats`);
+            if (simSix !== model.meta.nMax) bad.push(`(b) setSimSeats(6) returns ${simSix}, not the array bound ${model.meta.nMax} — the six-seat page's simulation width has moved`);
+            if (simBogus !== model.meta.nMax) bad.push(`(b) setSimSeats(7) returns ${simBogus} — a table size the ladder does not name must fall back to the array bound, not widen the field`);
+            if (R.w !== simBogus) bad.push('(b) setSimSeats returns a value it does not also store in SIM_NMAX');
+          } catch (e) {
+            bad.push(`(b) setSimSeats could not be evaluated: ${e.message} — an unevaluable width is not a checked one`);
+          }
+        }
+      }
     }
 
     // (c) the census, against a live recount
@@ -680,14 +925,54 @@ export function build(ctx) {
       if (rec.domain !== c9.domain) bad.push(`(c) constants.ladder.census.domain is ${rec.domain}, the live recount is ${c9.domain}`);
       if (rec.clamped !== c9.clamped) bad.push(`(c) constants.ladder.census.clamped is ${rec.clamped}, the live recount is ${c9.clamped}`);
       if (rec.clamp !== c9.clamp) bad.push(`(c) constants.ladder.census.clamp is ${rec.clamp}, nMax(9) is ${c9.clamp}`);
+      /* THE PER-PAIR BREAKDOWN, RECOUNTED — ADDED AT STAGE S4's RED TEAM (docs/refutations/V4.md).
+         Three refuters of three replaced `byPair` with fabricated maps ({'HJ|limps': 60,
+         'BTN|rfi': 1}) and I52 stayed green, because this clause recounted `domain`, `clamped` and
+         `clamp` and nothing else — and `byPair` is exactly the quantity R3's escalation threshold is
+         defined over and the one METHODOLOGY quotes. It is recounted here in both directions. */
+      const recPairs = rec.byPair && typeof rec.byPair === 'object' ? rec.byPair : null;
+      if (!recPairs) bad.push('(c) constants.ladder.census.byPair is absent — the per-(pos, node) record R3\'s threshold is defined over is not shipped');
+      else {
+        for (const [k, n] of c9.byPair) {
+          if (recPairs[k] !== n) bad.push(`(c) census.byPair records ${k}: ${recPairs[k] === undefined ? '(absent)' : recPairs[k]}, the live recount is ${n}`);
+        }
+        for (const k of Object.keys(recPairs)) {
+          if (!c9.byPair.has(k)) bad.push(`(c) census.byPair records ${k}: ${recPairs[k]} and the live recount does not clamp that pair at all`);
+        }
+      }
+      /* R3's ESCALATION THRESHOLD, IMPLEMENTED — ADDED AT STAGE S4's RED TEAM. The rule ("if any
+         pair is clamped at more than half its 66 VPIP points, that reading goes into the Method
+         view's Table size section and into METHODOLOGY limitation 20") existed only as prose at
+         policy.mjs:437: nothing computed it, so a future pair crossing the line would trip no gate,
+         no test and no page. Scored on DISTINCT VPIP POINTS, which is the quantity the rule names —
+         `byPair` counts settings, and a pair clamped at one VPIP under four limper counts and both
+         straddle states scores 8 there and 1 here. Today the worst pair is far under the line and
+         this passes; the day one crosses it, the escalation must be RECORDED before the gate goes
+         green again, which is the difference between a decision procedure and a shipped claim. */
+      const HALF = 33;                                  // "more than half its 66 VPIP points"
+      const over = [...c9.vpipOf.entries()].filter(([, set]) => set.size > HALF)
+        .map(([k, set]) => `${k}:${set.size}`).sort();
+      const declared = Array.isArray(rec.escalated) ? [...rec.escalated].sort() : null;
+      if (over.length && (declared === null || declared.join(' ') !== over.join(' '))) {
+        bad.push(`(c) R3's escalation threshold has fired — ${over.join(', ')} clamped at more than `
+          + `${HALF} of their 66 VPIP points — and constants.ladder.census.escalated records `
+          + `${declared === null ? 'nothing' : `[${declared}]`}. R3 requires the reading in the Method `
+          + 'view\'s Table size section and in METHODOLOGY limitation 20 before this passes');
+      }
+      if (!over.length && declared !== null && declared.length) {
+        bad.push(`(c) constants.ladder.census.escalated records [${declared}] and no pair is clamped at `
+          + `more than ${HALF} of its 66 VPIP points — an escalation nothing measured`);
+      }
     }
 
     G('I52', bad.length === 0,
       `the ring consumer. (a) perturbing ${rel(disk.path)} moved ${aboveMoved}/${above} settings with N_eff above `
       + `${P.nMax(6)} and ${belowMoved}/${below} at or below it (${refused} refused); cells[*].eq stays ${model.meta.nMax} long. `
-      + `(b) meta.nMax ${model.meta.nMax}, the page's NMAX \`${pageN || '(absent)'}\`, SIM_NMAX ${simN === null ? '(absent)' : simN}. `
+      + `(b) meta.nMax ${model.meta.nMax}, the page's NMAX \`${pageN || '(absent)'}\`, setSimSeats evaluated: 9 -> ${simN === null ? '(absent)' : simN}, `
+      + `6 -> ${simSix === null ? '(absent)' : simSix}, an unnamed 7 -> ${simBogus === null ? '(absent)' : simBogus}. `
       + `(c) the nine-seat census recounts ${c9.clamped}/${c9.domain} = ${(100 * c9.clamped / c9.domain).toFixed(3)} % clamped at `
-      + `${c9.clamp} [${[...c9.byPair.entries()].map(([k, n]) => `${k}:${n}`).join(' ') || 'none'}], worst raw ${c9.worst.toFixed(3)} at ${c9.worstAt}`
+      + `${c9.clamp} [${[...c9.byPair.entries()].map(([k, n]) => `${k}:${n}`).join(' ') || 'none'}], worst raw ${c9.worst.toFixed(3)} at ${c9.worstAt}, `
+      + `and R3's threshold reads ${Math.max(0, ...[...c9.vpipOf.values()].map((v) => v.size))}/66 VPIP points at the worst pair against the 33 that would escalate`
       + (bad.length ? ` — ${bad.join('; ')}` : ''));
     } },
 
@@ -737,6 +1022,76 @@ export function build(ctx) {
         if (!b.blocks || b.blocks.ring == null) bad.push(`${name}: no blocks.ring cap — stage S3 has not registered the ring page block`);
         if (b.ring == null) bad.push(`${name}: no top-level ring artifact budget — D12(d) pins it from above and S3 sets it, in BOTH variants`);
       }
+      /* THE THREE CLAUSES D13's CATALOG ENTRY MAKES AND D13 DID NOT — ADDED AT STAGE S4's RED TEAM
+         (docs/refutations/V4.md). Two refuters read the shipped body against `reserved.mjs:577-587`
+         and found it checked only that the two caps exist and that `@block:ring` is in both pages:
+         deleting every shrink-first sentence from both `budgetSource` strings left D13 and D6 green
+         (three regexes in `test/variant.test.mjs` were the only red), raising `blocks.skill` 4K -> 5K
+         was caught by D6 and not by D13, and raising model.json's `core` 120K -> 130K left verify
+         69/69 GREEN. "A raise without its shrink-first sentence is a D13 failure" is now true of
+         D13 rather than of a phrase test:
+           (i)  the cap-sum equality, with `ring` in the sum, in BOTH variants;
+           (ii) `blocks.skill` and model.json's `core`/`metaCore` sub-budgets NOT raised, read from
+                the table D6 itself uses (gates/data.mjs `MODEL_SUB_BUDGETS`, module-scope since S4);
+           (iii) every ceiling ABOVE its v3 release value named in `budgetSource`, with the
+                shrink-first sentence beside it — a raise this run did not explain fails here, and so
+                does a raise a LATER run makes without touching the sentence. */
+      const V3 = {                                   // the v3 release boundary, commit 1d988f5
+        lite: { total: 600 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024,
+          blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024 } },
+        full: { total: 660 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 54 * 1024, eq: 73 * 1024,
+          blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024 } },
+      };
+      for (const name of Object.keys(budgets)) {
+        const b = budgets[name].budgets || {}, src = String(budgets[name].budgetSource || '');
+        const caps = b.blocks || {};
+        const capSum = Object.keys(caps).reduce((t, k) => t + caps[k], 0);
+        if (b.app !== b.appCore + capSum) {
+          bad.push(`${name}: app ${b.app / 1024}K is not appCore ${b.appCore / 1024}K + the block caps `
+            + `(${capSum / 1024}K) — the equality that makes the caps bind rather than decorate`);
+        }
+        if (caps.skill > (V3[name] ? V3[name].blocks.skill : 4 * 1024)) {
+          bad.push(`${name}: blocks.skill is ${caps.skill / 1024}K — the nine-seat skill records are entries `
+            + 'in scripts/lib/skill.mjs, not page bytes, and §2.7 says this row is NOT raised');
+        }
+        const base = V3[name];
+        if (!base) continue;
+        const raised = [];
+        for (const k of ['total', 'app', 'appCore', 'modelCode', 'eq']) {
+          if (base[k] != null && b[k] != null && b[k] > base[k]) raised.push(`${k} ${base[k] / 1024}K -> ${b[k] / 1024}K`);
+        }
+        for (const k of Object.keys(base.blocks)) {
+          if (caps[k] != null && caps[k] > base.blocks[k]) raised.push(`blocks.${k} ${base.blocks[k] / 1024}K -> ${caps[k] / 1024}K`);
+        }
+        /* NAMED WITH ITS NEW FIGURE, not merely mentioned: every row's own word ('total', 'app')
+           already appears somewhere in a 3,000-word note, so the CAP is what the sentence has to
+           carry. A row raised to a value its own budgetSource does not state is a silent raise. */
+        /* NAMED IN ITS RAISE FORM, not merely mentioned: every row's own word ('total', 'app') and
+           most of the figures already appear somewhere in a 3,000-word note — lite's carries "a +5%
+           bound of 650K" — so what the sentence has to carry is the ARROW, `-> <new cap>K`. A row
+           raised to a value whose own budgetSource never writes that arrow is a silent raise. */
+        for (const r of raised) {
+          const arrow = `-> ${r.split(' -> ')[1]}`;
+          if (src.indexOf(arrow) < 0) {
+            bad.push(`${name}: ${r} is a raise over the v3 release ceiling and budgetSource never writes `
+              + `"${arrow}" — R6 and D13: a ceiling that moves without its sentence moving is a silent raise`);
+          }
+        }
+        if (raised.length && !/SHRINK-FIRST, MEASURED IN BYTES/.test(src)) {
+          bad.push(`${name}: ${raised.length} ceiling(s) raised over v3 (${raised.join('; ')}) and budgetSource `
+            + 'carries no SHRINK-FIRST, MEASURED IN BYTES sentence — rule R6: a raise without its measured '
+            + 'shrink attempt, in bytes, is this gate\'s failure');
+        }
+        if (raised.length && !/\d{3,}\s*B\b/.test(src)) {
+          bad.push(`${name}: budgetSource records a raise with no byte figure in it at all — R6 asks for the `
+            + 'shrink MEASURED IN BYTES, and a sentence with no bytes in it is not a measurement');
+        }
+      }
+      /* model.json's own sub-budgets, from D6's table: `core` and `metaCore` are the pre-raise 120K
+         and 13K and every block reserved against them is subtracted, never granted. */
+      if (MODEL_CORE_BUDGET !== 120 * 1024) bad.push(`model.json's core sub-budget is ${(MODEL_CORE_BUDGET / 1024).toFixed(1)}K, not the 120K no v4 raise touches`);
+      if (MODEL_META_CORE_BUDGET !== 13 * 1024) bad.push(`model.json's metaCore sub-budget is ${(MODEL_META_CORE_BUDGET / 1024).toFixed(1)}K, not the 13K no v4 raise touches`);
+      if (MODEL_SUB_BUDGETS.skill !== 1 * 1024) bad.push(`D6's model.json skill sub-budget is ${MODEL_SUB_BUDGETS.skill / 1024}K, not the 1K it was reserved at`);
     }
     for (const f of ['index.html', 'index-full.html']) {
       const p = resolve(ROOT, f);
@@ -745,7 +1100,11 @@ export function build(ctx) {
       if (!/@block:ring\b/.test(txt)) bad.push(`${f} carries no @block:ring region — the 9-max-only bytes are not in their own block`);
     }
     G('D13', bad.length === 0,
-      `the ring block and its ceilings${bad.length ? ` — ${bad.join('; ')}` : ' — present in both variants, caps pinned from above'}`);
+      'the ring block and its ceilings: @block:ring in both artifacts, blocks.ring and ring capped in '
+      + `both variants, app === appCore + Σ caps (${VARIANTS && VARIANTS.lite ? `${VARIANTS.lite.budgets.appCore / 1024}K + 49K = ${VARIANTS.lite.budgets.app / 1024}K` : 'unreadable'}), `
+      + `model.json's core ${MODEL_CORE_BUDGET / 1024}K / metaCore ${MODEL_META_CORE_BUDGET / 1024}K / skill `
+      + `${MODEL_SUB_BUDGETS.skill / 1024}K unraised, and every ceiling above its v3 value carrying its `
+      + `raise and its shrink-first sentence in budgetSource${bad.length ? ` — ${bad.join('; ')}` : ''}`);
     } },
 
     ],

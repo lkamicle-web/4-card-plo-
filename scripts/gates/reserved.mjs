@@ -558,16 +558,24 @@ export const CATALOG = [
   },
   {
     id: 'D12', status: 'live', runner: 'verify', phase: 'v4 S2', plan: 'V4-PLAN §2.4, §5.2',
-    claim: 'the ring artifact. (a) `generate-ring.mjs --check` byte-identical; (b) meta complete '
-      + '(seeds, trials, se, generatorHash, contentHash) and the two seeds\' N = 8, 9 columns agree '
-      + 'within 2 * se.cell on every cell; (c) the UNSHIPPED N = 1..7 prefix agrees with '
-      + 'cells[*].eq[0..6] within the same band — the free reproduction; (d) the `ring` artifact '
-      + 'budget pinned from above at ceil(measured * 1.05), whole-KB, in BOTH variants, because '
-      + 'D6\'s from-above clause explicitly excludes it; (e) the measured wall time within '
-      + 'ring.meta.wallBudget (300 s).',
-    fails: 'closed on each — a non-reproducing generator, an incomplete meta, two seeds that '
-      + 'disagree, a prefix that does not reproduce the shipped columns, an unpinned budget, or a '
-      + 'run over its pre-registered wall budget.',
+    claim: 'the ring artifact. (a) provenance — the generator, kernel and content hashes; the '
+      + 'byte-compare itself is `generate-ring.mjs --check` at the close-out, NOT inside verify; '
+      + '(b) meta complete (seeds, trials, se, nMax, cells), the se re-derived from the trial count '
+      + 'as 50/sqrt(n) at the published rounding (S4), the two seeds\' agreement bounded by bias, '
+      + 'spread and a 5-sigma per-cell outlier line — the pre-registered 2 * se.cell band is '
+      + 'REPORTED and marked FALSIFIED rather than asserted — and eq[N=9] <= eq[N=8] at zero '
+      + 'tolerance; (c) the UNSHIPPED N = 1..7 prefix agreement recorded per cell and bounded the '
+      + 'same way, the summary and that per-cell record required to be one measurement (S4), the '
+      + 'ring\'s meta.model.orderHash equal to data/model.json\'s own (S4), and the cross-artifact '
+      + 'seam ring N=8 <= model N=7; (d) the `ring` artifact budget pinned from above at '
+      + 'ceil(measured * RING_CEILING_FACTOR), whole-KB, in BOTH variants, because D6\'s from-above '
+      + 'clause explicitly excludes it — and the factor IS D6\'s own blocks margin, held to its '
+      + 'citations (S4); (e) the measured wall time within ring.meta.wallBudget (1,280 s, R2 as '
+      + 'amended by the owner after run 1) and that budget equal to ring.mjs\'s WALL_BUDGET.',
+    fails: 'closed on each — a stale or self-inconsistent artifact, an incomplete meta, an se that '
+      + 'is not the trial count\'s, two seeds that disagree, a summary that contradicts its own '
+      + 'per-cell record, a villain order that is not the shipped model\'s, a broken seam, an '
+      + 'unpinned budget, or a run over its pre-registered wall budget.',
     note: 'ID REGISTERED BY LANE F, CLAUSES WRITTEN BY LANE R in scripts/gates/ring-artifact.mjs, '
       + 'which scripts/gates/ring.mjs calls and which must NOT be added to REGISTRY — it is a clause '
       + 'library, not a family, and registering it would emit D12 twice. Until it lands the gate '
@@ -578,10 +586,17 @@ export const CATALOG = [
     claim: 'the ring block. `@block:ring` present in BOTH variants; its cap bounded from above by '
       + 'D6\'s blocks clause automatically (pageCeilingProblems iterates budgets.blocks, so a new '
       + 'blocks.ring cap needs no gate edit); the equality pin app === appCore + sum(caps) holding '
-      + 'with `ring` in the sum in both variants; blocks.skill (page) and `core` (model.json\'s '
-      + '120 KB sub-budget) NOT raised; and any appCore / modelCode / full-total raise carrying its '
-      + 'shrink-first measurement in budgetSource.',
-    fails: 'a missing block, a silent raise, or a raise without its shrink-first sentence.',
+      + 'with `ring` in the sum in both variants; blocks.skill (page) and `core` / `metaCore` '
+      + '(model.json\'s 120 KB and 13 KB sub-budgets, read from D6\'s own MODEL_SUB_BUDGETS) NOT '
+      + 'raised; and every ceiling above its v3 release value naming its raise in arrow form '
+      + '(`-> <cap>K`) in budgetSource beside a SHRINK-FIRST, MEASURED IN BYTES sentence.',
+    fails: 'a missing block, a silent raise, a raise whose budgetSource never writes it, or a raise '
+      + 'with no shrink-first sentence at all.',
+    note2: 'S4: the last four clauses were CLAIMED here from S2 and not implemented until the red '
+      + 'team measured it (docs/refutations/V4.md) — deleting both shrink sentences, raising '
+      + 'blocks.skill and raising model.json\'s core all shipped green. What D13 still cannot check '
+      + 'is that a recorded shrink was actually attempted: the bytes in the sentence are a '
+      + 'documentary record, and this entry says so rather than implying a measurement.',
     note: 'ID REGISTERED BY LANE F; the block is lane U\'s and the caps are stage S3\'s in '
       + 'scripts/lib/variant.mjs. Fails closed on the named absence until both land.',
   },

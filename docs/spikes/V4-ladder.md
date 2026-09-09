@@ -77,3 +77,37 @@ Scanning `scripts/ src/ test/`: the three NEW keys `'UTG1' 'UTG2' 'LJ'` appear *
 
 ## 12. `data/model.json` — the one permitted change, proved key-by-key
 `cells`, `order`, `baselineTiers`, `calibration` byte-identical. Exactly four diffs: `+constants.ladder`, `+constants.straddle.seatDerivedFrom`, `meta.hash` (provenance; the P4/P5 precedent), and `constants.evCut.derivedAt.state`, the recorded `envKey` string, which gained its `|6` seats field — a PROVENANCE string, not a value: `evCut.mixK` is unchanged. Also, so nobody infers S1 forgot them: `constants.ladder.flag` names I51 before I51 exists (harmless — `couplings`' `flagProblems` runs per NAMED block only), and the Method view's UNANCHORED / `estimate` badge for `ladder.derived` is lane U's to render.
+
+---
+
+## 13. Appended 2026-09-08 (stage S6, the fix round) — two of §12's four diffs were repaired, not kept
+
+§12 above recorded **exactly four diffs** against `1d988f5` and S6's verification round re-read them
+against §0.4's own words ("every byte of `data/model.json` outside the new `constants.ladder` block
+is identical to `1d988f5`"). **Two of the four were outside that block and are now gone.** The
+record above stands as measured at S1; this is what happened to it, not an edit of it.
+
+    was (S1..S5)                                   now (S6)
+    constants.straddle.seatDerivedFrom             constants.ladder.anchorSharedWith
+      = 'ladder.earlyStep'                           = 'straddle.seat'
+    constants.evCut.derivedAt.state ends '|1|6'     ...ends '|1'  (byte-identical to v3's string)
+
+1. **The provenance sibling moved into the block.** `straddle.seat` is still a plain number for I26
+   and `seatWidthFactor`; I51(a) keeps **both** clauses (the `Object.is` equality and the string
+   asserted by value) and gained a fabricated-violator test for the string half, which it never had.
+   The bytes crossed *out* of `metaCore` and *into* `ladder`, which `metaCore` subtracts, so the
+   ladder block reads 668 B against its 1K cap and no D6 ceiling moved in either direction.
+2. **`envKey` serialises the seat axis inertly instead of unconditionally.** The line in §1b's table
+   above — "`envKey` appends `|${seats}` unconditionally" — is the sentence that put a `|6` into the
+   shipped `constants.evCut.derivedAt.state`, because `evDefaultKey` embeds `envKey` and that block
+   ships. The axis is **still in the key** (removing it would hand one table size the other's
+   memoised answer, which is the trap `envKey`'s docstring exists for, and
+   `test/ladder.test.mjs`'s `notEqual(envKey({seats:9}), envKey({seats:6}))` still holds); the seat
+   segment is simply not serialised at 6. `envOf` normalises every other integer to 6 first, so no
+   third serialisation exists.
+
+**Residual, measured field-by-field after both repairs:** ten paths differ from `1d988f5` —
+`meta.hash`, the seven §5.2 verdict stamps, `constants.limitations` (limitation 20) and
+`constants.ladder` — with `cells`, `rows`, `order`, `baselineTiers`, `calibration`, `bands` and
+`benchmarks` byte-identical as whole blocks. Recorded under V4-PLAN §0.4 as
+`Measured (stage S6)`; readings in `docs/spikes/V4-S6-verification.md`.

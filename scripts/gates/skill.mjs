@@ -210,6 +210,25 @@ export function build(ctx) {
     // have not enumerated.
     const wt = SK.widthTable(model);
     for (const line of SK.widthProblems(model)) bad.push(`(d) ${line}`);
+    /* AND AT NINE SEATS (v4 §5.1: I38 is one of the four gates that change DOMAIN, not claim).
+       Lane K measured the nine-seat records with the METHODOLOGY §3.5 procedure — which reproduces
+       both six-seat arrays exactly, so R5's "ship without exceptions" fallback was not taken — and
+       `widthProblems` re-derives them in BOTH directions, so a vanished exception fails as loudly
+       as a new one at nine exactly as it does at six. Without this call the records ship measured
+       and ungated, which is the state lane K handed over and named. */
+    const wt9 = SK.widthTable(model, SK.SKILL_GRID, 9);
+    /* THE SIZES COME FROM `constants.ladder.seats`, NOT FROM TWO LITERALS — S4's red team
+       (docs/refutations/V4.md). `widthExceptionsFor` returns null at any unmeasured size and
+       `widthProblems` REFUSES there rather than passing vacuously, which is the property that makes
+       the declared set checkable; but this gate called it at a literal 6 and a literal 9, so
+       `[6, 7, 9]` shipped green — the refusal was reachable only from a unit test, and a table size
+       with no ladder, no fixture and no width record could be declared in the shipped constants.
+       §0.2's "the code keys off `seats` so that a later {6, 7, 9} is a data change" is only true if
+       the data is what the code reads. I51(a) asserts the same set from the other side. */
+    for (const seats of P.CONSTANTS.ladder.seats) {
+      if (seats === 6) continue;                       // the six-seat call above is (d)'s own
+      for (const line of SK.widthProblems(model, SK.SKILL_GRID, seats)) bad.push(`(d/${seats}) ${line}`);
+    }
 
     // -- (e) THE PLAYS-BETTER COEFFICIENT REACHES EXACTLY NOTHING ----------------------------------
     // §6 says it "cannot be anchored today"; §3.4's Grade-C annotation says it is "not merely
@@ -232,19 +251,35 @@ export function build(ctx) {
           + 'coefficient has acquired a consumer, and V3-PLAN §6 says it cannot have one unanchored');
       }
     }
+    /* THE REACH PROBE RUNS AT BOTH TABLE SIZES, and `seats` is threaded into BOTH halves of the
+       comparison — `P.solve`'s state AND `P.realization`'s trailing argument. Threading it into
+       only the first is the trap lane K measured: `realization` would look `baseR['UTG1']` up in
+       the SIX-seat object, get `undefined`, return NaN, and the probe would report 5,535 false
+       mismatches out of 14,760 — a gate written to fail on correct work. Threaded into both it
+       measures zero, which is the claim: the dial reaches nothing at either size.
+
+       WHAT THE PROBE DOES NOT SEE, stated rather than left to be rediscovered: clause (e) skips
+       the vs-3-bet node at BOTH sizes because `R` is null there, so it reaches 9 of R5's 12 new
+       pairs and not 12 (lane K, measured — the brief's "all 12" is falsified as worded). The three
+       it misses are the vs-3-bet ones, and (c)/(d) cover all 33 pairs over both records instead.
+       `LJ|limps` and `LJ|raise` — the two a name-keyed procedure would have skipped — ARE among
+       the nine. */
     let rProbe = 0;
-    for (const p of pools) {
-      for (const { pos, node } of pairs) {
-        if (node === '3bet') continue;              // the vs-3-bet node is not scored through `R`
-        const out = P.solve(p.model, { pos, node, v: p.v, limpers: 2, raiserPos: SK.SWEEP_RAISER });
-        for (const k of Object.keys(out.cells)) {
-          const e = out.cells[k];
-          if (e.R == null) continue;
-          rProbe++;
-          const want = P.realization(pos, out.N, p.model.cells[k].nu, P.CONSTANTS.depth.ref);
-          if (!Object.is(e.R, want)) {
-            bad.push(`(e) ${pos}|${node} ${k} at s=${p.s} realizes ${e.R} where the dial-blind formula `
-              + `gives ${want} — the plays-better half has acquired a reach`);
+    for (const seats of P.CONSTANTS.ladder.seats) {
+      const pl = SK.legalPairs(seats);
+      for (const p of pools) {
+        for (const { pos, node } of pl) {
+          if (node === '3bet') continue;            // the vs-3-bet node is not scored through `R`
+          const out = P.solve(p.model, { pos, node, v: p.v, limpers: 2, raiserPos: SK.SWEEP_RAISER, seats });
+          for (const k of Object.keys(out.cells)) {
+            const e = out.cells[k];
+            if (e.R == null) continue;
+            rProbe++;
+            const want = P.realization(pos, out.N, p.model.cells[k].nu, P.CONSTANTS.depth.ref, seats);
+            if (!Object.is(e.R, want)) {
+              bad.push(`(e) ${seats}-max ${pos}|${node} ${k} at s=${p.s} realizes ${e.R} where the dial-blind `
+                + `formula gives ${want} — the plays-better half has acquired a reach`);
+            }
           }
         }
       }
@@ -380,12 +415,17 @@ export function build(ctx) {
       + `— which is CALL to AMBUSH CALL, the same action on the baseline's scale, so what moved is a tier `
       + `label and not a hand; and ${SK.WIDTH_INTERIOR_EXCEPTIONS.length} (pair, step) interior rises, six `
       + `of them that same relabel and five of them the nut gate releasing as N falls. Both records are `
-      + `compared in both directions. `
+      + `compared in both directions. AND AT NINE SEATS (v4 §5.1, the domain change): the same aggregate `
+      + `over ${SK.legalPairs(9).length} pairs runs ${wt9.agg.map((x) => (100 * x).toFixed(2) + '%').join(' -> ')}, `
+      + `monotone at every step, with ${SK.WIDTH_ENDPOINT_EXCEPTIONS_9.length} endpoint and `
+      + `${SK.WIDTH_INTERIOR_EXCEPTIONS_9.length} interior exceptions enumerated and re-derived in both `
+      + `directions by the same procedure. `
       + `(e) THE PLAYS-BETTER COEFFICIENT REACHES EXACTLY NOTHING, which is Grade C's own claim made `
       + `checkable: it ships null rather than a number nothing measures, ${REACH_SCOPE.length} files are `
       + `scanned comment- and literal-stripped and only policy.mjs's declaration may name it, and over `
-      + `${rProbe} per-cell readings along the dial the realization the pipeline uses is bit-identical to `
-      + `the dial-blind realization(pos, N, nu, d). `
+      + `${rProbe} per-cell readings along the dial AT BOTH TABLE SIZES the realization the pipeline uses is `
+      + `bit-identical to the dial-blind realization(pos, N, nu, d, seats) — the seat count threaded into the probe's `
+      + `solve AND its formula, which is the half that reports 5,535 false mismatches when it is missed. `
       + `(f) the flag's three legs: constants.skill.flag names all THREE unanchored records — `
       + `playsBetter, blend and the domain — each carries the Method view's estimate badge, and the `
       + `badge map is read where the constants render (a P4 refuter deleted that branch with the map `

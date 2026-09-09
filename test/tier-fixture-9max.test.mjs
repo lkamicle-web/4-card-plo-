@@ -57,14 +57,22 @@ test('the frozen state records seats=9, and the raiser is READ off the ladder, n
   assert.equal(TF9.DEFAULT_LANE, TF3.DEFAULT_LANE, 'the v3 axes are v3-default\'s object, not a copy that can drift');
 });
 
-test('the fixture does not exist yet, and this file is the record that that is deliberate', () => {
-  // §2.5: "created at stage S3 (the file must not exist before the run)". If this ever fails it
-  // means either the ceremony has happened — in which case delete this test with the commit that
-  // did it — or something wrote a fixture that no ceremony blessed.
+test('the fixture was CREATED by the ceremony, and its header records what it froze', () => {
+  /* §2.5: "created at stage S3 (the file must not exist before the run)". Before the ceremony this
+     test asserted the file's ABSENCE and told the next reader to replace it with the commit that
+     created it — which is this. Replaced rather than deleted, because the claim that matters did
+     not go away when the file arrived, it moved: the fixture exists, it is the one the ceremony
+     wrote, and the writer's own refusal-without---force is what stands between those two facts.
+     `--force` appears nowhere in this run's history; I48(a) asserts the same thing from the
+     outside, by the SHAPE of the git diff (the three legacy fixtures unmodified, this one added). */
   const path = resolve(ROOT, TF9.FIXTURE_PATH);
-  let there = true;
-  try { readFileSync(path); } catch { there = false; }
-  assert.equal(there, false, `${TF9.FIXTURE_PATH} exists; stage S3's freeze is the only thing allowed to create it`);
+  const fx = TF9.loadFixture(path);
+  assert.equal(fx.sweep.length, 26136, 'the freeze did not write §2.5\'s predicted domain');
+  assert.equal(fx.lanes.length, 12);
+  assert.equal(fx.cells.length, 123);
+  // the seat axis is IN the header, so a nine-seat fixture cannot be reproduced by a six-seat run
+  assert.equal(fx.legacyState, TF9.NINE_STATE(model));
+  assert.match(fx.legacyState, /seats=9/);
 });
 
 // ---------------------------------------------------------------------------
@@ -201,13 +209,44 @@ test('the refusal is the RING accessor failing closed, not a clamp anywhere', ()
   const L = TF9.laneSpecs(model).find((x) => x.straddle && x.d === P.CONSTANTS.depth.max);
   const env = P.envOf({ limpers: 2, raiserPos: TF9.RAISER, seats: 9, ...TF2.envArgs(L), ...TF9.DEFAULT_LANE });
   const front = P.nestChain('limps', 9)[0];
+  const opts = { limpers: 2, raiserPos: TF9.RAISER, env };
+
+  /* RE-POINTED AT S3, WHERE CAUSE 2 WAS FIXED RATHER THAN DOCUMENTED. Delta F3 gives the accessor
+     the ring's OWN vDelta lattice and the shadow cell its own profile `v`, so a profiled nine-seat
+     read is now profiled on BOTH sides of the join at the same `v` — which is the property the old
+     blanket refusal was protecting by refusing outright. What must still fail closed is a join it
+     cannot make honestly, and that is what this test now measures, in three ways instead of one. */
+
+  // (1) a ring with NO vDelta lattice cannot profile its own columns, so it still refuses.
   assert.throws(
-    () => P.rankTable(shadow, front, 'limps', 0.90, { limpers: 2, raiserPos: TF9.RAISER, env, ring }),
-    /villain-profiled and the ring columns are not/,
-    'a profiled cell silently accepted unprofiled ring columns');
-  // ...and the UNPROFILED model at the same setting reads the ring happily, which is what makes the
-  // refusal a statement about the profile rather than about nine seats.
-  assert.doesNotThrow(() => P.rankTable(model, front, 'limps', 0.90, { limpers: 2, raiserPos: TF9.RAISER, env, ring }));
+    () => P.rankTable(shadow, front, 'limps', 0.90, { ...opts, ring }),
+    /carries no vDelta lattice — refusing to mix/,
+    'a profiled cell silently accepted ring columns that cannot be profiled');
+
+  // (2) a MEASURED profile keeps the refusal permanently: the ring has no measured columns, and a
+  //     nine-wide Simulate result never reaches a cell anyway (villainEq drops it on length). This
+  //     is a limitation METHODOLOGY carries, not a hole to widen the accessor for.
+  const measuredish = { meta: { nMax: 9, v: [1, 2] }, cells: {} };
+  for (const it of P.cellList(model)) {
+    measuredish.cells[it.key] = { eq: [it.cell.eq[6], it.cell.eq[6]], vDelta: { 1: [0, 0], 2: [0, 0] } };
+  }
+  const asMeasured = { ...P.cellList(shadow)[0].cell, vpSource: 'measured' };
+  assert.throws(
+    () => P.eqAtSeats(asMeasured, 8.2, 9, measuredish, P.cellList(shadow)[0].key),
+    /villain-profiled from a measured source and the ring columns are not/,
+    'a MEASURED profile was joined to ring columns that cannot reproduce it');
+
+  // (3) ...and with the REAL artifact, whose lattice IS the model's, the profiled read SUCCEEDS.
+  //     This is the whole of delta F3: it is why the 720 settings lane F measured as refusals are
+  //     now measured settings, and why I50's comparison count went 16,272 -> 16,632.
+  const real = JSON.parse(readFileSync(resolve(ROOT, 'data/ring.json'), 'utf8'));
+  assert.deepEqual(real.meta.v, model.constants.villainLattice.v,
+    'the ring lattice is not the model lattice — the two halves of a profiled join are not the same axis');
+  assert.doesNotThrow(() => P.rankTable(shadow, front, 'limps', 0.90, { ...opts, ring: real }));
+
+  // ...and the UNPROFILED model at the same setting reads even the stub ring happily, which is what
+  // makes every refusal above a statement about the JOIN rather than about nine seats.
+  assert.doesNotThrow(() => P.rankTable(model, front, 'limps', 0.90, { ...opts, ring }));
 });
 
 // ---------------------------------------------------------------------------

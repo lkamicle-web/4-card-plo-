@@ -89,7 +89,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { ROOT } from './_shared.mjs';
-import { ceilingBound } from './data.mjs';
+import { ceilingBound, CEILING_MARGINS } from './data.mjs';
+import { seOfTrials } from '../lib/policy.mjs';
 import { VARIANTS, VARIANT_NAMES } from '../lib/variant.mjs';
 import {
   ARTIFACT, GENERATOR, SEEDS, RING_NMAX, WALL_BUDGET, OUTLIER_SIGMA,
@@ -101,11 +102,28 @@ export const title = 'the ring artifact — data/ring.json (D12)';
 export const ids = ['D12'];
 export const setupLabel = 'read data/ring.json and recompute its source and content hashes';
 
-/** the injected form, byte for byte as `build.mjs` will write it — the `eq` payload's own idiom */
-export const injectedForm = (raw) => `const RING = ${JSON.stringify(JSON.parse(raw))};`;
+/* THE INJECTED FORM IS ONE DEFINITION AND IT LIVES IN `scripts/lib/variant.mjs` (S3). Lane R wrote
+   it here as `const RING = …`, the `eq` payload's own idiom; at integration that identifier was
+   measured to collide with `src/shell.html`'s own `var RING = null` — a global `const` against a
+   `var` is a SyntaxError, and a `window.RING` is nulled before the page reads it — so the shipped
+   form assigns `MODEL.ring`, the seam docs/spikes/V4-ladder.md specified. What matters to this
+   clause is that the string it MEASURES is the string the build EMITS, which is why it is imported
+   rather than restated: the size ceiling would otherwise bound a payload the artifact never
+   carried. Re-exported so lane R's tests keep reading it by this name. */
+export { ringInjectedForm as injectedForm } from '../lib/variant.mjs';
+import { ringInjectedForm as injectedForm } from '../lib/variant.mjs';
 
-/** measured × 1.05, whole KB — §2.7's rule for the ring row, and `data.mjs`'s own helper */
-export const RING_CEILING_FACTOR = 1.05;
+/* measured × 1.05, whole KB — §2.7's rule for the ring row, and `data.mjs`'s own helper.
+   TAKEN FROM D6's OWN TABLE SINCE STAGE S4's RED TEAM (docs/refutations/V4.md), where it was the
+   one pin nothing pinned: three refuters of three moved it 1.05 -> 1.60 and every gate and all 25
+   `test/ring-gate.test.mjs` tests stayed green (the test computes the bound FROM the constant), so
+   the ring cap could then have been raised to 29K with D12(d) calling it "inside its documented
+   margin" — the exact move (d)'s own message forbids ("tighten the cap to the formula, never the
+   formula to the cap"). It also sits OUTSIDE `meta.generatorHash`, so unlike SEEDS, WALL_BUDGET,
+   RING_NMAX and OUTLIER_SIGMA it could be edited without (a) reporting STALE. Every D6 margin is
+   held to a quoted phrase at a cited line by `citationProblems`; the ring row now inherits the
+   block margin's factor and its citations rather than carrying a second, uncited copy of 1.05. */
+export const RING_CEILING_FACTOR = CEILING_MARGINS.blocks.factor;
 
 const K = (b) => `${(b / 1024).toFixed(1)}K`;
 
@@ -119,9 +137,12 @@ const K = (b) => `${(b / 1024).toFixed(1)}K`;
  * @param {object} budgets `{ lite: VARIANTS.lite.budgets, full: ... }`
  * @param {object} [modelCells] `data/model.json`'s `cells`, for the cross-artifact seam clause;
  *   omitted, the seam is not judged, which is why `build()` always passes it.
+ * @param {object} [modelMeta] `data/model.json`'s `meta`, for the `orderHash` clause — same shape of
+ *   seam and the same reason it is optional: omitted, that clause is not judged, and `build()`
+ *   always passes it.
  * @returns {{problems:string[], readings:string[]}}
  */
-export function ringProblems(body, raw, live, budgets, modelCells) {
+export function ringProblems(body, raw, live, budgets, modelCells, modelMeta) {
   const problems = [];
   const readings = [];
   const p = (s) => problems.push(s);
@@ -163,6 +184,25 @@ export function ringProblems(body, raw, live, budgets, modelCells) {
   if (!meta.se || !(meta.se.cell > 0) || !(meta.se.latt > 0)) {
     p(`(b) meta.se is incomplete: ${JSON.stringify(meta.se)} — the band is derived from it, so an `
       + 'absent se is an unbounded band');
+  } else if (meta.trials && meta.trials.cell > 0 && meta.trials.latt > 0) {
+    /* THE SE IS THE TRIAL COUNT'S, NOT THE FILE'S OPINION OF ITSELF — ADDED AT STAGE S4's RED TEAM
+       (docs/refutations/V4.md). Every band in D12 is derived from `meta.se`, and `meta.se` was
+       checked only for `> 0`: three refuters moved `se.cell` 0.16 -> 0.40 with `meta.band`
+       recomputed consistently and shipped a 2.5x-wider outlier line green, and halved
+       `meta.trials.latt` with `se.latt` doubled with nothing anywhere noticing — so the clause whose
+       stated purpose is "catches a trial count that is not what the file says it is" did not.
+       `se = 50/sqrt(trials)` at the published 2-dp rounding is the identity `policy.seOfTrials`
+       exports, `generate-data.mjs` writes the model's own `se` by and `generate-ring.mjs` writes
+       this artifact's by, so it is re-derived here rather than trusted. R2's halve-the-lattice
+       fallback stays legal: halved trials must simply carry the se they imply. */
+    for (const k of ['cell', 'latt']) {
+      const want = +seOfTrials(meta.trials[k]).toFixed(2);
+      if (!Object.is(meta.se[k], want)) {
+        p(`(b) meta.se.${k} is ${meta.se[k]} and ${meta.trials[k]} trials give 50/sqrt(n) = ${want} — `
+          + 'the standard error and the trial count in this file describe different measurements, and '
+          + 'every band D12 judges by is derived from the first');
+      }
+    }
   }
   if (!(meta.cells > 0)) p(`(b) meta.cells is ${meta.cells}`);
 
@@ -218,8 +258,28 @@ export function ringProblems(body, raw, live, budgets, modelCells) {
       for (let i = 0; i < agree.length; i++) if (!(agree[i] <= OUTLIER_SIGMA)) bad.push(`${keys[i]} ${agree[i]}σ`);
       if (bad.length) {
         p(`(${clause}) ${bad.length} cell(s) past the ${OUTLIER_SIGMA}σ outlier line: `
-          + `${bad.slice(0, 4).join(', ')} — at ${OUTLIER_SIGMA}σ the Gaussian false-alarm rate over `
-          + 'this artifact is 6e-4, so this is a broken measurement, not an unlucky one');
+          + `${bad.slice(0, 4).join(', ')} — at ${OUTLIER_SIGMA}σ the Gaussian family-wise false-alarm `
+          + 'rate over this artifact\'s 2,337 comparisons is 6.7e-4 one-sided / 1.34e-3 two-sided, so '
+          + 'this is a broken measurement, not an unlucky one');
+      }
+      /* THE SUMMARY AND THE PER-CELL RECORD MUST BE THE SAME MEASUREMENT — ADDED AT STAGE S4's RED
+         TEAM (docs/refutations/V4.md). `meta.<name>.worst*` and `agree.<name>` are both written by
+         the generator and were read back independently: a refuter replaced the whole `agree` array
+         with 0.01s, flatly contradicting the `worst 3.72σ / 3.75σ` the same file reports two lines
+         above, and D12 passed. They are two views of one number and are now made to agree — the
+         per-cell array is scored in `seDiff` for an eq column and in `seDiffDelta` for a vDelta one
+         (`meta.agreeOrder` says so), so the recorded worst, divided by whichever unit its own column
+         carries, must be the maximum of the array. This is a three-line consistency check inside the
+         41-second gate, not a re-measurement: only `generate-ring.mjs --check` re-measures. */
+      if (Array.isArray(agree) && agree.length && typeof s.worst === 'number' && bands) {
+        const top = Math.max(...agree);
+        const asEq = s.worst / bands.seDiff, asDelta = s.worst / bands.seDiffDelta;
+        if (Math.abs(top - asEq) > 0.011 && Math.abs(top - asDelta) > 0.011) {
+          p(`(${clause}) meta.${name} records worst ${s.worst} pt and the per-cell agree.${name} tops out `
+            + `at ${top} — in this file's own units that worst is ${asEq.toFixed(2)} (eq column) or `
+            + `${asDelta.toFixed(2)} (vDelta column), so the summary and the record it summarises are `
+            + 'not the same measurement');
+        }
       }
     }
     if (!(Math.abs(s.biasSigma) <= 2)) {
@@ -235,6 +295,24 @@ export function ringProblems(body, raw, live, budgets, modelCells) {
        run whether it holds or not. This is the falsification staying visible. */
     readings.push(`${name} worst ${s.worstSE}·se.cell (§5.2 band 2.0 — `
       + `${s.worstSE > 2 ? 'FALSIFIED' : 'held'}), ${s.worstSigma}σ of seDiff, bias ${s.biasSigma}σ`);
+  }
+
+  /* (c) THE INPUT THE VILLAIN POOLS WERE BUILT FROM, MADE CHECKABLE — ADDED AT STAGE S4's RED TEAM
+     (docs/refutations/V4.md). `meta.model.hash` and `meta.model.orderHash` were BOTH inert: three
+     refuters of three fabricated them (64 zeros, '0000000000000000') and every D12 clause passed,
+     because only `meta.model.nMax` was ever read — so the artifact could claim to have been measured
+     against a model whose ordering it never saw, and only `generate-ring.mjs --check`'s 21-minute
+     byte-compare would say otherwise. `orderHash` is the NARROW stamp — the shipped villain order,
+     which is what the pools are actually built from — and unlike the whole-file `hash` it does not
+     move when `verify` restamps `model.gates`, so it can be asserted on every run at no cost. The
+     whole-file `hash` is deliberately NOT asserted here: it moves on any §0.4-authorised stamp into
+     data/model.json and forces a ~21-minute re-generation that changes not one measured column,
+     which is the finding S5 documents rather than a check to arm. */
+  if (modelMeta && meta.model && meta.model.orderHash !== modelMeta.orderHash) {
+    p(`(c) meta.model.orderHash is ${JSON.stringify(meta.model.orderHash)} and data/model.json's own `
+      + `meta.orderHash is ${JSON.stringify(modelMeta.orderHash)} — the ring's villain pools were built `
+      + 'from a different shipped order than the one this model carries, which is exactly the join '
+      + '`eqAtSeats` makes and neither file can check alone');
   }
 
   // -- (c) THE RING IS BESIDE THE MODEL, NOT INSIDE IT ---------------------------------------------
@@ -355,7 +433,8 @@ export function build(ctx) {
           const live = { generator: sourceHash(), kernel: kernelHash() };
           const budgets = {};
           for (const v of VARIANT_NAMES) budgets[v] = VARIANTS[v] && VARIANTS[v].budgets;
-          const { problems, readings } = ringProblems(body, raw, live, budgets, ctx.model && ctx.model.cells);
+          const { problems, readings } = ringProblems(body, raw, live, budgets, ctx.model && ctx.model.cells,
+            ctx.model && ctx.model.meta);
           const detail = `${readings.join(' · ')}`
             + (problems.length ? ` — ${problems.length} problem(s): ${problems.slice(0, 3).join('; ')}` : '')
             + `. The byte-compare itself is \`node ${GENERATOR} --check\`, at the close-out beside the `

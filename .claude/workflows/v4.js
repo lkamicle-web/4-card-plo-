@@ -64,14 +64,21 @@ const SNAPSHOT_REF = "v4-s1-base";
 const WORKORDERS = "docs/spikes/V4-workorders.md";
 
 // Owner adjudication on a relaunch (plan section 7.5): pass
-//   args: { adjudication: { stage: "S3", text: "..." } }
+//   args: { adjudication: { stage: "S3", text: "..." } }          (one stage)
+//   args: { adjudication: [ { stage: "S2-R", text }, { stage: "S3", text } ] }   (several)
 // and the prose is appended to THAT stage's prompt only, so every earlier agent() call keeps a
 // byte-identical prompt and replays from cache under resumeFromRunId.
-const ADJ = (args && typeof args === "object" && args.adjudication && typeof args.adjudication === "object")
-  ? args.adjudication : null;
+// A relaunch after a SECOND blocker must carry the earlier stage's prose too, or that stage's
+// prompt reverts to its original text and the cache replays the ORIGINAL (blocked) result: the one
+// argument may therefore be a list of { stage, text }, one per adjudicated stage; each note's text
+// is byte-identical to the relaunch that first carried it, so those stages still replay from cache.
+const ADJ_RAW = (args && typeof args === "object") ? args.adjudication : null;
+const ADJS = Array.isArray(ADJ_RAW) ? ADJ_RAW.filter(function (a) { return a && typeof a === "object"; })
+  : (ADJ_RAW && typeof ADJ_RAW === "object") ? [ADJ_RAW] : [];
 function ownerNote(stageId) {
-  if (!ADJ || String(ADJ.stage) !== stageId || !ADJ.text) return "";
-  return "\n\nOWNER ADJUDICATION FOR THIS STAGE (the run was relaunched after a blocker; this prose is the owner's decision and it BINDS - it may not be re-litigated, and it may not weaken a gate, widen a tolerance or authorise --force):\n" + String(ADJ.text);
+  const adj = ADJS.find(function (a) { return String(a.stage) === stageId && a.text; });
+  if (!adj) return "";
+  return "\n\nOWNER ADJUDICATION FOR THIS STAGE (the run was relaunched after a blocker; this prose is the owner's decision and it BINDS - it may not be re-litigated, and it may not weaken a gate, widen a tolerance or authorise --force):\n" + String(adj.text);
 }
 
 // ---------------------------------------------------------------------------

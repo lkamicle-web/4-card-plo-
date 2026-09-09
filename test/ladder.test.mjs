@@ -135,7 +135,12 @@ test('the two-constants-one-anchor pin: straddle.seat === ladder.earlyStep', () 
   // perturbation above 1 flowing into the opening ladder would invert the monotonicity I51(a)
   // requires. The equality is pinned on the SHIPPED constants instead, so they cannot drift.
   assert.equal(P.CONSTANTS.straddle.seat, P.CONSTANTS.ladder.earlyStep);
-  assert.equal(P.CONSTANTS.straddle.seatDerivedFrom, 'ladder.earlyStep');
+  // the provenance half of the pin, in the ladder block. It sat beside `straddle.seat` as
+  // `seatDerivedFrom` from S1 to S5; S6's fix round moved it because §0.4 confines this run's
+  // model delta to `constants.ladder`, and a sibling there shipped a v4 field outside the block at
+  // legacy settings. Both directions are asserted, so neither address can be quietly reoccupied.
+  assert.equal(P.CONSTANTS.ladder.anchorSharedWith, 'straddle.seat');
+  assert.ok(!('seatDerivedFrom' in P.CONSTANTS.straddle), 'the provenance record moved into constants.ladder; nothing may re-add it here');
   assert.equal(typeof P.CONSTANTS.straddle.seat, 'number');
   assert.equal(P.CONSTANTS.ladder.baseRaiseRule, 'geometric');
   assert.ok(['flat', 'step'].includes(P.CONSTANTS.ladder.baseRRule));
@@ -216,8 +221,36 @@ test('the ring accessors delegate at six seats and fail CLOSED above the shipped
   assert.equal(P.eqAtSeats(cell, 8.5, 9, ring, 'K'), 35);
   assert.equal(P.rhoAtSeats(cell, 8, 9, ring, 'K'), (36 * 9) / 100);
   assert.equal(P.rhoAtSeats(cell, 9, 9, ring, 'K'), (34 * 10) / 100);
-  // a villain-profiled cell is REFUSED rather than silently mixed with unprofiled ring columns
-  assert.throws(() => P.eqAtSeats({ ...cell, vpSource: 'lattice' }, 8.2, 9, ring, 'K'), /refusing to mix/);
+  /* A VILLAIN-PROFILED CELL IS JOINED AT ITS OWN `v`, OR IT IS REFUSED — re-pointed at S3, where
+     delta F3 replaced the blanket refusal with the join the refusal was standing in for. S1 shipped
+     the throw because mixing profiled 1..7 columns with unprofiled 8..9 is a wrong number wearing
+     a right shape; F3 removes the mismatch instead of the check, by giving the accessor the ring's
+     own vDelta lattice and the shadow cell its own profile `v`. So the three cases it CANNOT do
+     honestly still throw, and the one it can now does. */
+  const rp = { meta: { nMax: 9, v: [25, 75] },
+    cells: { K: { eq: [36, 34], vDelta: { 25: [-6, -8], 75: [2, 4] } } } };
+  // (a) the join it can make: profiled at v = 50, halfway between the ring's own lattice points
+  assert.equal(P.eqAtSeats({ ...cell, vpSource: 'lattice', vp: 50 }, 8, 9, rp, 'K'), 36 + (-6 + 2) / 2);
+  assert.equal(P.eqAtSeats({ ...cell, vpSource: 'lattice', vp: 25 }, 9, 9, rp, 'K'), 34 - 8);
+  // (b) a MEASURED source: the ring has no measured columns and never will — a permanent refusal
+  assert.throws(() => P.eqAtSeats({ ...cell, vpSource: 'measured', vp: 50 }, 8.2, 9, rp, 'K'), /refusing to mix/);
+  // (c) a profiled cell carrying no `v` to be joined at
+  assert.throws(() => P.eqAtSeats({ ...cell, vpSource: 'lattice' }, 8.2, 9, rp, 'K'), /refusing to mix/);
+  // (d) a ring with no lattice of its own to profile against
+  assert.throws(() => P.eqAtSeats({ ...cell, vpSource: 'lattice', vp: 50 }, 8.2, 9, ring, 'K'), /refusing to mix/);
+  /* (e) A `v` OUTSIDE THE RING'S LATTICE CLAMPS TO THE END ROW — it does not throw, and asserting
+     that it did was wrong: `latticeBracket` clamps at both ends (policy.mjs, `v >= pts[n-1]`), so
+     `interpolateDelta` returns null only for an EMPTY lattice, which the clause above already
+     refuses by name. Measured here rather than assumed, and it is the right behaviour rather than
+     a hole: the model's own 1..7 columns clamp by the SAME function on the SAME rule, so both
+     halves of the join land on the top lattice row together and the two columns stay the same
+     quantity at the same v. A join that clamped on one side only would be the bug; this is not. */
+  assert.equal(P.eqAtSeats({ ...cell, vpSource: 'lattice', vp: 90 }, 8, 9, rp, 'K'), 36 + 2);
+  assert.equal(P.eqAtSeats({ ...cell, vpSource: 'lattice', vp: 90 }, 8, 9, rp, 'K'),
+    P.eqAtSeats({ ...cell, vpSource: 'lattice', vp: 75 }, 8, 9, rp, 'K'),
+    'the clamp does not land on the lattice endpoint it clamps to');
+  // ...and an UNPROFILED cell still reads the plain columns, so none of the above is about seats
+  assert.equal(P.eqAtSeats(cell, 8, 9, rp, 'K'), 36);
 });
 
 test('skill.mjs is re-keyed by (seats, pos, node) with the six-seat records untouched', () => {

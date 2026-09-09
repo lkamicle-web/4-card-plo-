@@ -34,10 +34,10 @@ import { stripMarkedBlocks } from './variant.mjs';
 import { compileShellScripts } from './shell-compile.mjs';
 
 /** The marked blocks, in the order the build reports them. Adding a block means adding a cap. */
-export const BLOCKS = ['gto', 'ev', 'skill', 'topn', 'calib'];
+export const BLOCKS = ['gto', 'ev', 'skill', 'topn', 'calib', 'ring'];
 
 /** The generated regions whose bytes are NOT `app` (build.mjs: `app = total - data - modelCode - eq`). */
-export const APP_EXCLUDED_REGIONS = ['data', 'policy', 'taxonomy', 'eq'];
+export const APP_EXCLUDED_REGIONS = ['data', 'policy', 'taxonomy', 'eq', 'ring'];
 
 /**
  * The marked-block census: each `@block:<name>` region's cost in compiled bytes.
@@ -92,7 +92,9 @@ export function pageCensus(page, opts = {}) {
     if (si < 0) {
       /* `eq` is full-only; a lite page has no such region and its term is 0, as in the build. Every
          other region is in both artifacts, and its absence means this is not a built page. */
-      if (key === 'eq') { regions[key] = 0; continue; }
+      /* `ring` is in BOTH variants once v4 ships, but a page built before it has no such region
+         and its term is 0 — the same tolerance `eq` gets, for the same reason. */
+      if (key === 'eq' || key === 'ring') { regions[key] = 0; continue; }
       throw new Error(`${label}: no /* @inject:${key} */ region — not a page scripts/build.mjs produced`);
     }
     const ei = page.indexOf(end, si + start.length);
@@ -106,5 +108,10 @@ export function pageCensus(page, opts = {}) {
   const data = regions.data;
   const modelCode = regions.policy + regions.taxonomy;
   const eq = regions.eq;
-  return { total, data, modelCode, eq, app: total - data - modelCode - eq, regions };
+  /* THE RING COMES OUT OF `app` HERE TOO, and the duplication is the point of the comment:
+     `scripts/build.mjs` computes the same quantity from its own generated blocks, and if only one
+     of the two subtracted the ring the two would disagree by 18 KB and `appCore` would read over
+     budget in exactly one of them. D6 reads this function; the build reads its own. */
+  const ring = regions.ring;
+  return { total, data, modelCode, eq, ring, app: total - data - modelCode - eq - ring, regions };
 }

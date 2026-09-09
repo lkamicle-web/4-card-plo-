@@ -84,9 +84,64 @@ const TODAY = {
      was pinned (the first cut read +614 B; folding the allowed-width derivation into the setter and
      the width resolution into one `| 0` returned 241 B). This fixture is a MEASUREMENT, not a
      decision, and every v4 lane that moves a page byte moves it: S3 re-pins it once after the
-     merge rather than four lanes racing it. */
-  total: 601987, app: 403759, appCore: 403759 - 35290, modelCode: 56270,
-  blocks: { gto: 10198, ev: 11403, skill: 3532, topn: 4844, calib: 5313 },
+     merge rather than four lanes racing it.
+
+     RE-PINNED ONCE AT STAGE S3, against the FINAL build — after the four lane merges, the five
+     policy deltas, the ring's own injected region and every budget edit, so that the number is a
+     measurement of the artifact this run ships and not of any intermediate one. What moved, and
+     why each figure is what it is: `total` 601,987 -> 633,260 B, of which 18,620 B is the ring
+     payload injected on the `eq` precedent and the rest is the ring BLOCK plus the merged lanes;
+     `app` 403,759 -> 415,326 B; `modelCode` 56,270 -> 57,175 B, the five policy deltas (F1, U2,
+     F3's accessor-side profiled ring columns, F2's memo identity and F4's shipped census) against
+     the 57,344 B cap S1 paid for, 169 B under it and NOT raised; `blocks` gains `ring` at its
+     measured 10,846 B. The four legacy block figures do not move at all, which is what makes the
+     ring block a block rather than a name on somebody else's bytes.
+
+     RUN-3 RE-PIN, -2 B on `total` alone (633,260 -> 633,258) and no other field: the ring was
+     regenerated on the merged tree to re-stamp `meta.model.hash` after `constants.ladder.census`
+     and the 69 gate verdicts were stamped into data/model.json, and the regenerated artifact
+     embeds `wallSec 1213` where the pre-merge one embedded `1255.4` — two characters fewer, in a
+     payload injected outside `app`. That is the whole delta: `app`, `appCore`, `modelCode` and
+     all six block figures are byte-identical to the run-2 pin, which is what identifies the
+     mover as the ring's own provenance stamp and not a page edit. A MEASUREMENT, not a decision;
+     no ceiling moved.
+
+     STAGE S4 RE-PIN (the red team's dispositions, docs/refutations/V4.md), +68 B on `total` and
+     +22 B on `app`/`appCore` and +23 B on `modelCode`, no block figure moved: the shell's
+     `UNANCHORED` map gained `'ladder.baseRRule'` — R1 measured inert on every gated surface, so
+     §6's answer is gated + flagged + BADGED — and `constants.ladder.flag` gained the words
+     `+ the baseRRule choice`, which is model code and therefore lands in `modelCode` and in
+     `total` twice over — 23 B of code and 23 B of stamped `constants`, plus the badge's 22 B.
+     `appCore` reads 369,169 B
+     against its 369,664 B ceiling and `modelCode` 57,198 B against 57,344 B: 495 B and 146 B of
+     headroom, and NO ceiling moved for either. A MEASUREMENT, not a decision.
+
+     STAGE S5 RE-PIN, +530 B on `total` and +267 B on `modelCode`, with `app`, `appCore` and every
+     block figure byte-identical: METHODOLOGY limitation 20 ships as DATA in
+     `constants.limitations`, so the Method view renders it from `model.constants` the way it
+     renders 16 and 17 instead of transcribing it. The entry is 267 B of minified `policy.mjs`
+     (which is `modelCode`) and 263 B of stamped `constants` (which is `data`), and 267 + 263 = 530
+     is the whole of `total`'s move. It is the one raise this stage had to pay: `modelCode` goes
+     57,198 -> 57,465 B against the 57,344 B cap, so the ceiling moves 56K -> 57K with its
+     shrink-first measurement in `budgetSource` (the shrink returns 47 B against a 121 B overrun).
+     A MEASUREMENT for the two figures, a paid RAISE for the one ceiling.
+
+     STAGE S6 RE-PIN (the one fix round), +17 B on `total` and +19 B on `modelCode`, with `app`,
+     `appCore` and all six block figures BYTE-IDENTICAL — which is the reading that identifies this
+     as a constants-and-provenance move rather than a page edit, exactly as the run-3 re-pin above
+     did. It decomposes to the byte, and every term is one of the round's two edits or their
+     consequence: +19 B of `modelCode` for the two `policy.mjs` repairs (`envKey` serialising the
+     seat segment only away from six, and `straddle.seatDerivedFrom` becoming
+     `ladder.anchorSharedWith` so §0.4's model delta sits wholly inside `constants.ladder`);
+     -2 B of stamped `constants` because `"anchorSharedWith":"straddle.seat"` is two characters
+     shorter than the sibling it replaced; -2 B more because `constants.evCut.derivedAt.state` lost
+     the `|6` the old unconditional serialisation put in it; and +2 B of injected ring payload
+     because the regenerated `data/ring.json` embeds `wallSec 1156.9` where the previous one
+     embedded `1213`. 19 - 2 - 2 + 2 = 17. NO ceiling moved and none needed to: `modelCode` reads
+     57,484 B against the 57 KB (58,368 B) cap S5 paid for, 884 B under it, and the ring payload's
+     +2 B lands against 20 KB of artifact budget holding 18.2 K. A MEASUREMENT, not a decision. */
+  total: 633873, app: 415348, appCore: 415348 - 46179, modelCode: 57484,
+  blocks: { gto: 10241, ev: 11403, skill: 3532, topn: 4844, calib: 5313, ring: 10846 },
 };
 const loosened = (over) => ({ ...VARIANTS.lite.budgets, ...over });
 
@@ -94,24 +149,35 @@ test('today\'s caps clear the clause, and every ceiling is read', () => {
   const r = pageCeilingProblems('lite', VARIANTS.lite.budgets, TODAY);
   assert.deepEqual(r.problems, []);
   assert.equal(r.readings.length, 4 + BLOCKS.length, 'total, app, core, model code, and one per block');
-  assert.match(r.readings.join(' '), /app 394\.3K\/398K≤415K/);
-  // modelCode raised 54 -> 56 KB at v4 S1 (see test/variant.test.mjs's pin for the shrink-first
-  // record). The BOUND moves with the measurement, not with the cap: 54.8K x 1.08 rounds to 60K.
-  assert.match(r.readings.join(' '), /model code 55\.0K\/56K≤60K/);
+  assert.match(r.readings.join(' '), /app 405\.6K\/410K≤426K/);
+  // modelCode raised 54 -> 56 KB at v4 S1 and 56 -> 57 KB at v4 S5 (see test/variant.test.mjs's
+  // pin for both shrink-first records). S3 and S4 did NOT raise it, though the five policy deltas
+  // and the flag prose moved the measurement inside it; what forced S5's step is limitation 20
+  // shipping as data, 267 B of policy.mjs, which took 57,198 B past the 57,344 B cap by 121 B.
+  // The BOUND moves with the measurement, not with the cap: 56.1K x 1.08 still rounds to 61K.
+  assert.match(r.readings.join(' '), /model code 56\.1K\/57K≤61K/);
+  // the ring block is read like any other, which is D6's from-above clause covering a new cap with
+  // no gate edit — `pageCeilingProblems` iterates `budgets.blocks`, so registering it was enough.
+  assert.match(r.readings.join(' '), /ring 10\.6K\/11K≤12K/);
 });
 
 test('REFUTER 1 REPLAYED: `app` at 460 KB is refused, and the refusal names the ceiling and the bound', () => {
   const r = pageCeilingProblems('lite', loosened({ app: 460 * KB }), TODAY);
   assert.equal(r.problems.length, 1, r.problems.join(' | '));
   assert.match(r.problems[0], /^lite app: the ceiling 460K is LOOSER/);
-  assert.match(r.problems[0], /394\.3K × 1\.05 rounded up to the whole KB is 415K/);
+  assert.match(r.problems[0], /405\.6K × 1\.05 rounded up to the whole KB is 426K/);
   assert.match(r.problems[0], /variant\.mjs:\d+/, 'the refusal cites where the margin was read');
 });
 
 test('REFUTER 3 REPLAYED: a kilobyte moved from `gto` to `topn` is refused on `topn`', () => {
   const r = pageCeilingProblems('lite',
-    loosened({ blocks: { gto: 10 * KB, ev: 12 * KB, skill: 4 * KB, topn: 6 * KB, calib: 6 * KB } }), TODAY);
-  /* gto at 10 KB = 10,240 B is 42 B ABOVE today's measured 10,198 B — tighter than the +5 % rule
+    loosened({ blocks: { gto: 10 * KB, ev: 12 * KB, skill: 4 * KB, topn: 6 * KB, calib: 6 * KB, ring: 11 * KB } }), TODAY);
+  /* gto at 10 KB = 10,240 B is 1 B BELOW today's measured 10,241 B, so the BUILD would refuse the
+     page — but this clause bounds looseness only and has nothing to say about a cap that is too
+     TIGHT, which is the direction it must stay silent in. (At the v3 release the same 10 KB sat
+     42 B above a measured 10,198 B; lane U's coverage denominator moved the block by 43 B and the
+     comparison flipped sign without changing what this clause asserts, which is the point.) The
+     original note, kept: tighter than the +5 % rule
      (which allows 11K) but still a cap the page fits under, so the build accepts it, and this clause
      has nothing to say about it and must not: it bounds looseness only. (The first draft of this
      comment had the build refusing it; 10,240 > 10,198, and it does not.) */
@@ -119,25 +185,25 @@ test('REFUTER 3 REPLAYED: a kilobyte moved from `gto` to `topn` is refused on `t
   assert.match(r.problems[0], /4\.7K × 1\.05 rounded up to the whole KB is 5K/);
 });
 
-test('the model code is bounded at +8 %, not +5 %: 60 KB clears (55.0K × 1.08 rounds up to 60), 61 KB does not', () => {
-  assert.deepEqual(pageCeilingProblems('lite', loosened({ modelCode: 60 * KB }), TODAY).problems, []);
-  const r = pageCeilingProblems('lite', loosened({ modelCode: 61 * KB }), TODAY);
+test('the model code is bounded at +8 %, not +5 %: 61 KB clears (55.8K × 1.08 rounds up to 61), 62 KB does not', () => {
+  assert.deepEqual(pageCeilingProblems('lite', loosened({ modelCode: 61 * KB }), TODAY).problems, []);
+  const r = pageCeilingProblems('lite', loosened({ modelCode: 62 * KB }), TODAY);
   assert.equal(r.problems.length, 1);
-  assert.match(r.problems[0], /^lite model code: the ceiling 61K is LOOSER/);
+  assert.match(r.problems[0], /^lite model code: the ceiling 62K is LOOSER/);
   assert.match(r.problems[0], /× 1\.08/);
 });
 
 test('`core` and `total` are bounded too — a removal that does not move the ceiling is refused', () => {
-  /* Delete 20 KB of unmarked code and leave both ceilings where they are: core 339.8K × 1.05 =
-     356.8 -> 357 KB < 360, and app 374.3K × 1.05 = 393.0 -> 394 KB < 398. Unmarked bytes are in
+  /* Delete 20 KB of unmarked code and leave both ceilings where they are: core 340.5K × 1.05 =
+     357.5 -> 358 KB < 361, and app 385.6K × 1.05 = 404.9 -> 405 KB < 410. Unmarked bytes are in
      both readings, so BOTH caps are now looser than the rule and both are refused — the removal
      has to be paid back on each. */
   const shrunk = { ...TODAY, app: TODAY.app - 20 * KB, appCore: TODAY.appCore - 20 * KB };
   const r = pageCeilingProblems('lite', VARIANTS.lite.budgets, shrunk);
   assert.deepEqual(r.problems.map((p) => p.split(':')[0]), ['lite app', 'lite core']);
-  const t = pageCeilingProblems('lite', loosened({ total: 619 * KB }), TODAY);
+  const t = pageCeilingProblems('lite', loosened({ total: 651 * KB }), TODAY);
   assert.deepEqual(t.problems.map((p) => p.split(':')[0]), ['lite total']);
-  assert.deepEqual(pageCeilingProblems('lite', loosened({ total: 618 * KB }), TODAY).problems, []);
+  assert.deepEqual(pageCeilingProblems('lite', loosened({ total: 650 * KB }), TODAY).problems, []);
 });
 
 test('a cap for a block the shell no longer marks is pure headroom, and is refused', () => {
@@ -299,6 +365,12 @@ test('the census agrees with `build.mjs --check`\'s own report, to the tenth of 
     assert.equal(kb(pc.data), num(/data ([\d.]+) \+/), `${v} data`);
     assert.equal(kb(pc.modelCode), num(/model code ([\d.]+) /), `${v} model code`);
     if (spec.regions.includes('eq')) assert.equal(kb(pc.eq), num(/equilibrium ([\d.]+) /), `${v} eq`);
+    /* THE RING PAYLOAD IS NAMED `ring payload` IN THE REPORT AND `ring` AS A BLOCK, and the two
+       names exist because the two quantities do: 18.2K of injected artifact and 10.6K of page. One
+       report line printing both under one word is what this assertion caught when it was written —
+       the block loop below reads /ring ([\d.]+)/ and matched the payload. The `eq` region has the
+       same split and solved it the same way, printing `equilibrium` for the payload. */
+    if (spec.regions.includes('ring')) assert.equal(kb(pc.ring), num(/ring payload ([\d.]+) /), `${v} ring payload`);
     assert.equal(kb(pc.app), num(/\+ app ([\d.]+) KB/), `${v} app`);
     for (const name of BLOCKS) {
       assert.equal(kb(bc.by[name]), num(new RegExp(`${name} ([\\d.]+)`)), `${v} block ${name}`);

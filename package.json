@@ -1,6 +1,6 @@
 {
   "name": "rundown",
-  "version": "3.0.0-dev",
+  "version": "4.0.0-dev",
   "private": true,
   "description": "RUNDOWN — a 4-card PLO preflop range explorer. The shipped artifact (index.html) and the generator that builds it are runtime-dependency-free; everything below is dev-time only.",
   "license": "MIT",

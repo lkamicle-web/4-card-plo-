@@ -264,13 +264,55 @@ test('lite carries the METHODOLOGY §9.11 budgets, and full\'s are D9\'s — set
      functions that replaced them plus `nEffMax()` cost 209 B more than they returned. The full
      variant's `modelCode` moves with it because the two artifacts inline the SAME module. The
      byte-by-byte shrink-first record is in variant.mjs's own budgetSource, in the D6 idiom. */
+  /* AND THE FOUR v4 S3 MOVES, when the ring landed (V4-PLAN §2.7, D12(d), D13). Two are NEW caps
+     and two are raises, and each is measured on the artifact this tree builds:
+       blocks.ring 11 KB   the page block, measured 10,846 B. TIGHTER than its own rule: +5% rounds
+                           to 12 KB, and 11 KB is one whole-KB step under it and still above the
+                           block. D6's from-above clause covers it with NO gate edit, because
+                           `pageCeilingProblems` iterates `budgets.blocks`.
+       ring 20 KB          the ARTIFACT budget — a top-level row, NOT a model.json sub-budget —
+                           bounding data/ring.json's 18,620 B injected form at +5%, whole-KB.
+                           D6's from-above clause explicitly excludes this shape, so the pin is
+                           D12(d)'s and D12(d) prints exactly this line while the row is absent.
+       appCore 360 -> 361  measured 369,147 B lite / 369,297 B full against 368,640: over by 507 B
+                           and 657 B AFTER 1,257 B of measured shrink across four lanes. The
+                           smallest whole-KB step that exists, at measured + 0.1% against a +5%
+                           bound of 379 KB.
+       app 398 -> 410      ARITHMETIC, by the equality below: 361 + (11+12+4+5+6+11 = 49).
+       total 600 -> 625    §2.7 predicted lite would fit and it does not — 633,260 B = 618.4K with
+                           the ring block and its payload. Measured + 1.10%, bound 650 KB.
+     `modelCode` is NOT raised again: the five S3 policy deltas took it to 57,175 B, 169 B under the
+     57,344 B S1 paid for. (S4's red team found these two figures disagreeing with `budgetSource`'s
+     own — 633,013 B and 57,109 B here against 633,260 B and 57,175 B there, two records of one
+     measurement 247 B and 66 B apart, neither gated: the pre-merge readings were left here when the
+     S3 re-pin moved the others. Corrected to the readings `budgetSource` and the block census
+     carry. The LIVE census after S4's badge and flag is 633,303 B and 57,198 B —
+     `test/block-census.test.mjs`'s `TODAY`, which is asserted against the tree on every run.) `blocks.skill` is NOT raised — the twelve nine-seat skill exceptions are
+     records in scripts/lib/skill.mjs, not page bytes. */
+  /* STAGE S5's ONE RAISE, pinned here for the same reason every raise above it is: `modelCode`
+     56 -> 57 KB, and what bought it is a DOCUMENT shipping as data. METHODOLOGY limitation 20 —
+     the nine-seat early-seat constants are extrapolated, no nine-handed corpus has touched them —
+     joins `constants.limitations`, so the Method view renders it from `model.constants` like
+     limitations 16 and 17 rather than transcribing it into the shell. Measured: 267 B of minified
+     policy.mjs, taking modelCode 57,198 -> 57,465 B against the 57,344 B cap, over by 121 B.
+     57K = 58,368 B is measured + 1.57%, against this row's calibrated bound of 62K. Shrink-first,
+     measured: joining the note's two chunks returns 3 B, trimming `of` 6 B, and dropping
+     `flagsItExplains` 38 B of model payload and none of modelCode — 47 B against 121. */
   assert.deepEqual(VARIANTS.lite.budgets,
-    { total: 600 * 1024, app: 398 * 1024, appCore: 360 * 1024, modelCode: 56 * 1024,
-      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024 } });
+    { total: 625 * 1024, app: 410 * 1024, appCore: 361 * 1024, modelCode: 57 * 1024, ring: 20 * 1024,
+      blocks: { gto: 11 * 1024, ev: 12 * 1024, skill: 4 * 1024, topn: 5 * 1024, calib: 6 * 1024, ring: 11 * 1024 } });
   assert.ok(VARIANTS.lite.budgets.app > VARIANTS.lite.budgets.appCore,
     'the raise is a raise: app must exceed the pre-raise ceiling core is still held to');
   assert.match(VARIANTS.lite.budgetSource, /vs-GTO/, 'the raise names what it bought');
   assert.match(VARIANTS.lite.budgetSource, /5%/, 'and the rule it was set by');
+  /* R6, AND IT IS A D13 CLAUSE RATHER THAN A FORMATTING PREFERENCE: every raise carries its
+     shrink-first attempt IN BYTES. A raise whose sentence has no measured shrink in it is a D13
+     failure, so the sentence is asserted here too — in both variants, since both were raised. */
+  for (const v of ['lite', 'full']) {
+    assert.match(VARIANTS[v].budgetSource, /SHRINK-FIRST, MEASURED IN BYTES/, `${v} raise has no shrink sentence`);
+    assert.match(VARIANTS[v].budgetSource, /1,257 B recovered/, `${v} shrink sentence has no byte total`);
+    assert.match(VARIANTS[v].budgetSource, /DECLINED/, `${v} does not record the shrinks it did NOT take`);
+  }
   /* THE PER-BLOCK CEILINGS MUST TOGETHER FIT INSIDE THE RAISE THEY EXPLAIN. `app - appCore` is what
      the marked features were collectively granted; the sum of their caps may not exceed it, or the
      caps would be decoration over a ceiling that had already been passed. */
@@ -330,9 +372,17 @@ test('lite carries the METHODOLOGY §9.11 budgets, and full\'s are D9\'s — set
      above it, deliberately far below the 686 KB a fresh measured+5% would give, on the reading this
      row settled at P3 and re-applied at P4 — a ceiling tighter than its own rule is the
      conservative direction. */
-  assert.equal(B.total, 660 * 1024, 'the P5 total raise is measured+1.1%, not measured+5%');
-  assert.match(VARIANTS.full.budgetSource, /660/, 'and the raise says so in the source note');
-  assert.match(VARIANTS.full.budgetSource, /646/, 'without losing the raise it replaces');
+  /* AND THE v4 S3 `total` RAISE, 660 -> 695 KB — the raise §2.7 EXPECTED rather than feared, and
+     the only one in this run that was predicted before it was measured. The full page carries the
+     ring BLOCK and the 18,620 B injected ring payload on top of the equilibrium: measured
+     704,433 B = 687.9 KB against 660 KB = 675,840 B, over by 28,593 B. 695 KB = 711,680 B is
+     measured + 1.03%, against a +5% bound of 723 KB — held below its own rule for the fourth time
+     on this row, the reading P3 settled and P4 and P5 re-applied. `eq` is untouched at 73 KB. */
+  assert.equal(B.total, 695 * 1024, 'the v4 S3 total raise is measured+1.0%, not measured+5%');
+  assert.equal(B.ring, VARIANTS.lite.budgets.ring, 'the ring artifact is the same file in both variants');
+  assert.match(VARIANTS.full.budgetSource, /695/, 'and the raise says so in the source note');
+  assert.match(VARIANTS.full.budgetSource, /660/, 'without losing the raise it replaces');
+  assert.match(VARIANTS.full.budgetSource, /646/, 'nor the one before that');
   assert.ok(B.eq > 0, 'the equilibrium payload has its own tripwire (§5.3)');
   assert.ok(!/UNANCHORED/.test(VARIANTS.full.budgetSource), 'the unanchored note must go with the null');
   assert.match(VARIANTS.full.budgetSource, /measured/i);
@@ -473,7 +523,12 @@ test('the shell carries five marked features, and each cut is the feature rather
      consumes ITS OWN markers, and the other two features' markers legitimately survive it. Asserting
      `!/@end:block/` over the whole remainder was true by accident of there being one block, and it
      is the assertion that failed the day a second one landed. */
-  const MARKED = { gto: [10, 5000], ev: [8, 4000], skill: [5, 1500], topn: [3, 3000], calib: [3, 6000] };
+  const MARKED = { gto: [10, 5000], ev: [8, 4000], skill: [5, 1500], topn: [3, 3000], calib: [3, 6000],
+    /* SIX SINCE v4 S3: the seat ladder's own page block, which is where every 9-max-only byte
+       lives — the Table control, the nine-seat rail branch, the Method view's Table size section
+       and the census readout (§2.7's first row). Its comment predicted this list "will survive a
+       sixth"; this is the sixth. */
+    ring: [5, 4000] };
   for (const [name, [minBlocks, minBytes]] of Object.entries(MARKED)) {
     const r = stripMarkedBlocks(shell, name);
     assert.ok(r.blocks >= minBlocks,

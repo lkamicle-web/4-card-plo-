@@ -187,7 +187,16 @@ test('no reserved id is stamped into the shipped model.gates', () => {
   // eighth id going unstamped, or one of these appearing without the others, fails here — and when
   // S3's ceremony lands and a clean `verify.mjs` writes all sixty-nine, this list goes back to
   // empty and the assertion collapses to the equality it was.
-  const PENDING_V4 = ['I48', 'I49', 'I50', 'I51', 'I52', 'D12', 'D13'];
+  //
+  // S3'S CEREMONY HAS LANDED AND THE LIST IS EMPTY, which is this comment's own instruction carried
+  // out rather than a rule relaxed: `data/tiers-9max.fixture.txt` was created by
+  // `freeze-tiers.mjs --seats9` (no `--force`, anywhere, at any point in the run), lane R's ring and
+  // lane U's block merged, S3 paid the two ring caps, and a clean `verify.mjs` then wrote all
+  // SIXTY-NINE verdicts. So `PENDING_V4` is empty and the assertion is once more the equality it
+  // was written as: every enforced id carries a stamp. The empty array is kept, rather than the
+  // whole exception deleted, because the NEXT plan to reserve ids before their subjects exist will
+  // need exactly this shape back — and a named empty list says that where a deletion would not.
+  const PENDING_V4 = [];
   const missing = EXPECTED_IDS.filter((id) => !stamped.includes(id));
   assert.deepEqual([...missing].sort(), [...PENDING_V4].sort(),
     'the unstamped set is no longer exactly v4 §5.2\'s seven — model.gates and the enforced set have '

@@ -104,6 +104,40 @@ the ring artifact, and **forbids (c)**. Concretely:
   legacy fixture row, URL state and gate id. The nine-seat ladder gives the same structural seat
   the name `LJ` (§2.1), and gate I50 is where that equivalence becomes a claim that can fail.
 
+> **Measured (stage S6, the fix round) — the first bullet's claim, stated as a residual, and it
+> needed two repairs before it was true.** Diffed field by field against `1d988f5`, `data/model.json`
+> now differs in exactly **ten paths**: `meta.hash`; the seven §5.2 verdict stamps
+> `gates.{I48, I49, I50, I51, I52, D12, D13}`; `constants.limitations` (§6's limitation 20, appended
+> as item `[2]`); and `constants.ladder` itself — the block the bullet excepts. `cells`, `rows`,
+> `order`, `baselineTiers`, `calibration`, `bands` and `benchmarks` are **byte-identical whole
+> blocks**, so every `eq` and `vDelta` is untouched — 123 of `cells`' 145 entries carry those two
+> keys, and all 145 entries compare equal as one block. The residual is the v3 P-stage
+> precedent exactly: a provenance hash plus verify's own stamps of the deliverables this plan asked
+> for.
+>
+> **The two repairs, because until S6 the claim was FALSE in two places and the verification round
+> caught it.** (i) `envKey` appended `|${e.seats}` unconditionally, `evDefaultKey` embeds `envKey`,
+> and `constants.evCut.derivedAt.state` **ships** that string — so a `|6` reached `data/model.json`
+> at legacy settings. Repaired by serialising the seat segment only when it is not 6: the axis stays
+> **in** the key (removing it would hand a table size back the other size's memoised answer, the trap
+> `envKey`'s own docstring is about), the legacy string is byte-identical to v3's, and nine stays
+> distinct. Inertness at six is not absence from the key. (ii) `constants.straddle.seatDerivedFrom`
+> was a v4 provenance field sited **outside** `constants.ladder`; it moved to
+> `constants.ladder.anchorSharedWith: 'straddle.seat'` (668 B block, cap 1K), taking I51(a)'s
+> by-value assertion with it — both clauses kept, plus a violator test the string clause never had.
+> Bytes crossed *out* of `metaCore` *into* a block `metaCore` subtracts, so no ceiling moved.
+>
+> **And the run's last model-touching act is the ring re-stamp.** `ring.meta.model.hash` pins
+> `data/model.json`'s whole-file hash, so every stamp above invalidated `generate-ring.mjs --check` —
+> the standing cost §2.4's finding and METHODOLOGY §3.6 record, which S5's §5 finding 1 had already
+> called and prescribed the remedy for. `data/ring.json` was regenerated **after** the last stamp,
+> against a sha256 fixed point proved by three consecutive verifies, in **1,156.9 s against R2's
+> 1,280 s** (faster than S3's 1,213 s, so the margin widened), and **not one measured column moved**:
+> all 123 `cells` byte-identical, `orderHash`, `generatorHash` and `kernelHash` unchanged, and only
+> `meta.model.hash`, `meta.contentHash` and `meta.wallSec` different — +2 B on disk. Verify was then
+> re-run and the fixed point re-read unchanged, so the gap did not re-open. Readings in
+> `docs/spikes/V4-S6-verification.md` §6.
+
 ---
 
 ## 1. What the survey found — the facts this plan stands on
@@ -186,6 +220,21 @@ and `baseline.mjs`'s two six-seat arrays are replaced by imports in the same sta
 | `Math.min(7, raw)`, `raw > 7.0001` | `Math.min(nMax(seats), raw)`, with `nMax(6) = 7` **frozen** and `nMax(9) = 9`; the `N = 8, 9` columns are reached through the new accessor `eqAtSeats(cell, N, seats)`, never by splicing `cells` (§2.4) | the clamp at 6 does not move — the 1.19 % of clamped legacy settings stay clamped at 7, and `eqAtSeats` is never called with `N > 7` at `seats = 6` |
 | `src/shell.html:2182–2199` fallback copies | the shell reads `window.POLICY.seatsFor` and the structural functions; the fallback is reduced to the six-seat list only, marked legacy | shell output at 6 byte-identical (D11) |
 
+> **Measured (stage S5, from S1 and lane K).** **CONFIRMED, and the count is exact.**
+> `positionDisabled(…, 9)` disables three pairs of the thirty-six and they are the *same three
+> structural facts* as at six — `BB|rfi`, `UTG|limps`, `UTG|raise` — so **33 legal pairs at nine
+> seats against 21 at six**, `{rfi 8, limps 8, raise 8, 3bet 9}`, and **no node carries a second
+> structural exclusion** the six-seat table never exposed (§10 question 1, answered). Both offender
+> rewrites reproduced their literal sets at six and named `{BTN,SB,BB}` / `{CO,BTN}` at nine, so
+> neither literal had to be kept: `offendersRewritten = 2`, asserted by I51(b). One refinement the
+> plan did not predict, recorded because a name-keyed procedure would trip on it: "the twelve new
+> pairs" has **two** derivations that are not the same twelve — by KEY (`legalPairs(9)` minus
+> `legalPairs(6)`: `UTG1`/`UTG2`/`LJ` × four nodes) and by LADDER POSITION (§3 R5's enumeration,
+> which carries `UTG|rfi` and `UTG|3bet` instead of `LJ|rfi` and `LJ|3bet`). They differ by two
+> pairs each way, both contain `LJ|limps` and `LJ|raise`, and the shipped skill records cover **all
+> 33** rather than either twelve — the only self-consistent answer. Both are pinned in
+> `test/ladder.test.mjs` so the disagreement cannot be quietly resolved.
+
 The two offender rewrites are **predictions**: that the structural predicate reproduces the
 literal's seat set at 6 *and* that it names the right seats at 9. Both halves are asserted by
 I51(b). If the executor finds that a predicate cannot reproduce the literal at 6, the literal
@@ -228,6 +277,22 @@ scoring-only: `baseR` also moves painted *width* at non-reference depth through
 as `g` in `widthFor` (`:1389`, `:1398`). The v3-default fixture's 12 lanes include d = 40 and
 d = 250, so R1's flat-vs-step choice moves painted width in **8 of the 12 lanes** — for the new
 seats only — and is inert only at d = 100, where `g === 1`. I51 must read both surfaces.
+
+> **Measured (stage S4).** **FALSIFIED, and recorded rather than patched.** R1 moves painted width
+> in **0 of the 12 lanes**, not 8: `TF3.DEFAULT_LANE` (`scripts/lib/tier-fixture-v3.mjs:59`) sets
+> `depthWidth: false` on *every* one of the twelve, so `depthWidthFactor` returns exactly 1 in all
+> of them and never reads `baseR` at all. Three refuters of three shipped `baseRRule: 'step'` and
+> got a completely green tree — verify 69/69, the whole test suite, `build --check` current, and
+> I49's **3,214,728** nine-seat tiers **byte-identical** — because `baseR` enters scoring as one
+> per-seat common factor over a whole (pos, node, v) table, a common factor cannot re-rank, and
+> tiers are rank-based. The choice is live only with `depthWidth` **ON** (UTG at d = 40: 0.075120
+> flat against 0.076818 step, +2.3 % of painted width; 40 of 84 width differences and 12 of 84
+> painted-set differences over a sampled sweep), a UI surface no fixture freezes. So "decided by
+> measurement" is false as written: no shipped surface can distinguish the two rules, the
+> tie-break to flat is a **preference** — correctly labelled as one — and R1's constant ships
+> gated (I51(a) admits `'flat'` or `'step'` and nothing else), flagged (`constants.ladder.flag`
+> names `baseRRule`) and **badged** (`UNANCHORED['ladder.baseRRule']`, gated by I51(a)'s badge-map
+> clause). docs/refutations/V4.md.
 **Two candidate rules, decided by
 measurement, not by preference** (§3 rule R1): (flat) the three new seats inherit `baseR(LJ)`;
 (step) they continue the UTG→HJ step downward (`0.95 · 0.93 · 0.91`). Decision rule: run I51's
@@ -237,6 +302,21 @@ the rejected alternative with its readings. Either way `constants.ladder.baseRRu
 
 Both rules are **opinion**. They ship `kind: 'estimate'`, badged in the Method view, bounded by
 I51, and the red team's memo on each is committed to `docs/refutations/V4.md`.
+
+> **Measured (stage S4).** The three legs were *present* and two of them were **unasserted**, which
+> is the P1/P3 defect repeating one artifact later. (i) `constants.ladder.derived` is copied out of
+> `LADDER_C9` at module init and was then compared with nothing: a refuter typed a table over it
+> after the computation and shipped every ring gate, all 12 ladder tests and a full verify green,
+> with the Method view printing numbers the live ladder does not run. (ii) `baseRaiseRule` is a
+> LABEL `ladderConstants` never reads — the geometric step is written into the loop — so an
+> arithmetic or linear ladder under the name `'geometric'` passed I51(a) **in full**, monotonicity
+> clause included, and only the frozen fixture objected. (iii) The badge itself was carried by a
+> regex in `test/ui-seats.test.mjs`, weaker than both precedents §6 cites. I51(a) now composes the
+> ladder from the **named** rule character-for-character as `LADDER_C9` spells it and
+> `Object.is`-compares it against what shipped (the I41(f) idiom), compares the published block
+> against `ladderConstants(9)` seat by seat, re-derives `earlyStep` from the live `baseRaise` table
+> at the published rounding, asserts `anchor`'s own arithmetic and `flag`'s named constants by
+> content, and asserts both badge-map entries and the reader that consumes them.
 
 ### 2.4 N_eff above seven — the ring artifact
 
@@ -293,6 +373,19 @@ ceiling and re-measuring the frozen layer. Neither is acceptable, so:
 > `worktree-wf_3c958a35-f26-4`). The finding beneath the number — 5.7 % of the ninth villain's
 > v = 25 draws are not from the range at all — is a measurement-layer limitation METHODOLOGY
 > carries beside limitation 20, not something the budget launders.
+
+> **Measured (stage S5, from lane R run 2 and the S3 regeneration).** The amended budget holds and
+> the original does not. **Two-seed wall 1,255.4 s at four workers** — 0.98× of the amended
+> **1,280 s**, and **4.2×** the pre-registered **300 s**, which stays falsified as written. The
+> deterministic regeneration on the merged tree read **1,213.0 s** and is what `meta.wallSec`
+> records; `--check` rebuilt the artifact byte-identically at a *different* worker count (8, in
+> 630.3 s), and the blocked-pool fallback counts reproduced **to the unit** — 5,195,877 and
+> 5,210,970 — across four independent runs, which is the determinism claim making itself rather
+> than being asserted. D12(e) judges the measured wall against `ring.meta.wallBudget` and is green.
+> The rejection-exhaustion finding the amendment names is carried in METHODOLOGY §3.6 beside
+> limitation 20, as the amendment required: at `v = 25` the ninth villain's fallback rate is
+> **5.744 %** against 0.029 % at seven villains.
+
 - The build embeds it **as its own injected payload**, exactly on the `data/equilibrium.json`
   precedent (the full variant's `eq 73K` region, printed by the build census as its own region):
   a top-level `ring: N * 1024` budget row in **both** `VARIANTS.lite.budgets` and
@@ -334,6 +427,16 @@ one — which is exactly what makes D12(c) a falsifier.
 250} × rake {0, preset} × straddle {off, on}, villain profile ON, every other axis at its
 default) at `seats = 9` — predicted **33 legal pairs × 66 VPIP × 12 lanes = 26,136 settings**,
 roughly 0.8 MB. Written by a fourth `KINDS` entry in `scripts/freeze-tiers.mjs` (`--seats9`),
+
+> **Measured (stage S3).** **Confirmed exactly.** The ceremony ran once, with no `--force` anywhere
+> in the run's history, and printed **26,136 settings x 123 cells = 3,214,728 tiers** — 33 legal
+> pairs x 66 VPIP x 12 lanes, the prediction to the setting. The file is **833,021 B = 813.5 KB**,
+> inside lane F's measured bracket (809.2–844.6 KB) and inside "roughly 0.8 MB".
+> `--seats9 --check` reproduces with an empty diff and I49 is green. **Zero settings refused** —
+> lane F measured 720 refusals (2.755 %) at S2 and named the two causes; S3's policy deltas F1 and
+> F3 closed both, so the domain froze whole rather than with a hole in it.
+
+
 via `scripts/lib/tier-fixture-9max.mjs`, **created** at stage S3 (the file must not exist before
 the run; the writer refuses to overwrite without `--force`, and `--force` is not authorised).
 Gate **I49** compares every run against it. The freeze prints, and stage S3 commits into
@@ -390,6 +493,42 @@ touch an existing ceiling, and each such touch is a paid raise under D6's from-a
 | `total` (lite) | 583.9 / 600 KB | ring block + ring data | expected to fit; a raise is paid the same way |
 | `total` (**full**) | **653.7 / 660 KB** | ring block + ring data | **6,478 B of headroom — a raise is EXPECTED.** Paid at `cap ≤ ceil(measured × 1.05)` under D6's from-above clause (its bound today is 687 K), documented in `variant.mjs`'s `budgetSource` with its shrink-first sentence |
 
+> **Measured (stage S3).** Four rows moved, and the table got two of them wrong.
+> **FALSIFIED — lite's `total` did NOT fit.** §2.7 predicted it would; measured, the ring block plus
+> an 18,620 B injected payload takes lite to **633,260 B = 618.4 K against 600 K**, over by 18.2 K,
+> and it is paid at **625 K** (measured + 1.10 %, bound 650 K). The prediction is kept as written.
+> **FALSIFIED — `appCore` was raised.** §2.7 said shrink-first would pay for it (~0.4 KB from the
+> shell's duplicate tables). Measured, S1's own rewrite of those tables cost **+0.2 K net** rather
+> than returning 0.4 K, and after **1,257 B** of shrink actually recovered across four lanes
+> (S3 708 B, lane U 308 B, lane R 241 B) the row still reads 369,147 B lite / 369,297 B full against
+> 368,640 — over by 507 B and 657 B. Paid at **361 K**, measured + 0.1 % against a +5 % bound of
+> 379 K: the smallest whole-KB step that exists.
+> **CONFIRMED — the full `total` raise the table expected**, 660 -> **695 K** (687.9 K measured,
+> +1.03 %, bound 723 K); and **CONFIRMED — `modelCode` was NOT raised again**: five policy deltas
+> took it to 57,175 B, 169 B under the 56 K S1 had already paid for.
+> `app` follows the cap-sum equality mechanically: 361 + (11+12+4+5+6+11 = 49) = **410 K**, in both
+> variants. New caps: `blocks.ring` **11 K** (measured 10,846 B — one whole-KB step *under* its own
+> 12 K bound) and the artifact row `ring` **20 K** (18,620 B injected, D12(d)'s pin). Not raised, as
+> the table promised: `blocks.skill`, `core`, `eq`, and every pre-existing block cap.
+
+> **Measured (stage S5).** One more row moved, and it is the *documents'* raise rather than the
+> feature's. **`modelCode` 56 K -> 57 K**, paid for METHODOLOGY limitation 20 shipping as DATA:
+> `constants.limitations` gains its third entry so the Method view renders the admission from
+> `model.constants` the way it renders 16 and 17, instead of transcribing it into the shell — the
+> idiom gates I41/I42 byte-compare against the document. Measured: the entry is **267 B** of
+> minified `policy.mjs`, taking the row **57,198 B -> 57,465 B** against the 57,344 B S1 paid for,
+> over by **121 B**; 57 K = 58,368 B is measured **+1.57 %** against D6's calibrated bound of 62 K.
+> SHRINK-FIRST, measured in bytes, and it did not pay: joining the note's two source chunks returns
+> 3 B, trimming `of` to a bare phrase 6 B, and dropping `flagsItExplains` 38 B of *model payload*
+> and none of `modelCode` — **47 B against a 121 B overrun**, so the raise is taken rather than the
+> admission trimmed. The same entry costs `data/model.json` **263 B**, which is **not** a raise:
+> it is spent out of `metaCore`'s own 275 B of headroom, leaving **13,300 B of 13,312** — twelve
+> bytes, now the tightest number in the payload, and recorded in METHODOLOGY §9.11 as the reason
+> the next constant needs the reserved sub-budget idiom rather than that gap. Every other ceiling
+> re-measured after the document edits and none moved: lite `total` **633,856 B = 619.0 K / 625 K**,
+> full `total` **705,298 B = 688.8 K / 695 K**, `app` 405.6 K / 410 K, `appCore` 360.5 K / 361 K,
+> `blocks.ring` 10.6 K / 11 K, `ring` 18.2 K / 20 K.
+
 The full variant's `eq` (73 KB) and every solver / equilibrium ceiling are untouched; **its `total`
 is not** — §2.7's other rows are lite readings that hold for full to within 0.2 K (`app` 393.9,
 `core` 359.4), but full's `total` has an order of magnitude less headroom than lite's and is the
@@ -414,6 +553,26 @@ the cap-sum equality), and `data/model.json` by exactly one addition, `constants
 ## 3. Not decidable pre-measurement — encoded as rules
 
 - **R1 — `baseR` rule** (§2.3): flat vs step, decided by I51 under both; ties go to flat.
+
+> **Measured (stage S4).** The tie was not broken by measurement and **could not be**: the two
+> candidate rules are indistinguishable on every gated surface (§2.3's annotation has the readings —
+> `'step'` reproduces I49's 3.2 M frozen tiers byte-identically), so "ties go to flat" is true and
+> vacuous. Flat still ships, for the reason the rule gives — fewer new numbers, no claim the model
+> cannot back — but it ships as a **preference**, badged `estimate` beside `ladder.derived` and
+> named in `ladder.flag`. The rejected alternative's readings are recorded as **identical on every
+> gated surface**, which is the honest form of "both passed".
+
+> **Measured (stage S5) — the two rules' readings, side by side, because "both passed" is only
+> honest with the numbers under it.** Along `UTG..BTN` the candidates are `flat`
+> **0.97 0.97 0.97 0.97 0.99 1.02 1.06** and `step` **0.91 0.93 0.95 0.97 0.99 1.02 1.06**; `step`
+> is derived too (`baseR(LJ) + (baseR(LJ) - baseR(HJ))·k`, the ladder's own first step continued),
+> so neither rule types a seventh number. I51(a)'s clauses under each: monotonicity **0 violations
+> / 0**, the score surface **0 / 0**, the width surface at d = 40 and d = 250 **0 / 0**, and the
+> rfi nesting clause **0 of 4,752** under both — which it cannot discriminate on, because the
+> post-pass makes nesting hold by construction. `step` also reproduces I49's **3,214,728** frozen
+> tiers byte-identically. `baseRaise` is rule-independent: `0.16 · 0.77^k` gives
+> **0.1232 · 0.094864 · 0.07304528**, strictly increasing along the ladder under either.
+
 - **R2 — the ring's wall-time budget**: pre-registered **300 s**, derived in §2.4 from
   `2 × 113 × 9/7 ≈ 291 s` and rounded up. If the measured two-seed run exceeds it, the executor
   **halves the lattice trials for the ring only** (`se.latt` doubles for the `N = 8, 9` columns —
@@ -443,6 +602,34 @@ the cap-sum equality), and `data/model.json` by exactly one addition, `constants
   view row at `:5541`, the live-UI assertion at `:8956`) — and that readout **is** the badge.
   Building a chip badge would put new markup and CSS into `appCore`, §2.7's tightest row; any
   bytes a 9-max-only readout needs land in `@block:ring` instead. `NMAX = 10+` is out.
+
+> **Measured (stage S4).** The threshold existed only as **prose** (`policy.mjs:437`): nothing in
+> the tree computed it, so a future pair crossing the line would have tripped no gate, no test and
+> no page, and the per-pair record it is defined over — `constants.ladder.census.byPair` — was not
+> recounted either (I52(c) checked `domain`, `clamped` and `clamp` and stopped; three refuters of
+> three replaced `byPair` wholesale with fabricated maps and I52 stayed green). Both are repaired
+> in I52(c): the breakdown is recounted in **both directions**, and the half-of-66 rule is code,
+> scored on **distinct VPIP points** — the quantity R3 names, which `byPair`'s per-setting counts
+> overstate (a pair clamped at one VPIP under four limper counts and both straddle states scores 8
+> settings and 1 point). Today's reading, printed by the gate every run: worst pair **11 of 66**
+> VPIP points against the 33 that would escalate, so the clause does not fire; the day one crosses,
+> the escalation must be RECORDED in `census.escalated` before the gate goes green again. The
+> no-new-rail-chip decision stands unrefuted — the `N_eff` readout is a live badge and the Method
+> view's census is a live sweep, not a printed copy. **METHODOLOGY limitation 20 does not exist
+> yet** (the numbered list ends at 19), which is §6's "written down" leg and stage S5's work.
+
+> **Measured (stage S5) — the census itself, and limitation 20 now exists.** At nine seats the
+> domain is **6,336** UI-reachable settings (48 legal rows × straddle {off, on} × 66 VPIP; the
+> work-order's predicted 5,676 is wrong because `limps` and `raise` have **8** legal seats at nine,
+> not 7), the clamp is **9**, and **19 settings clamp = 0.30 %** — worst raw `N_eff` **9.96** at
+> limps / UTG+1 / VPIP 90 / four limpers / straddled. Only two pairs clamp at all: `UTG1|limps`
+> (14 settings, 11 of 66 VPIP points) and `UTG2|limps` (5, 5 of 66), so R3's escalation clause does
+> not fire and `census.escalated` stays empty. Beside it, I48(c)'s six-seat re-derivation: **3,960**
+> settings, clamp 7, **47 clamped = 1.19 %** — the integer behind the recorded percentage,
+> reproduced exactly. **So nine seats MOVES the clamp rather than lifting it, and the clamped share
+> FALLS.** METHODOLOGY limitation 20 is written (the numbered list now ends at 20), ships in
+> `constants.limitations` and renders in the Method view from the shipped data like limitations 16
+> and 17 — and it cost the one byte ceiling this stage had to move (§2.7's annotation).
 - **R4 — the sub-ladder identity per node** (I50): the plan predicts rfi exact and the other
   three nodes exact **except** where a seats-in-front term enters. The executor enumerates the
   terms by reading the code, not by assumption, and I50's clause list is written from that
@@ -481,6 +668,25 @@ the cap-sum equality), and `data/model.json` by exactly one addition, `constants
 `baseRaise` and `baseR` keep their six legacy values **bit-for-bit**; the nine-seat objects are
 built by `ladderConstants(seats)` from the legacy six plus the rule. There is no seventh typed
 number anywhere.
+
+> **Measured (stage S4) — the red team's dispositions, one row at a time.**
+> Six of the tally's keys came back **majority-unanchored**; every one of them now ships gated +
+> flagged + badged, or has the bound it was claimed to have. Nothing was re-anchored by invention
+> and no tolerance was widened.
+>
+> | Row | Verdict | Disposition |
+> |---|---|---|
+> | `ladder.baseRRule` (2 keys, 6/6 unanchorable) | **flagged** | the "decided by measurement" anchor is falsified (§2.3, §3 R1). Named in `ladder.flag`, badged `UNANCHORED['ladder.baseRRule']`, bounded by I51(a) to the two rules R1 admits, badge asserted by I51(a) |
+> | R3's census thresholds (3/3) | **flagged → now gated** | the half-of-66 rule and the per-pair record are both code in I52(c); METHODOLOGY limitation 20 is S5's |
+> | `ladder.seats` (2/3) | **anchored (a scope decision, now binding)** | `[6, 7, 9]` shipped green: nothing asserted the set. I51(a) requires every declared size to have a MEASURED width-exception record, and `gates/skill.mjs` reads the set instead of two literals, so `widthProblems`'s refusal is reachable from the gate |
+> | `ladder.anchor` / `ladder.flag` (2/3) | **flagged, and now content-asserted** | both were length-checked only: same-length sentences saying the opposite of the truth shipped 69/69 green and rendered verbatim in the Method view. I51(a) now composes the anchor's arithmetic from the live `baseRaise` table and requires `flag` to name `baseRaise`, `baseR`, `baseRRule`, `I51` and `estimate` |
+> | `RING_CEILING_FACTOR` (3/3) | **anchored** | it was a second, uncited copy of 1.05 in a file outside the generator hash: moved to 1.60 every gate stayed green. It is now `CEILING_MARGINS.blocks.factor` — D6's own margin, held to its quoted lines by `citationProblems` every run |
+> | `ring.meta.model.hash` vs `.orderHash` (3/3, filed as a FINDING) | **recorded, and half of it now gated** | both fields were inert inside verify. `meta.model.orderHash` is now asserted against `data/model.json`'s own `meta.orderHash` (D12(c)) — the narrow input the villain pools are built from. The whole-file `hash` is deliberately **not** asserted: it moves on any §0.4-authorised stamp and would force a ~21-minute regeneration that changes no measured column. Narrowing the stamp is S5's documentation and a later run's generator change |
+>
+> Nine further claims were shown to assert less than they said; the clauses that could carry the
+> repair were written (I51(a)'s composed rule and published-block comparison, I52(c)'s recount,
+> D12's se-vs-trials, summary-vs-record and `orderHash` clauses, D13's cap-sum / no-raise /
+> shrink-first clauses), and the rest are recorded in `docs/refutations/V4.md`.
 
 ---
 
@@ -559,6 +765,29 @@ pre-nesting target; the painted set, after the union, can only grow, so the mono
 scoped to width and stated separately from the painted set. *Fails* on a **subset** violation at
 rfi, an unexplained excess cell, or a non-monotone pre-nesting width.
 
+> **Measured (stage S3).** The clause list was written before the freeze and each shared seat sorted
+> **structurally**, by its index in `nestChain(node, 9)` — the only seats-in-front term R4
+> enumerated. Ten pairs pre-registered CONTAINMENT, eleven pre-registered EXACT, over 16,632
+> comparisons (21 pairs x 12 lanes x 66 VPIP, none refused):
+> **0 subset violations. 0 unexplained excess cells. 0 pre-nesting differences of any kind.**
+> **`i50RfiExact` is FALSE, and that is the expected reading**: of the ten containment pairs, seven
+> measured a STRICT SUPERSET and three measured equality. At rfi, `LJ` gains 30 excess cells,
+> `HJ` 10 and `CO` 4 — **and `BTN` gains none at all**, though it sits at chain index 6 with three
+> new seats in front of it: its own pre-union set already contained theirs. The eleven exact pairs
+> are exact, as pre-registered.
+> **REFINED, not patched: the plan predicted rfi and measured `raise`.** §5.2 wrote the containment
+> clause for rfi alone. `nestChain('limps'|'raise', 9)` runs UTG+1..BTN, so HJ/CO/BTN gain three
+> unions at those nodes too, and `raise` is where nine-seat nesting bites **hardest** — 1,210 of
+> 2,376 shared raise settings paint a strict superset (1,638 excess cells) against rfi's 42 (44
+> cells). I50 is therefore containment at **three** nodes, not one.
+> **The pre-nesting clause holds as EQUALITY**, which is stronger than the monotone wording it was
+> written to: 0 differences over 16,632 comparisons. R4's enumeration — one seats-in-front term in
+> the whole pipeline — is confirmed by measurement rather than by reading.
+> **The nut-gate bypass is REAL and NOT load-bearing here**, recorded rather than laundered: `solve`
+> skips the `N >= nutGate[2]` demotion for cells already in `active`, so a unioned cell bypasses
+> `pos`'s own gate — and **0 of the 1,046** excess cells S1 attributed are cells that gate would
+> have demoted. METHODOLOGY limitation 10 carries this.
+
 **I51 — the ladder.** (a) `baseRaise` strictly increasing along the non-blind ladder at both
 sizes; `straddle.seat === ladder.earlyStep` on the shipped constants (the two-constants-one-anchor
 pin of §2.3 — I26's perturbation is exempt by name); `baseR` non-increasing toward the front under
@@ -589,6 +818,25 @@ top-level per-variant row, not a `model.json` sub-budget — pinned from above a
 `ceil(measured × 1.05)`, whole-KB, in both variants, because D6's from-above clause explicitly
 excludes it; (e) the measured wall time ≤ `ring.meta.wallBudget` (300 s as written; **1,280 s** after the owner's R2 amendment). *Fails* closed on each.
 
+> **Measured (stage S5, from lane R run 2).** **(c) IS A REAL FALSIFIER AND IT FALSIFIED THE BAND
+> IT WAS GIVEN.** The unshipped `N = 1..7` prefix does reproduce the shipped layer, but not to
+> `2 · se.cell = 0.32` pt: the worst per-cell prefix delta is **0.8488 pt = 5.31 · se.cell** (3.75 σ
+> of the artifact's own `seDiff = 0.2263`), and (b)'s worst two-seed delta is **0.8409 pt =
+> 5.26 · se.cell** (3.72 σ). **The pre-registered 2·se band is reported, never asserted**, exactly
+> as the owner's R2 amendment left it. What IS asserted and passes: bias **0.436 σ** (prefix) and
+> **0.129 σ** (two-seed) against 2, spread **0.922×** and **0.847×** against 2, and the **5 σ**
+> outlier line on all 123 cells. The count past the pre-registered band — 88 of 861 prefix numbers
+> and 153 of 1,476 two-seed — is **fewer than Gaussian noise at `seDiff` alone predicts** (135 and
+> 232), which says the band was too tight rather than the measurement too noisy. Two zero-tolerance
+> monotonicity readings ride with it, and the first is a cross-artifact check neither file can make
+> alone: `eq(N = 8) ≤ eq(N = 7)` on every cell (worst **−0.700** pt) and `eq(N = 9) ≤ eq(N = 8)` on
+> every cell (worst **−0.500**). §2.4's stated MECHANISM for (c)'s independence is also falsified,
+> and the conclusion survives it: at the same seeds, widening `runMulti` from 7 to 9 leaves
+> `eq[0..4]` **bit-identical** rather than re-streaming everything, so what makes the prefix an
+> independent reproduction is the ring's own two named seeds, not the draw width. (d) pins the
+> artifact row at 20 K over a measured 18,620 B, and (e) is green at 1,255.4 s against 1,280.
+
+
 **D13 — the ring block.** `@block:ring` present in **both** variants; its cap bounded from above
 by D6's blocks clause (`pageCeilingProblems` iterates `[...BLOCKS, ...Object.keys(budgets.blocks)…]`
 at `gates/data.mjs:255`, so a new `blocks.ring` cap is bounded at `ceil(measured × 1.05)` with no
@@ -598,6 +846,25 @@ variants (`test/variant.test.mjs:280`, `:285`; whole-KB caps at `:288`); `blocks
 also prints as `core`, which is `appCore` — **not raised** (their caps equal `1d988f5`'s); and any
 `appCore`, `modelCode` or full-`total` raise carrying its shrink-first measurement in
 `budgetSource`. *Fails* on a missing block, a silent raise, or a raise without its shrink sentence.
+
+> **Measured (stage S4).** As shipped at S3, D13 asserted the FIRST clause of that paragraph and no
+> other: its body checked that `blocks.ring` and `ring` existed in both variants and that
+> `@block:ring` was in both artifacts. Two refuters measured the rest. Deleting every shrink-first
+> sentence from both `budgetSource` strings left D13 and D6 green (three regexes in
+> `test/variant.test.mjs` were the only red, and they pin *phrases*, so falsifying the byte figures
+> inside them shipped green too); raising `blocks.skill` 4K → 5K was caught by D6's from-above
+> clause and not by D13; raising `model.json`'s `core` sub-budget 120K → 130K left **verify 69/69
+> green** with D6 printing "of which core 116.1K/130K", caught only by a regex in a test. The three
+> missing clauses are now D13's own: the cap-sum equality with `ring` in the sum in both variants;
+> `blocks.skill` and `model.json`'s `core` / `metaCore` / `skill` sub-budgets read from D6's own
+> table (`MODEL_SUB_BUDGETS`, moved to module scope at S4 so a gate outside that family can assert
+> it); and every ceiling ABOVE its v3 release value (`1d988f5`) required to carry its raise **in
+> arrow form** — `-> <new cap>K` — beside a `SHRINK-FIRST, MEASURED IN BYTES` sentence, so a raise a
+> later run makes without touching the note fails here rather than in a phrase test. Armed:
+> `total` 625K → 650K, `blocks.skill` 4K → 5K, `appCore` 361K → 365K and a deleted shrink sentence
+> each fail by name (`test/gates-ring.test.mjs`). What D13 still cannot do is verify that a recorded
+> shrink actually happened — that remains documentary, and §5.2 now says so rather than implying a
+> measurement.
 
 **Registration, which is a three-line edit per id and is itself gated.** For each of I48–I52, D12
 and D13: add an entry to `scripts/gates/reserved.mjs` with `status: 'live'`, add the id to its
@@ -793,7 +1060,16 @@ nesting post-pass unions every seat in front into `pos` (`policy.mjs:2104–2110
 and `BTN` each gain three unions at nine seats, so a strict superset is the expected reading and
 only a subset violation fails. The risk is that the excess is *unexplained* — or that a unioned
 cell bypassing `pos`'s nut gate turns out to be load-bearing — in which case I50 records the
-mechanism and the plan's prediction is refined in place, not patched. (2) `appCore`'s 682 B
+mechanism and the plan's prediction is refined in place, not patched.
+
+> **Measured (stage S3). The top risk did not fire, and the prediction is refined in two places.**
+> Every excess cell is explained — **1,722 of 1,722**, each carried by a named front seat's own
+> pre-union aggressive set — and **0 of 1,046** bypassed a nut-gate demotion that would otherwise
+> have fired, so the bypass is real in the code and not load-bearing on this surface. What the risk
+> statement got wrong is *where*: the bite is at `raise`, not `rfi` (1,210 strict supersets against
+> 42), and `BTN` at rfi gains its three unions but **zero cells**. Both are recorded under §5.2.
+
+(2) `appCore`'s 682 B
 headroom, and the **full variant's 6,478 B of `total` headroom** (§2.7), force raises despite
 shrink-first — paid and documented; the red team attacks each. (3) The ring generator overruns
 300 s — R2. (4) The skill-exception procedure is not reproducible from
@@ -816,3 +1092,61 @@ the S5 step is named, and the failure message names the new line.
    extend from the geometric mean of the *whole* non-blind ladder? (Red team, §7.4.)
 3. Does the shell's fallback path (`window.POLICY` absent) need nine seats at all, or is it
    legacy-only by definition? (U records; the plan's answer is legacy-only.)
+
+> **Measured (stage S4) — question 2 is answered, in the shipped anchor's favour.** All three
+> refuters computed the alternative: the geometric mean of the *whole* non-blind ladder is
+> `(0.45/0.16)^(1/3) = 1.4057–1.4117`, i.e. `earlyStep ≈ 0.708–0.711`, which puts nine-handed UTG
+> at `baseRaise ≈ 0.057` — **tighter** than the shipped 0.0730. So extending from `baseRaise(LJ)`
+> with the two-early-step mean is the more conservative of the two readings, the anchor **seat** is
+> the defensible half of the construction, and the CO→BTN exclusion the straddle made is inherited
+> rather than re-argued. Two things the same measurements say, recorded because they cut the other
+> way: the anchor is arithmetically insensitive to `baseRaise.HJ` (the product of the two steps is
+> `CO/UTG` however HJ is set, so `earlyStep = sqrt(baseRaise.UTG/baseRaise.CO)` and the middle seat
+> cancels — I51(a) now re-derives exactly that); and the model's own three steps **accelerate**
+> toward the button (1.250, 1.350, 1.667), so extrapolating the *second-order* trend backwards
+> gives 0.1478 / 0.1577 / 0.1942 — a ladder that inverts at UTG+1 and that I51(a1)'s strict-increase
+> clause, a gate rather than evidence, is what rejects. Two model-anchored readings of one dataset
+> differ by 2.7x; the defensible band on the model's own evidence is `earlyStep ∈ [0.711, 0.800]`,
+> inside which 0.77 sits without being singled out. That is what the `estimate` badge is for.
+
+### 10.1 Resolutions *(appended at stage S5)*
+
+All three are answered by measurement, and each names the evidence that answered it. Nothing here
+was decided by preference.
+
+1. **Does `positionDisabled` at nine seats yield exactly the predicted 33 pairs, or does a node
+   carry a second structural exclusion the six-seat table never exposed?** **RESOLVED — exactly 33,
+   and there is no second exclusion.** `positionDisabled(…, 9)` refuses three of the thirty-six
+   pairs and they are the same three structural facts as at six: `BB|rfi` ("BB closes the unopened
+   pot by checking"), `UTG|limps` and `UTG|raise` ("no one acts before UTG"). The split is
+   `{rfi 8, limps 8, raise 8, 3bet 9}`, against 21 at six. Evidence: S1's ladder generalisation
+   (`docs/spikes/V4-ladder.md` §3) and lane K's independent re-derivation
+   (`docs/spikes/V4-skill.md` §2), which agree on the count and disagree on nothing; the fixture
+   ceremony then froze 33 × 66 × 12 = **26,136** settings with **zero refusals**, which is the same
+   claim made a third time by a different route. The one thing measurement added to the prediction
+   is a caution the plan did not have: "the twelve new pairs" has **two** derivations — by key and
+   by ladder position — that differ by two pairs each way, so the shipped skill records cover all
+   33 rather than either twelve (§2.2's annotation).
+
+2. **Is `baseRaise(LJ) = 0.16` still the right anchor seat, or should the rule extend from the
+   geometric mean of the whole non-blind ladder?** **RESOLVED in the shipped anchor's favour, and
+   the reason is that it is the more conservative of two defensible readings** — see §10's
+   `Measured (stage S4)` block above for the full arithmetic. The whole-ladder mean gives
+   `earlyStep ≈ 0.708–0.711` and a nine-handed UTG at `baseRaise ≈ 0.057`, *tighter* than the
+   shipped 0.0730; the model's own second-order trend gives a ladder that inverts at UTG+1. Two
+   model-anchored readings of one dataset differ by **2.7×**, the defensible band is
+   `earlyStep ∈ [0.711, 0.800]`, and 0.77 sits inside it without being singled out. Evidence: three
+   independent refuters, `docs/refutations/V4.md`. The disposition is the `estimate` badge and
+   METHODOLOGY limitation 20, not a re-anchoring.
+
+3. **Does the shell's fallback path (`window.POLICY` absent) need nine seats at all, or is it
+   legacy-only by definition?** **RESOLVED — legacy-only, and the answer is now structural rather
+   than a decision.** The plan's answer was right for a better reason than it gave: `HAS_SEATS`
+   requires an injected policy exporting `seatsFor` / `nMax` / `positionDisabled` /
+   `behindNonBlind` / `rhoAtSeats` **and** `constants.ladder` in the shipped model, so without them
+   the Table control never renders and `S.seats` can only be 6. The fallback's six-seat list is kept
+   and marked legacy; its `aggNested` chain falls back to `POSITIONS.slice(0, NP-2)`, which is
+   literal-free. Evidence: lane U's memo (`docs/spikes/V4-ui.md` §4), which also measured the
+   related refusal the plan did not ask about — **328 of the 6,336** nine-seat settings (5.18 %),
+   every one at the iso node, drive `N_eff` past 7, and on a build carrying no `data/ring.json` the
+   accessor **fails closed by name** rather than silently proxying with a clamp.

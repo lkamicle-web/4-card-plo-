@@ -68,7 +68,7 @@ import { buildSimBundle, asJsString } from './lib/sim-bundle.mjs';
 import { compileShellScripts, ShellCompileError } from './lib/shell-compile.mjs';
 import {
   VARIANTS, VARIANT_NAMES, stripOnlyBlocks, regionManifest, danglingSymbols,
-  VariantError,
+  VariantError, ringInjectedForm,
 } from './lib/variant.mjs';
 import { BLOCKS, blockCensus } from './lib/block-census.mjs';
 
@@ -165,6 +165,7 @@ const VARIANT = VARIANTS[VARIANT_NAME];
 const SOURCE_PATH = resolve(ROOT, flag('source') || 'src/shell.html');
 const OUT_PATH = resolve(ROOT, flag('out') || VARIANT.out);
 const EQ_PATH = resolve(ROOT, flag('eq') || 'data/equilibrium.json');
+const RING_PATH = resolve(ROOT, flag('ring') || 'data/ring.json');
 const rel = (p) => relative(ROOT, p);
 
 if (!existsSync(MODEL_PATH)) die(`no model at ${MODEL_PATH} — run scripts/generate-data.mjs first`);
@@ -370,6 +371,22 @@ if (VARIANT.regions.includes('eq')) {
   try { JSON.parse(eqRaw); } catch (e) { die(`${rel(EQ_PATH)} is not JSON — ${e.message}`); }
 }
 
+/* The ring artifact (V4-PLAN §2.4), in BOTH variants — lite keeps Simulate and nine seats needs
+   the nine-column width. Read on the `eq` idiom above and injected as its OWN region, never spliced
+   into `model.json`: `cells[*].eq`, `cells[*].vDelta` and `orderHash` stay byte-identical (§0.2),
+   which is what makes the seat axis inert at six seats rather than a re-freeze. Missing file =
+   die, for the same reason the equilibrium does: a page that silently shipped without the ring
+   would offer nine seats and fail closed at one setting in twenty. */
+let ringRaw = null;
+if (VARIANT.regions.includes('ring')) {
+  if (!existsSync(RING_PATH)) {
+    die(`the ${VARIANT_NAME} build needs ${rel(RING_PATH)} — the N = 8 and 9 equity columns `
+      + '(V4-PLAN §2.4). Generate it with: node scripts/generate-ring.mjs');
+  }
+  ringRaw = readFileSync(RING_PATH, 'utf8');
+  try { JSON.parse(ringRaw); } catch (e) { die(`${rel(RING_PATH)} is not JSON — ${e.message}`); }
+}
+
 const blocks = {
   data: `const MODEL = ${JSON.stringify(model)};`,
   policy: moduleToIife('scripts/lib/policy.mjs', 'POLICY'),
@@ -377,6 +394,7 @@ const blocks = {
   engine: `const SIM_KERNEL_SRC = ${asJsString(sim.kernel)};\n`
     + `const SIM_ENTRY_SRC = ${asJsString(sim.entry)};`,
   eq: eqRaw === null ? null : `const EQUILIBRIUM = ${JSON.stringify(JSON.parse(eqRaw))};`,
+  ring: ringRaw === null ? null : ringInjectedForm(ringRaw),
 };
 
 /* Which regions this variant fills, checked BOTH ways against the stripped source: a missing one
@@ -410,6 +428,9 @@ for (const key of regions) {
    D11's per-variant provenance clause. It also means the two artifacts can never be byte-identical
    even if their contents happen to coincide, which is the property that keeps a `--check` run
    honest when the out paths are passed by hand. */
+const ringLine = ringRaw === null ? ''
+  : `       data/ring.json   ${(Buffer.byteLength(ringRaw) / 1024).toFixed(1)} KB `
+    + `· sha256 ${createHash('sha256').update(ringRaw).digest('hex').slice(0, 16)}\n`;
 const eqLine = eqRaw === null ? ''
   : `       data/equilibrium.json   ${(Buffer.byteLength(eqRaw) / 1024).toFixed(1)} KB `
     + `· sha256 ${createHash('sha256').update(eqRaw).digest('hex').slice(0, 16)}\n`;
@@ -417,6 +438,7 @@ const banner = `<!-- GENERATED FILE — do not edit. Built by scripts/build.mjs 
   + `       ${rel(SOURCE_PATH)}   sha256 ${sourceHash.slice(0, 16)}\n`
   + `       data/model.json   ${model.meta.version} · ${model.meta.hash.slice(0, 16)}\n`
   + eqLine
+  + ringLine
   + `       scripts/lib/policy.mjs + scripts/lib/taxonomy.mjs (inlined)\n`
   + `     VARIANT ${VARIANT_NAME} — ${VARIANT.claim}.\n`
   + `     Comments and dead whitespace are stripped from the JavaScript${NO_MINIFY ? ' — EXCEPT IN THIS BUILD, which passed --no-minify' : ''};\n`
@@ -433,6 +455,7 @@ const dataBytes = Buffer.byteLength(blocks.data);
 const modelCode = Buffer.byteLength(blocks.policy) + Buffer.byteLength(blocks.taxonomy);
 const engineBytes = Buffer.byteLength(blocks.engine);
 const eqBytes = blocks.eq === null ? 0 : Buffer.byteLength(blocks.eq);
+const ringBytes = blocks.ring === null ? 0 : Buffer.byteLength(blocks.ring);
 /* `app` keeps its established meaning — everything that is not the dataset or the inlined model
    source — so the APP budget below still binds the same quantity it was calibrated against. The
    engine's share of it is reported separately because it is machine-generated like the model code,
@@ -441,7 +464,11 @@ const eqBytes = blocks.eq === null ? 0 : Buffer.byteLength(blocks.eq);
    code nor the shared model, it is the full build's own dataset, and folding it into `app` would
    silently blow a budget calibrated against markup+CSS+JS. It is reported on its own line and
    gated on its own (D9). At lite this term is 0 and every number below is what it was. */
-const app = total - dataBytes - modelCode - eqBytes;
+/* The ring comes out of `app` on exactly the equilibrium's reasoning: it is neither interface
+   code nor the shared model but a dataset of its own, gated on its own (D12(d)). `pageCensus`
+   subtracts the same term from the same quantity — if only one of the two did, D6 and this build
+   would disagree by 18 KB and `appCore` would read over budget in one of them. */
+const app = total - dataBytes - modelCode - eqBytes - ringBytes;
 /* `core` is the app block minus EVERY marked feature — the quantity the 360 KB ceiling was
    calibrated against, still facing it after the raises. */
 const appCore = app - blockBytes;
@@ -450,6 +477,7 @@ const blockReport = BLOCKS.filter((n) => blockBytesBy[n])
 const report = `${rel(OUT_PATH)} [${VARIANT_NAME}] ${(total / 1024).toFixed(1)} KB `
   + `(data ${(dataBytes / 1024).toFixed(1)} + model code ${(modelCode / 1024).toFixed(1)} `
   + (eqBytes ? `+ equilibrium ${(eqBytes / 1024).toFixed(1)} ` : '')
+  + (ringBytes ? `+ ring payload ${(ringBytes / 1024).toFixed(1)} ` : '')
   + `+ app ${(app / 1024).toFixed(1)} KB, of which sim engine ${(engineBytes / 1024).toFixed(1)}`
   + (blockBytes ? `, blocks ${blockReport} -> core ${(appCore / 1024).toFixed(1)}` : '')
   + `)`;
@@ -579,6 +607,9 @@ if (BUDGETS) {
      purpose: the injected baseline is the full build's DATASET, so a solver payload that doubled
      would otherwise be invisible inside a page-sized ceiling until it broke the page-sized ceiling.
      Only full carries an `eq` budget; lite has no `eq` region and this term is 0 there. */
+  if (BUDGETS.ring != null && ringBytes > BUDGETS.ring) {
+    sizeProblems.push(`the injected ring payload is ${kb(ringBytes)} KB, budget ${BUDGETS.ring / 1024} KB (D12(d))`);
+  }
   if (BUDGETS.eq != null && eqBytes > BUDGETS.eq) {
     sizeProblems.push(`the injected equilibrium payload is ${kb(eqBytes)} KB, budget ${BUDGETS.eq / 1024} KB (D9)`);
   }

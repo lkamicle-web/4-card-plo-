@@ -384,10 +384,12 @@ export const CONSTANTS = {
     // it is the step §7.2 wanted pinned.
     seat: 0.77,
     // v4 §2.3: `ladder.earlyStep` is the SAME number with the SAME anchor, promoted to name the
-    // opening ladder's early-seat step. This records the shared provenance WITHOUT making either a
-    // live reference to the other — `seat` stays a plain number so `seatWidthFactor` and gate I26
-    // read exactly what they read before — and I51(a) pins the two equal on the shipped constants.
-    seatDerivedFrom: 'ladder.earlyStep',
+    // opening ladder's early-seat step. THE PROVENANCE RECORD OF THAT SHARING LIVES IN THE LADDER
+    // BLOCK — `constants.ladder.anchorSharedWith` — not here: §0.4 confines the v4 model delta to
+    // `constants.ladder`, and a `seatDerivedFrom` sibling here was a v4 field outside it at legacy
+    // settings (S1..S5 shipped one; S6's fix round moved it). `seat` stays a plain number either
+    // way, so `seatWidthFactor` and gate I26 read exactly what they read before, and I51(a) still
+    // pins the two equal AND asserts the provenance string by value, in its new home.
     // Seats keeping their unstraddled base. EMPTY, and that is V2-PLAN §7.2's "BTN keeps its 0.45"
     // FALSIFIED: pinned, the button's PAINTED range gets wider under a straddle at 7 of its 30
     // settings and its mean nu falls at 8. A straddle puts one more player behind the button; it
@@ -413,18 +415,49 @@ export const CONSTANTS = {
     ladder9: LADDER9,
     earlyStep: 0.77,
     baseRaiseRule: 'geometric',
-    // R1, decided by measurement and not by preference (§2.3, §3): both candidate rules were run
-    // through I51(a)'s monotonicity and nesting clauses on the score surface AND on the width
-    // surface (`depthWidthFactor` at d = 40 and d = 250); both passed, and the tie goes to flat —
-    // fewer new numbers, and no claim the model cannot back. 'step' is the recorded alternative:
-    // continue the ladder's own first step (baseR(LJ) - baseR(HJ) = -0.02) forward, giving
-    // 0.95 / 0.93 / 0.91. Readings for both are in docs/spikes/V4-ladder.md.
+    // R1. 'step' is the recorded alternative: continue the ladder's own first step
+    // (baseR(LJ) - baseR(HJ) = -0.02) forward, giving 0.95 / 0.93 / 0.91. Readings for both are in
+    // docs/spikes/V4-ladder.md.
+    //
+    // WHAT S4's RED TEAM MEASURED, and it FALSIFIES the sentence this comment used to carry
+    // ("decided by measurement ... on the score surface AND on the width surface; both passed, and
+    // the tie goes to flat"). Three refuters of three shipped 'step' and got a COMPLETELY GREEN tree:
+    // verify 69/69, the whole test suite, build --check current, and I49's 3,214,728 nine-seat tiers
+    // BYTE-IDENTICAL. `baseR` enters scoring as one per-seat common factor over a whole (pos, node, v)
+    // table, a common factor cannot re-rank, and tiers are rank-based; and the width half of the
+    // claim never happened at all, because `TF3.DEFAULT_LANE` sets `depthWidth: false` on all 12
+    // fixture lanes, so `depthWidthFactor` returns 1 there and never reads `baseR`. The choice is
+    // live only with `depthWidth` ON (UTG at d = 40: 0.075120 flat against 0.076818 step, +2.3 % of
+    // painted width), a UI surface no fixture freezes and no gate reads. So the tie-break to flat is
+    // a PREFERENCE, correctly labelled as one — fewer new numbers, no claim the model cannot back —
+    // and the rule ships badged `estimate` beside `derived` (UNANCHORED['ladder.baseRRule']), named
+    // in `flag`, and bounded by I51(a) to the two rules R1 admits. docs/refutations/V4.md.
     baseRRule: 'flat',
     anchor: '1/sqrt(1.250*1.350) = 0.770 — METHODOLOGY §5.3, already carried by straddle.seat',
-    flag: 'early-seat baseRaise/baseR are EXTRAPOLATED from the six-seat ladder, no nine-handed '
-      + 'data — opinion, bounded by I51(a), badged estimate',
+    // THE MACHINE-READABLE HALF OF THAT SENTENCE, asserted by value in I51(a). It records that
+    // `earlyStep` and `straddle.seat` are one anchor wearing two names WITHOUT making either a live
+    // reference to the other — `straddle.seat` stays a plain number, so `seatWidthFactor` and gate
+    // I26 read exactly what they read before. It lives HERE, inside `constants.ladder`, and not as
+    // a sibling of `straddle.seat`, because V4-PLAN §0.4 confines this run's model delta to the new
+    // block: a provenance string next to `seat` would be a v4 field outside `ladder` at legacy
+    // settings. Relocated at S6's fix round; it was `straddle.seatDerivedFrom` from S1 to S5.
+    anchorSharedWith: 'straddle.seat',
+    flag: 'early-seat baseRaise/baseR + the baseRRule choice are EXTRAPOLATED from the six-seat '
+      + 'ladder, no nine-handed data — opinion, bounded by I51(a), badged estimate',
     // filled below, from the rule, so that nothing here is a typed seventh number
     derived: null,
+    /* THE NINE-SEAT `extrapolated` CENSUS (R3), a FROZEN MEASURED RECORD in the WIDTH_EXCEPTIONS
+       idiom — measured over the same domain V3-BRIEF :211 enumerates for six seats (nodes rfi /
+       limps / raise, 3bet excluded because N_eff is the constant 2 there, x legal seats x limpers
+       {1..4} at limps else {2} x straddle {off,on} x VPIP 25..90 = 6,336 settings) and reproduced
+       independently by S1 and lane F. It is typed here because a 6,336-setting sweep at module load
+       is not a constant, and it is SAFE to type because I52(c) RECOUNTS it live on every verify and
+       fails on a stale one — the record cannot drift from the surface it describes.
+       At nine seats the clamp MOVES rather than lifting and the clamped share FALLS: 19 of 6,336 =
+       0.300 % against six seats' 47 of 3,960 = 1.187 %, worst raw 9.962 at limps / UTG+1 / VPIP 90 /
+       4 limpers / straddled. No pair is clamped at more than half its 66 VPIP points, so R3's
+       escalation clause does not fire and no rail-chip badge ships (§2.6). */
+    census: { domain: 6336, clamp: 9, clamped: 19, byPair: { 'UTG1|limps': 14, 'UTG2|limps': 5 } },
   },
   widthSlope: 0.35,
   isoValueFactor: 0.60,
@@ -513,6 +546,24 @@ export const CONSTANTS = {
         + 'that scales or shifts every cell moves the ordering and not the count; the absolute-EV '
         + 'cut is the designated structural fix, and its gate is written to prove the fix bites.',
       fix: 'the absolute-EV cut',
+    },
+    /* v4's entry, and the one place in this block where the byte budget is visible in the prose:
+       `metaCore` (D6's meta bucket with the four reserved constant blocks subtracted, still facing
+       the pre-raise 13 KB) had 275 B of headroom when this was written, so the note is the shortest
+       sentence that still says the whole admission. METHODOLOGY entry 20 carries the long form — the
+       derived values, the red team's two alternative anchors, the flat/step preference and the
+       ring's rejection-exhaustion finding — and this sentence appears inside it verbatim.
+       `flagsItExplains` is deliberately ABSENT rather than forgotten: `ladder.baseRRule` and
+       `ladder.derived` are the constants this limitation legitimises, the link is carried by
+       `constants.ladder.flag` (which names `baseRRule` by name) and by the `UNANCHORED` badge map
+       that I51(a) asserts along with its reader, and the ~38 B the field costs do not fit under
+       `metaCore` without a raise this stage refuses to take for a cross-reference. */
+    {
+      n: 20,
+      of: 'the nine-seat early seats are extrapolated',
+      note: 'The nine-seat early-position constants are extrapolated from the model\'s own six-seat '
+        + 'ladder by a named rule, and no nine-handed corpus of any kind has touched them.',
+      fix: 'a nine-handed corpus',
     },
   ],
 };
@@ -728,11 +779,22 @@ export function envOf(s) {
  * axis that moves a number but not the key hands back another environment's answer, and the
  * failure is silent. Adding them while they are still inert costs nothing measurable and means the
  * B1 default flip is a one-line change to `OPERATING_POINT` rather than a cache audit.
+ *
+ * THE v4 SEAT AXIS IS IN THE KEY AND SERIALISES INERTLY, which are two different requirements and
+ * both are met here. In the key, because the table size moves every tier and a memo that forgot it
+ * would hand back the other size's answer — the failure this docstring is about. Serialised only
+ * when it is NOT the legacy size, because the key is not merely a cache key: `evDefaultKey` embeds
+ * it and `constants.evCut.derivedAt.state` SHIPS it, so an unconditional `|6` would put the seat
+ * axis into `data/model.json` at legacy settings and V4-PLAN §0.4 requires the axis to be inert
+ * there. The legacy string is therefore byte-identical to v3's and the nine-seat string is still
+ * distinct — inertness at six, not absence. `envOf` normalises any other integer to 6 before this
+ * runs, so no third serialisation exists to collide with either.
  */
 export function envKey(env) {
   const e = envOf(env);
   return `${e.d}|${e.rakePct}|${e.rakeCapBB}|${e.straddle ? 1 : 0}`
-    + `|${e.rakeDepth ? 1 : 0}|${e.depthWidth ? 1 : 0}|${e.sizing}|${e.seats}`;
+    + `|${e.rakeDepth ? 1 : 0}|${e.depthWidth ? 1 : 0}|${e.sizing}`
+    + (e.seats === 6 ? '' : `|${e.seats}`);
 }
 
 /** is a UTG straddle posted? (V2-PLAN §3.3 ships the UTG form only) */
@@ -1068,14 +1130,47 @@ export function eqAt(eq, N) { return rhoAt(eq, N); }
      ring = { meta: { nMax: 9, seeds, trials, se, generatorHash, contentHash },
               cells: { '<row>|<col>': { eq: [N8, N9], vDelta: { '<v>': [N8, N9] } } } }
    `key` is the cell key; every caller that reaches a cell already has it (`cellList`, `villainEq`).
-   vDelta above 7 is NOT wired here — see docs/spikes/V4-ladder.md's policyDelta for lane R: it is
-   bound up with `villainEq` returning 9-long arrays and lane R's `SIM_NMAX` / `validEqArray` arity
-   split, and a profiled cell is refused below rather than silently mixed with unprofiled columns. */
-function ringCols(cell, ring, key) {
+
+   THE PROFILED COLUMNS (S3's delta F3, and the shape of it is a decision worth reading). S1 filed
+   this as `vDeltaAtSeats(pts, vDelta, v, seats, ring, key)` plus `ring` threaded through
+   `villainEq` / `profiledModel`, and recorded that it would force `villainEq` to return NINE-long
+   `eq`. That shape is REFUSED and the accessor-side one taken instead: a nine-long `eq` out of
+   `villainEq` ripples into `NMAX` (the equity-array shape invariant the page pins at `:1206`),
+   into `hydrate`, into `tier-fixture-9max.mjs`'s `profiledModel(...)` call and into the sim
+   payload's `validEqArray` — five places, to move a number two columns wider. Here it is one
+   place. `villainEq` keeps returning seven-long arrays and the model path does not change;
+   `profiledModelUncached` stamps the profile's own `v` onto the SHADOW cell as `vp` (never onto
+   `model.cells`, never serialised — shadows live in `SHADOWS` and are not written); and this
+   function applies the RING's own `vDelta` at that `v` to the RING's own `eq` columns. The two
+   halves of a profiled nine-seat read are then profiled at the same `v` by construction, which is
+   the property the old refusal was protecting by refusing.
+
+   `source: 'measured'` KEEPS THE REFUSAL. The ring has no measured columns, and a nine-wide
+   Simulate result never reaches a cell anyway — `villainEq` drops it at `m.length === cell.eq.length`
+   (a limitation for METHODOLOGY, not something to widen here). So a measured profile at nine seats
+   above N = 7 fails closed, by name, exactly as it did. */
+export function ringCols(cell, ring, key) {
   const r = ring && ring.cells && ring.cells[key];
   if (!r) throw new TypeError(`policy: N_eff over ${nMax(6)} at nine seats needs the data/ring.json payload for ${key}`);
-  if (cell.vpSource) throw new TypeError(`policy: ${key} is villain-profiled and the ring columns are not — refusing to mix`);
-  return r.eq;
+  if (!cell.vpSource) return r.eq;
+  if (cell.vpSource === 'measured' || cell.vp == null) {
+    throw new TypeError(`policy: ${key} is villain-profiled from a ${cell.vpSource} source and the ring columns are not — refusing to mix`);
+  }
+  const pts = (ring.meta && ring.meta.v) || [];
+  if (!pts.length || !r.vDelta) {
+    throw new TypeError(`policy: ${key} is villain-profiled and data/ring.json carries no vDelta lattice — refusing to mix`);
+  }
+  /* Every lattice point must have a row, checked rather than trusted: a ring missing one would hand
+     `interpolateDelta` an `undefined` row and throw somewhere further down, where the message would
+     name a length rather than the file. `v` OUTSIDE the lattice is not an error and is not checked —
+     `latticeBracket` CLAMPS at both ends, and the model's own 1..7 columns clamp by the same
+     function on the same rule, so both halves of the join land on the same end row together. */
+  const rows = pts.map((p) => r.vDelta[p]);
+  if (!rows.every((row) => Array.isArray(row) && row.length === r.eq.length)) {
+    throw new TypeError(`policy: ${key}'s ring vDelta does not carry a [N=8, N=9] row for every lattice point [${pts}] — refusing to mix`);
+  }
+  const { delta } = interpolateDelta(pts, rows, cell.vp);
+  return r.eq.map((e, i) => e + delta[i]);
 }
 /** equity at fractional N, reading the ring above the shipped span; delegates at six seats */
 export function eqAtSeats(cell, N, seats, ring, key) {
@@ -1461,7 +1556,12 @@ function profiledModelUncached(model, p, key) {
     if (got.eq === c.eq) { cells[k] = c; continue; }   // unsupported — shipped, by reference
     const nc = {};
     for (const f in c) if (Object.prototype.hasOwnProperty.call(c, f)) nc[f] = c[f];
-    nc.eq = got.eq; nc.rho = got.rho; nc.vpSource = got.source;
+    /* `vp` rides beside `vpSource` (S3 delta F3): the profile's own `v`, so that a nine-seat read
+       above N = 7 can apply the RING's vDelta at the SAME v this cell's 1..7 columns were profiled
+       at. It is stamped on the SHADOW cell only — `model.cells` is never written, and a shadow is
+       never serialised — which is why the ring can be joined to a profiled cell without either
+       artifact moving one byte. `null` when the source cannot supply one; `ringCols` refuses then. */
+    nc.eq = got.eq; nc.rho = got.rho; nc.vpSource = got.source; nc.vp = got.v;
     cells[k] = nc; moved++;
   }
   if (!moved) return model;
@@ -1706,10 +1806,22 @@ export function scoreAtCut(rows, w) {
  * T1/T2 split and the display post-passes. This is the set the exploit split and the positional
  * nesting cascade are defined on.
  */
+/* WHICH RING ANSWERED — the memo axis S3's delta F2 adds (`envKey`'s own trap, one level down).
+   The three memos below key on model hash, position, node, v and `envKey`, and NONE of those moves
+   when the ring payload does: two different `data/ring.json` files in one process would share every
+   entry and the second read would be handed the first's answer, silently. The identity is the
+   artifact's own `contentHash`, eight characters of it, and it is the EMPTY STRING when no ring is
+   in hand — so at six seats, where no caller passes one, every key gains a trailing `|` and nothing
+   else, and the value behind it is the value it always was. */
+function ringId(o) {
+  const r = o && o.ring;
+  return r && r.meta && r.meta.contentHash ? r.meta.contentHash.slice(0, 8) : '';
+}
+
 const AGGR_MEMO = new Map();
 function aggressiveSet(model, pos, node, v, opts) {
   const key = `${model.meta.hash ? model.meta.hash.slice(0, 8) : ''}|${pos}|${node}|${v}|`
-    + `${opts.limpers == null ? 2 : opts.limpers}|${opts.raiserPos || 'CO'}|${envKey(opts)}`;
+    + `${opts.limpers == null ? 2 : opts.limpers}|${opts.raiserPos || 'CO'}|${envKey(opts)}|${ringId(opts)}`;
   const hit = AGGR_MEMO.get(key);
   if (hit) return hit;
   if (AGGR_MEMO.size >= MEMO_CAP) AGGR_MEMO.clear();
@@ -1939,7 +2051,7 @@ export function evCut(model, state, payoff) {
   const key = `${payoff && payoff.modelHash ? payoff.modelHash : ''}|${(payoff && payoff.route) || 'projection'}`
     + `|ip${ip ? 1 : 0}|${hash}|${state.pos}|${state.node}|${state.v}`
     + `|${state.limpers == null ? 2 : state.limpers}|${state.raiserPos || 'CO'}`
-    + `|${envKey(state)}|${state.mix ? state.mix.join(',') : ''}`;
+    + `|${envKey(state)}|${state.mix ? state.mix.join(',') : ''}|${ringId(state)}`;
   const hit = EV_MEMO.get(key);
   if (hit) return hit;
   if (EV_MEMO.size >= MEMO_CAP) EV_MEMO.clear();
@@ -2018,8 +2130,14 @@ function evCutUncached(model, state, payoff, solved, ip) {
   if (state.node === '3bet') {
     inSet = (key) => { const e = solved.cells[key]; return !!e && (e.wouldBe === 'T1' || e.wouldBe === 'T2'); };
   } else {
+    /* THE SAME LINE AS `solveUncached`'s, AND IT IS A SECOND DEFECT, not the first one seen twice.
+       This literal feeds the same `aggressiveSet` -> `rankTable` -> `o.ring` chain, so without the
+       ring it throws identically at nine seats — but it throws into `evLayer`, which catches and
+       sets `out = null`, so the EV colour mode does not crash: it DISABLES ITSELF BY NAME at the
+       328 ring-consulting settings. That is the quieter failure and the one likelier to ship
+       unnoticed (measured, lane U delta 2). Fixing only the solve path leaves the EV mode dark. */
     const set = aggressiveSet(model, state.pos, state.node, state.v,
-      { limpers: state.limpers, raiserPos: state.raiserPos, env }).set;
+      { limpers: state.limpers, raiserPos: state.raiserPos, env, ring: state.ring }).set;
     inSet = (key) => set.has(key);
   }
   let evCombos = 0, setCombos = 0, keepCombos = 0, mixCombos = 0;
@@ -2234,7 +2352,7 @@ export function solve(model, state) {
   const evP = evPrimary(model);
   const key = `${model.meta.hash ? model.meta.hash.slice(0, 8) : ''}|${state.pos}|${state.node}|${state.v}|`
     + `${state.limpers == null ? 2 : state.limpers}|${state.raiserPos || 'CO'}|${state.mix ? state.mix.join(',') : ''}`
-    + `|${envKey(state)}|${evP ? `ev:${(state.payoff && state.payoff.modelHash) || ''}` : 0}`;
+    + `|${envKey(state)}|${evP ? `ev:${(state.payoff && state.payoff.modelHash) || ''}` : 0}|${ringId(state)}`;
   const hit = SOLVE_MEMO.get(key);
   if (hit) return hit;
   const out = solveUncached(model, state, evP);
@@ -2255,7 +2373,14 @@ function solveUncached(model, state, evP) {
     const ordered = Object.keys(cells).sort((a, b) => cells[b].score - cells[a].score);
     ordered.forEach((k, i) => { cells[k].rank = i + 1; });
   } else {
-    const opts = { limpers: state.limpers, raiserPos: state.raiserPos, env };
+    /* THE RING RIDES ON `opts`, and this ONE object feeds every cascade below — the active set, the
+       nesting union over `chain[i]`, and both reference-VPIP sweeps. Without it `rankTable` reads
+       `o.ring === undefined` at `:1675` and `rhoAtSeats` fails closed on every N_eff over seven, so
+       720 of the 26,136 nine-seat fixture settings threw with `data/ring.json` sitting on disk
+       (measured, lane F §3). `solve3bet` is deliberately NOT given the same line: the vs-3-bet node
+       scores off `cell.eqVs3bet`, `nu` and `dom` and never indexes an equity column by N, so there
+       is no read there for a ring to serve — see S3's memo for the refusal. */
+    const opts = { limpers: state.limpers, raiserPos: state.raiserPos, env, ring: state.ring };
     const cur = aggressiveSet(model, pos, node, v, opts);
     table = cur.table; N = table.N; rawN = table.rawN; extrapolated = table.extrapolated;
 

@@ -12,7 +12,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,6 +23,7 @@ import * as TF3 from '../scripts/lib/tier-fixture-v3.mjs';
 import * as TF9 from '../scripts/lib/tier-fixture-9max.mjs';
 import * as RING from '../scripts/gates/ring.mjs';
 import { REGISTRY, EXPECTED_IDS } from '../scripts/gates/index.mjs';
+import { VARIANTS } from '../scripts/lib/variant.mjs';
 import { CATALOG } from '../scripts/gates/reserved.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -113,9 +114,11 @@ test('I48(a) FAILS on a fabricated diff that shows a legacy fixture modified', (
 // ---------------------------------------------------------------------------
 test('I50 reports 0 subset violations and 0 unexplained cells, and names the front seats', () => {
   const r = runGate('I50');
-  // RED today, and only on the clause that reads the fixture stage S3 has not frozen yet.
-  assert.equal(r.pass, false);
-  assert.match(r.detail, /\(i\) fixture absent/);
+  /* GREEN SINCE S3'S FREEZE. It was red on clause (i) alone — the tier half, which has nothing to
+     read until the fixture exists — while (ii) and (iii) were already measuring. Now (i) reads the
+     two frozen files and reports the sub-ladder diff off them, so the assertion is the pass. */
+  assert.equal(r.pass, true, r.detail);
+  assert.match(r.detail, /\(i\) \d+\/\d+ shared settings differ/);
   assert.match(r.detail, /0 subset violations/);
   assert.match(r.detail, /0 unexplained/);
   assert.match(r.detail, /pre-nesting differs in 0 settings, of which 0 non-monotone/);
@@ -127,9 +130,32 @@ test('I50 reports 0 subset violations and 0 unexplained cells, and names the fro
 test('I50\'s subject is the shared pairs and nothing else', () => {
   const r = runGate('I50');
   assert.match(r.detail, /over 21 shared \(node, seat\) pairs/);
-  // 16,272 = 21 pairs x 12 lanes x 66 VPIP, less the 360 the ring refusal removes at limps.
-  assert.match(r.detail, /16272 comparisons/);
-  assert.match(r.detail, /360 refused/);
+  /* 16,632 = 21 pairs x 12 lanes x 66 VPIP, WHOLE. Lane F measured 16,272 with 360 refused — the
+     limps rows whose front seat reads N_eff past seven, which threw because `solveUncached` did not
+     thread the ring and because a villain-profiled cell refused the unprofiled ring columns. S3's
+     deltas F1 and F3 closed both, so the 360 are now MEASURED rather than skipped and the refusal
+     count is zero. A domain that grew back to its full size is the delta working; a domain that
+     shrinks is what this pin is here to catch. */
+  assert.match(r.detail, /16632 comparisons/);
+  assert.match(r.detail, /0 refused/);
+  /* (iv) THE PRE-REGISTERED CLAUSE LIST, written at S3 before the freeze. Each shared seat is
+     sorted by its index in `nestChain(node, 9)` — the only seats-in-front term R4 enumerated — so
+     the eleven with nothing in front are pre-registered EXACT and a single union among them is a
+     failure, while the ten with seats in front are containment and a strict superset is expected. */
+  assert.match(r.detail, /7 per-node clauses \+ 3 cross-cutting = 10 asserted/);
+  /* The two lists are checked against a STRUCTURALLY rebuilt expectation, never against typed seat
+     names — I51(c) is in this same suite and it caught the first draft of these two lines. The sort
+     key is the one the gate uses and the one R4 enumerated: a shared seat's index in its own
+     nine-seat nesting chain. Rebuilding it here rather than quoting it means a ladder that changed
+     shape moves both sides together instead of leaving a stale literal to be argued with. */
+  const listOf = (label) => (new RegExp(`${label} \\[([^\\]]*)\\]`).exec(r.detail) || [, ''])[1].split(' ').filter(Boolean);
+  const want = { contain: [], exact: [] };
+  for (const q of TF9.sharedPairs()) {
+    (P.nestChain(q.node, 9).indexOf(q.nine) > 0 ? want.contain : want.exact).push(`${q.node}/${q.nine}`);
+  }
+  assert.deepEqual(listOf('CONTAINMENT').sort(), want.contain.sort());
+  assert.deepEqual(listOf('EXACT').sort(), want.exact.sort());
+  assert.equal(want.contain.length + want.exact.length, TF9.sharedPairs().length);
 });
 
 // ---------------------------------------------------------------------------
@@ -149,6 +175,27 @@ test('I51(a) FAILS when the two constants sharing one anchor drift apart', () =>
     assert.equal(r.pass, false);
     assert.match(r.detail, /straddle\.seat .* !== ladder\.earlyStep/);
   } finally { K.ladder.earlyStep = was; }
+  assert.equal(runGate('I51').pass, true, 'the perturbation was not restored');
+});
+
+test('I51(a) FAILS when the shared anchor loses its provenance record', () => {
+  // The SECOND half of the two-constants-one-anchor pin, and a separate clause on purpose: the
+  // equality above catches the number drifting, this catches the record of why one number wears two
+  // names being deleted or re-pointed. It moved from `straddle.seatDerivedFrom` into the ladder
+  // block at S6 (V4-PLAN §0.4 confines the model delta to `constants.ladder`); the clause did not
+  // change, only its address.
+  const K = P.CONSTANTS;
+  const was = K.ladder.anchorSharedWith;
+  try {
+    K.ladder.anchorSharedWith = 'ladder.earlyStep';   // re-pointed at itself: circular, and no longer a provenance
+    let r = runGate('I51');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /ladder\.anchorSharedWith is .* the provenance of the shared anchor is gone/);
+    delete K.ladder.anchorSharedWith;                 // and deletion, the case refutation #18 measured
+    r = runGate('I51');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /the provenance of the shared anchor is gone/);
+  } finally { K.ladder.anchorSharedWith = was; }
   assert.equal(runGate('I51').pass, true, 'the perturbation was not restored');
 });
 
@@ -222,14 +269,24 @@ test('I51(b)\'s two offenders are PREDICATES, and they name the same sets at bot
 // ---------------------------------------------------------------------------
 // 5. I52 — the accessor, and the perturbation that must reach it
 // ---------------------------------------------------------------------------
-test('I52 is RED for exactly the two reasons a later stage owns', () => {
+test('I52 is GREEN once its two later-stage subjects land, and says which number is which', () => {
+  /* WAS "RED for exactly the two reasons a later stage owns" — lane R's SIM_NMAX split and S3's
+     delta F4. Both landed, so the assertion is inverted rather than deleted: a test that keeps
+     asserting a red after the red is fixed asserts nothing at all. Its teeth move to the arming
+     tests below and to the three numbers this clause has to keep straight. */
   const r = runGate('I52');
-  assert.equal(r.pass, false);
-  assert.match(r.detail, /declares no SIM_NMAX/);
-  assert.match(r.detail, /constants\.ladder\.census is absent/);
-  // ...and the clause that CAN run today does: the census recounts live and reports its integer.
-  assert.match(r.detail, /recounts 19\/6336/);
+  assert.equal(r.pass, true, r.detail);
+  /* THE THREE N-NAMES, each describing a different thing and only one of them nine. SIM_NMAX is
+     EVALUATED rather than grepped: lane R shipped the split with no width literal at all, so the
+     original `/SIM_NMAX = (\d+)/` detector read "declares no SIM_NMAX" against correct work — and
+     would have passed a dead `var SIM_NMAX = 9`. Running the setter asserts more than the literal
+     ever did, including that six seats and an unnamed table size both fall back to the array bound. */
   assert.match(r.detail, /meta\.nMax 7/);
+  assert.match(r.detail, /setSimSeats evaluated: 9 -> 9, 6 -> 7, an unnamed 7 -> 7/);
+  // ...and the census clause, which recounts live against constants.ladder.census every run.
+  assert.match(r.detail, /recounts 19\/6336/);
+  assert.equal(P.CONSTANTS.ladder.census.clamped, 19);
+  assert.equal(P.CONSTANTS.ladder.census.domain, 6336);
 });
 
 test('the perturbation reaches settings above seven through eqAtSeats, and ONLY those', () => {
@@ -268,29 +325,168 @@ test('the perturbation reaches settings above seven through eqAtSeats, and ONLY 
 // ---------------------------------------------------------------------------
 // 6. I49, D12, D13 — the three whose whole subject is produced by a later step
 // ---------------------------------------------------------------------------
-test('I49, D12 and D13 fail CLOSED, each naming the step that owns its subject', () => {
+test('D12 and D13 go GREEN on their own subjects, and I49 still names the step that owns its', () => {
+  /* Lane R's artifact and lane U's block landed at S3's merge and S3 paid the two caps, so the two
+     reds that were waiting on them are green and are asserted green. I49 is the one whose subject
+     THIS stage produces, and until `freeze-tiers.mjs --seats9` has run it must still refuse — and
+     must still say how to turn itself green, which is the half a red line usually forgets. */
   const i49 = runGate('I49');
-  assert.equal(i49.pass, false);
-  assert.match(i49.detail, /fixture absent at data\/tiers-9max\.fixture\.txt/);
-  assert.match(i49.detail, /freeze-tiers\.mjs --seats9/, 'the red line does not say how to turn it green');
+  if (!i49.pass) {
+    assert.match(i49.detail, /fixture absent at data\/tiers-9max\.fixture\.txt/);
+    assert.match(i49.detail, /freeze-tiers\.mjs --seats9/, 'the red line does not say how to turn it green');
+  } else {
+    // after the ceremony: the fixture exists and reproduces, which is I49's whole claim
+    assert.match(i49.detail, /9-max tiers reproduce exactly at seats=9/);
+  }
 
   const d12 = runGate('D12');
-  assert.equal(d12.pass, false);
-  assert.match(d12.detail, /ring-artifact\.mjs is not present/);
+  assert.equal(d12.pass, true, d12.detail);
+  assert.match(d12.detail, /ring 18\.2K injected/, 'D12(d) does not report the payload it bounds');
+  assert.match(d12.detail, /FALSIFIED/, 'the pre-registered 2*se.cell band is no longer reported against');
 
   const d13 = runGate('D13');
-  assert.equal(d13.pass, false);
-  assert.match(d13.detail, /no blocks\.ring cap/);
-  assert.match(d13.detail, /no @block:ring region/);
+  assert.equal(d13.pass, true, d13.detail);
 });
 
 test('a gate whose subject is absent never passes vacuously', () => {
   // The property that makes the five reds above correct rather than embarrassing: for each of them
   // there is no input at all, and the verdict is still a refusal. Written as a loop so that adding
   // an eighth id to this family cannot quietly opt out of it.
-  for (const id of ['I49', 'D12', 'D13']) {
+  /* NARROWED AT S3 TO THE ONE GATE WHOSE SUBJECT IS STILL ABSENT, and narrowed by deleting names
+     rather than by weakening the property: D12's and D13's subjects landed at the merge, so asking
+     them to refuse would be asking them to refuse a thing that is there. I49's subject — the fourth
+     fixture — is produced by this stage's own ceremony, and the loop stays a loop so that a later
+     id whose subject is absent cannot quietly opt out of it. Once the freeze has run this clause
+     has nothing to guard, and it says so instead of pretending. */
+  for (const id of ['I49']) {
     const r = runGate(id);
+    if (existsSync(resolve(ROOT, 'data/tiers-9max.fixture.txt'))) continue;
     assert.equal(r.pass, false, `${id} passed with no subject to assert on`);
     assert.ok(r.detail.length > 40, `${id} failed without saying what is missing`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// 8. STAGE S4's RED-TEAM CLAUSES — each one written because a refuter shipped
+//    the perturbation below GREEN (docs/refutations/V4.md)
+// ---------------------------------------------------------------------------
+test('I51(a) FAILS when the published derived block stops being the rule\'s output', () => {
+  // A refuter overwrote the block AFTER module init — `ladderConstants(9)` still ran the rule while
+  // the Method view, data/model.json and both artifacts carried a typed table — and every ring gate,
+  // all 12 ladder tests and a full verify stayed green.
+  const K = P.CONSTANTS;
+  const was = K.ladder.derived.baseRaise;
+  try {
+    // the front seats are NAMED STRUCTURALLY, never typed — I51(c)'s ratchet sits at zero slack and
+    // catches a seat literal in this file as readily as in a library one, which is the point of it
+    const front = K.ladder.ladder9.slice(0, K.ladder.ladder9.length - P.POSITIONS.length);
+    K.ladder.derived.baseRaise = Object.fromEntries(front.map((q) => [q, K.baseRaise[P.POSITIONS[0]]]));
+    const r = runGate('I51');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /stale copy of the rule it names/);
+  } finally { K.ladder.derived.baseRaise = was; }
+  assert.equal(runGate('I51').pass, true, 'the perturbation was not restored');
+});
+
+test('I51(a) FAILS when the named rule is not the arithmetic that ran', () => {
+  // R2-F2: `ladderConstants` reads `baseRRule` and never `baseRaiseRule`, so an arithmetic ladder
+  // under the label 'geometric' passed I51(a) in full. The gate now COMPOSES the named rule and
+  // Object.is-compares it, so the two cannot part — here the composition is moved instead of the
+  // ladder, which is the same identity read from the other side.
+  const K = P.CONSTANTS;
+  const was = K.ladder.earlyStep, wasSeat = K.straddle.seat;
+  try {
+    K.ladder.earlyStep = 0.80; K.straddle.seat = 0.80;      // both, so the equality clause is not the red
+    const r = runGate('I51');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /the published rule is not the arithmetic that ran/);
+  } finally { K.ladder.earlyStep = was; K.straddle.seat = wasSeat; }
+  assert.equal(runGate('I51').pass, true, 'the perturbation was not restored');
+});
+
+test('I51(a) FAILS on an anchor sentence that is not the live table\'s own arithmetic', () => {
+  // Two refuters replaced `anchor` and `flag` with same-or-greater-length sentences saying the
+  // OPPOSITE of the truth and shipped verify 69/69 green — the P1 defect, on the one constant whose
+  // job is to say the numbers are not measured. Both halves are now content-asserted.
+  const K = P.CONSTANTS;
+  const wasA = K.ladder.anchor, wasF = K.ladder.flag;
+  try {
+    K.ladder.anchor = 'measured on a nine-handed corpus of 4M hands, fully anchored, not extrapolated';
+    let r = runGate('I51');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /ladder\.anchor does not carry 1\.250/);
+    K.ladder.anchor = wasA;
+    K.ladder.flag = 'the early-seat values are MEASURED nine-handed data, not opinion; no gate is needed here';
+    r = runGate('I51');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /ladder\.flag does not name baseRRule/);
+  } finally { K.ladder.anchor = wasA; K.ladder.flag = wasF; }
+  assert.equal(runGate('I51').pass, true, 'the perturbation was not restored');
+});
+
+test('I51(a) FAILS when the ladder declares a table size nothing measured', () => {
+  // `constants.ladder.seats` was asserted nowhere: `[6, 7, 9]` shipped green through I48–I52, the
+  // skill family and every test. A declared size must have a MEASURED width-exception record.
+  const K = P.CONSTANTS;
+  const was = K.ladder.seats;
+  try {
+    K.ladder.seats = [6, 7, 9];
+    const r = runGate('I51');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /declares 7 seats and there is no MEASURED width-exception record/);
+  } finally { K.ladder.seats = was; }
+  assert.equal(runGate('I51').pass, true, 'the perturbation was not restored');
+});
+
+test('I52(c) FAILS on a fabricated per-pair census, and on an escalation nothing measured', () => {
+  // Three refuters of three replaced `byPair` with `{'HJ|limps': 60, 'BTN|rfi': 1}` and I52 stayed
+  // green: the recount read `domain`, `clamped` and `clamp` and never the breakdown R3's threshold
+  // is defined over. Both directions are recounted now, and R3's half-of-66 rule is code.
+  const c = P.CONSTANTS.ladder.census;
+  const was = c.byPair;
+  const nine = P.seatsFor(9);
+  try {
+    c.byPair = { [`${nine[4]}|limps`]: 60, [`${nine[6]}|rfi`]: 1 };   // structural, never a typed seat name
+    const r = runGate('I52');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /the live recount does not clamp that pair at all/);
+  } finally { c.byPair = was; }
+  try {
+    c.escalated = [`${nine[1]}|limps:40`];
+    const r = runGate('I52');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /an escalation nothing measured/);
+  } finally { delete c.escalated; }
+  assert.equal(runGate('I52').pass, true, 'the perturbation was not restored');
+});
+
+test('D13 FAILS on a silent raise, a broken cap-sum, and a deleted shrink-first sentence', () => {
+  // Two refuters read D13's shipped body against its catalog entry: it checked that two caps exist
+  // and that `@block:ring` is in both pages, and nothing else. §5.2's three other clauses are here.
+  const b = VARIANTS.lite.budgets;
+  const wasTotal = b.total, wasSkill = b.blocks.skill, wasCore = b.appCore;
+  try {
+    b.total = 650 * 1024;                              // a raise budgetSource never writes "-> 650K" for
+    let r = runGate('D13');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /budgetSource never writes "-> 650K"/);
+    b.total = wasTotal;
+    b.blocks.skill = 5 * 1024;                         // §2.7: this row is NOT raised
+    r = runGate('D13');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /blocks\.skill is 5K/);
+    b.blocks.skill = wasSkill;
+    b.appCore = 365 * 1024;                            // app === appCore + Σ caps, broken
+    r = runGate('D13');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /is not appCore/);
+  } finally { b.total = wasTotal; b.blocks.skill = wasSkill; b.appCore = wasCore; }
+  const src = VARIANTS.lite.budgetSource;
+  try {
+    VARIANTS.lite.budgetSource = src.replace(/SHRINK-FIRST, MEASURED IN BYTES/g, 'no shrink was attempted');
+    const r = runGate('D13');
+    assert.equal(r.pass, false);
+    assert.match(r.detail, /carries no SHRINK-FIRST, MEASURED IN BYTES sentence/);
+  } finally { VARIANTS.lite.budgetSource = src; }
+  assert.equal(runGate('D13').pass, true, 'the perturbation was not restored');
 });

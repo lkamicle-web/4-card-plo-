@@ -295,7 +295,12 @@ test('THE SECOND RESERVATION BITES: the meta bucket minus the solver block still
   const bloated = { ...model, rows: [...model.rows, { key: 'PAD', pad: 'z'.repeat(1024) }] };
   const g = d6(bloated);
   assert.equal(g.pass, false, `expected FAIL, got: ${g.detail}`);
-  assert.match(g.detail, /of which core 1[3-9.]+K\/13K/);
+  /* The reading, not the refusal, is what this regex checks — `g.pass === false` above is the
+     teeth. It was written as `1[3-9.]+K` and that character class cannot match a tenth of `0`,
+     which nobody noticed while the padded reading landed at 13.7K; limitation 20's 263 B took
+     `metaCore` to 13,300 B, so the same 1,024 B of padding now prints 14.0K and the pattern went
+     red on its own spelling. Widened to any 13-19.x reading, which is what it always meant. */
+  assert.match(g.detail, /of which core 1[3-9]\.\dK\/13K/);
 });
 
 test('a solver-constants block over its own 3K FAILS, and does not borrow from the meta core', () => {
